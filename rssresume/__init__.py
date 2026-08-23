@@ -1,0 +1,2 @@
+"""RSSResume package."""
+
