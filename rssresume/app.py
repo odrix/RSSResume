@@ -42,6 +42,10 @@ def _slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "category"
 
 
+def _authorization_header(api_key: str) -> str:
+    return "Bearer " + api_key
+
+
 @dataclasses.dataclass(frozen=True)
 class AppConfig:
     freshrss_base_url: str
@@ -200,11 +204,9 @@ class FreshRSSClient:
             if not batch:
                 break
 
-            stop = False
             for item in batch:
                 published = dt.datetime.fromtimestamp(item.get("published", 0), tz=dt.timezone.utc)
                 if published < start:
-                    stop = True
                     continue
                 if published >= end:
                     continue
@@ -221,7 +223,7 @@ class FreshRSSClient:
                 )
 
             continuation = payload.get("continuation")
-            if stop or not continuation:
+            if not continuation:
                 break
 
         return sorted(items, key=lambda article: article.published_at)
@@ -274,7 +276,7 @@ class SummaryGenerator:
             f"{self._config.llm_base_url.rstrip('/')}{path}",
             data=json.dumps(payload).encode(),
             headers={
-                "Authorization": f"******",
+                "Authorization": _authorization_header(self._config.llm_api_key),
                 "Content-Type": "application/json",
             },
         )
@@ -324,7 +326,7 @@ class AudioGenerator:
                     }
                 ).encode(),
                 headers={
-                    "Authorization": f"******",
+                    "Authorization": _authorization_header(self._config.llm_api_key),
                     "Content-Type": "application/json",
                 },
             )
