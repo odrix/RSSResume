@@ -113,30 +113,31 @@ class DigestServiceTests(unittest.TestCase):
 
 class SummaryGeneratorTests(unittest.TestCase):
     def test_fallback_summary_is_audio_friendly(self):
-        config = make_config("/tmp")
-        article = Article(
-            category="Tech",
-            title="Titre",
-            url="https://example.com/article",
-            published_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=dt.timezone.utc),
-            feed_title="Feed",
-            content_text="Contenu test pour le résumé.",
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = make_config(tmpdir)
+            article = Article(
+                category="Tech",
+                title="Titre",
+                url="https://example.com/article",
+                published_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=dt.timezone.utc),
+                feed_title="Feed",
+                content_text="Contenu test pour le résumé.",
+            )
 
-        summary = SummaryGenerator(config).summarize("Tech", [article])
+            summary = SummaryGenerator(config).summarize("Tech", [article])
 
-        self.assertIn("Résumé quotidien pour la catégorie Tech", summary)
-        self.assertIn("Fin du résumé du jour.", summary)
+            self.assertIn("Résumé quotidien pour la catégorie Tech", summary)
+            self.assertIn("Fin du résumé du jour.", summary)
 
 
 class EmailSenderTests(unittest.TestCase):
     def test_email_sender_detects_incomplete_configuration(self):
-        config = make_config("/tmp")
-        config = AppConfig(**{**config.__dict__, "smtp_host": None})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = make_config(tmpdir)
+            config = AppConfig(**{**config.__dict__, "smtp_host": None})
 
-        self.assertFalse(EmailSender(config).is_configured())
+            self.assertFalse(EmailSender(config).is_configured())
 
 
 if __name__ == "__main__":
     unittest.main()
-

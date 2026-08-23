@@ -16,7 +16,7 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Iterable
+from typing import Iterable, Protocol
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -124,6 +124,32 @@ class CategoryDigest:
     articles: list[Article]
     summary_text: str
     audio_path: pathlib.Path
+
+
+class FreshRSSReader(Protocol):
+    def list_categories(self) -> list[str]:
+        ...
+
+    def fetch_daily_articles(self, category: str, day: dt.date) -> list[Article]:
+        ...
+
+
+class SummaryWriter(Protocol):
+    def summarize(self, category: str, articles: list[Article]) -> str:
+        ...
+
+
+class AudioWriter(Protocol):
+    def synthesize(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
+        ...
+
+
+class MailSender(Protocol):
+    def is_configured(self) -> bool:
+        ...
+
+    def send(self, subject: str, body: str, attachments: Iterable[pathlib.Path]) -> None:
+        ...
 
 
 class FreshRSSClient:
@@ -234,6 +260,8 @@ class SummaryGenerator:
         self._config = config
 
     def summarize(self, category: str, articles: list[Article]) -> str:
+        if not articles:
+            return self._summarize_fallback(category, articles)
         if self._config.llm_api_key and self._config.llm_base_url:
             return self._summarize_with_openai(category, articles)
         return self._summarize_fallback(category, articles)
@@ -312,7 +340,7 @@ class AudioGenerator:
     def synthesize(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if shutil.which("espeak"):
-            subprocess.run(["espeak", "-w", str(output_path), text], check=True)
+            subprocess.run(["espeak", "--stdin", "-w", str(output_path)], input=text.encode("utf-8"), check=True)
             return output_path
         if self._config.llm_api_key and self._config.llm_base_url:
             request = urllib.request.Request(
@@ -384,10 +412,10 @@ class DigestService:
     def __init__(
         self,
         config: AppConfig,
-        freshrss_client: FreshRSSClient,
-        summary_generator: SummaryGenerator,
-        audio_generator: AudioGenerator,
-        email_sender: EmailSender,
+        freshrss_client: FreshRSSReader,
+        summary_generator: SummaryWriter,
+        audio_generator: AudioWriter,
+        email_sender: MailSender,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
