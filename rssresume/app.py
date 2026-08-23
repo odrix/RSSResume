@@ -73,6 +73,7 @@ class AppConfig:
         base_url = _env("FRESHRSS_BASE_URL")
         username = _env("FRESHRSS_USERNAME")
         api_password = _env("FRESHRSS_API_PASSWORD")
+        openai_api_key = _env("OPENAI_API_KEY")
         missing = [
             name
             for name, value in (
@@ -89,14 +90,14 @@ class AppConfig:
             freshrss_base_url=base_url,
             freshrss_username=username,
             freshrss_api_password=api_password,
-            output_dir=pathlib.Path(_env("RSSRESUME_OUTPUT_DIR", "output")),
+            output_dir=pathlib.Path(_env("RSSRESUME_OUTPUT_DIR") or "output"),
             categories=_split_csv(_env("RSSRESUME_CATEGORIES")),
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
             summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-4o-mini"),
             tts_model=_env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             tts_voice=_env("OPENAI_TTS_VOICE", "alloy"),
-            llm_base_url=_env("OPENAI_BASE_URL"),
-            llm_api_key=_env("OPENAI_API_KEY"),
+            llm_base_url=_env("OPENAI_BASE_URL") or ("https://api.openai.com/v1" if openai_api_key else None),
+            llm_api_key=openai_api_key,
             smtp_host=_env("SMTP_HOST"),
             smtp_port=int(_env("SMTP_PORT", "587") or "587"),
             smtp_username=_env("SMTP_USERNAME"),
@@ -126,7 +127,7 @@ class CategoryDigest:
     audio_path: pathlib.Path
 
 
-class FreshRSSReader(Protocol):
+class FreshRSSClientProtocol(Protocol):
     def list_categories(self) -> list[str]:
         ...
 
@@ -134,17 +135,17 @@ class FreshRSSReader(Protocol):
         ...
 
 
-class SummaryWriter(Protocol):
+class SummaryGeneratorProtocol(Protocol):
     def summarize(self, category: str, articles: list[Article]) -> str:
         ...
 
 
-class AudioWriter(Protocol):
+class AudioGeneratorProtocol(Protocol):
     def synthesize(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
         ...
 
 
-class MailSender(Protocol):
+class EmailSenderProtocol(Protocol):
     def is_configured(self) -> bool:
         ...
 
@@ -339,9 +340,6 @@ class AudioGenerator:
 
     def synthesize(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        if shutil.which("espeak"):
-            subprocess.run(["espeak", "--stdin", "-w", str(output_path)], input=text.encode("utf-8"), check=True)
-            return output_path
         if self._config.llm_api_key and self._config.llm_base_url:
             request = urllib.request.Request(
                 f"{self._config.llm_base_url.rstrip('/')}/audio/speech",
@@ -365,6 +363,13 @@ class AudioGenerator:
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", errors="replace")
                 raise RuntimeError(f"OpenAI-compatible audio request failed: {exc.code} {body}") from exc
+        if shutil.which("espeak"):
+            subprocess.run(
+                ["espeak", "--stdin", "-w", str(output_path)],
+                input=text.encode("utf-8"),
+                check=True,
+            )
+            return output_path
         raise RuntimeError("No text-to-speech backend available. Install espeak or configure OPENAI_BASE_URL and OPENAI_API_KEY.")
 
 
@@ -412,10 +417,10 @@ class DigestService:
     def __init__(
         self,
         config: AppConfig,
-        freshrss_client: FreshRSSReader,
-        summary_generator: SummaryWriter,
-        audio_generator: AudioWriter,
-        email_sender: MailSender,
+        freshrss_client: FreshRSSClientProtocol,
+        summary_generator: SummaryGeneratorProtocol,
+        audio_generator: AudioGeneratorProtocol,
+        email_sender: EmailSenderProtocol,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
@@ -430,7 +435,7 @@ class DigestService:
         for category in categories:
             articles = self._freshrss_client.fetch_daily_articles(category, day)
             summary_text = self._summary_generator.summarize(category, articles)
-            extension = ".wav" if shutil.which("espeak") else ".mp3"
+            extension = ".mp3" if self._config.llm_api_key and self._config.llm_base_url else ".wav"
             audio_path = self._config.output_dir / day.isoformat() / f"{_slugify(category)}{extension}"
             audio_path = self._audio_generator.synthesize(summary_text, audio_path)
             digests.append(CategoryDigest(category=category, articles=articles, summary_text=summary_text, audio_path=audio_path))

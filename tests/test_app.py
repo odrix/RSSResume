@@ -1,7 +1,9 @@
 import datetime as dt
+import os
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 from rssresume.app import AppConfig, Article, DigestService, EmailSender, SummaryGenerator
 
@@ -88,8 +90,8 @@ class DigestServiceTests(unittest.TestCase):
             attachments = email_sender.messages[0][2]
             self.assertEqual(2, len(attachments))
             self.assertTrue(all(path.exists() for path in attachments))
-            self.assertIn("Nouveau modèle", attachments[0].read_text(encoding="utf-8"))
-            self.assertIn("Aucun nouvel article", attachments[1].read_text(encoding="utf-8"))
+            self.assertIn("Nouveau modèle", digests[0].summary_text)
+            self.assertIn("Aucun nouvel article", digests[1].summary_text)
 
     def test_run_uses_discovered_categories_when_not_configured(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,6 +139,25 @@ class EmailSenderTests(unittest.TestCase):
             config = AppConfig(**{**config.__dict__, "smtp_host": None})
 
             self.assertFalse(EmailSender(config).is_configured())
+
+
+class AppConfigTests(unittest.TestCase):
+    @mock.patch.dict(
+        os.environ,
+        {
+            "FRESHRSS_BASE_URL": "https://example.com",
+            "FRESHRSS_USERNAME": "user",
+            "FRESHRSS_API_PASSWORD": "password",
+            "OPENAI_API_KEY": "token",
+            "RSSRESUME_OUTPUT_DIR": "   ",
+        },
+        clear=True,
+    )
+    def test_from_env_defaults_output_dir_and_openai_base_url(self):
+        config = AppConfig.from_env()
+
+        self.assertEqual(pathlib.Path("output"), config.output_dir)
+        self.assertEqual("https://api.openai.com/v1", config.llm_base_url)
 
 
 if __name__ == "__main__":

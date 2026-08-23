@@ -7,7 +7,7 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 1. connexion à l'API Google Reader compatible de FreshRSS
 2. lecture des articles du jour pour chaque catégorie ciblée
 3. génération d'un résumé texte par catégorie
-4. synthèse audio par catégorie (`espeak` en local ou API OpenAI-compatible)
+4. synthèse audio par catégorie (API OpenAI-compatible si configurée, sinon `espeak` en local)
 5. envoi d'un email avec les fichiers audio en pièces jointes
 
 ## Configuration
