@@ -1,0 +1,12 @@
+# Environnement
+.env
+.env.local
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Sorties RSSResume
+output/
