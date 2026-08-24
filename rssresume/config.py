@@ -32,6 +32,10 @@ class AppConfig:
     categories: list[str]
     excluded_categories: list[str]
     summary_language: str
+    #: Score minimal pour qu'un article entre dans le digest.
+    score_threshold: int
+    #: Nombre maximum d'articles retenus par catégorie.
+    max_digest_items: int
     summary_model: str | None
     tts_model: str | None
     tts_voice: str | None
@@ -77,6 +81,8 @@ class AppConfig:
             categories=_split_csv(_env("RSSRESUME_CATEGORIES")),
             excluded_categories=_split_csv(_env("RSSRESUME_EXCLUDED_CATEGORIES")),
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
+            score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
+            max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
             summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-4o-mini"),
             tts_model=_env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             tts_voice=_env("OPENAI_TTS_VOICE", "alloy"),

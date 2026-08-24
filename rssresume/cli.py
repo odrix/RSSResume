@@ -27,10 +27,21 @@ def build_service(config: AppConfig) -> DigestService:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate daily FreshRSS audio summaries by category.")
     parser.add_argument("--date", default=dt.date.today().isoformat(), help="Date to summarize (YYYY-MM-DD).")
+    parser.add_argument("--no-email", action="store_true", help="Skip sending the digest email.")
+    parser.add_argument(
+        "--no-tags",
+        action="store_true",
+        help="Skip writing FreshRSS tags (score-NN, scoring-<hash>, digested).",
+    )
+    parser.add_argument(
+        "--no-mark-read",
+        action="store_true",
+        help="Leave articles unread in FreshRSS. Scores are still written, so they are not recomputed.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Generate summaries and audio without sending email nor marking articles as read.",
+        help="Shorthand for --no-email --no-tags --no-mark-read.",
     )
     return parser.parse_args(argv)
 
@@ -40,7 +51,10 @@ def main(argv: list[str] | None = None) -> int:
     config = AppConfig.from_env()
     service = build_service(config)
     day = dt.date.fromisoformat(args.date)
+    send_email = not (args.dry_run or args.no_email)
+    write_tags = not (args.dry_run or args.no_tags)
+    mark_read = not (args.dry_run or args.no_mark_read)
     if args.dry_run:
-        console.log("Mode --dry-run : ni email ni marquage comme lu")
-    service.run(day, send_email=not args.dry_run, mark_read=not args.dry_run)
+        console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
+    service.run(day, send_email=send_email, write_tags=write_tags, mark_read=mark_read)
     return 0

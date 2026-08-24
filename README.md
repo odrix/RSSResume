@@ -6,16 +6,27 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 
 1. connexion à l'API Google Reader compatible de FreshRSS
 2. lecture des articles du jour pour chaque catégorie ciblée (les flux hors catégorie sont ignorés)
-3. génération d'un résumé texte par catégorie
-4. synthèse audio par catégorie (API OpenAI-compatible si configurée, sinon `espeak` en local)
-5. envoi d'un email avec les fichiers audio en pièces jointes
-6. marquage des articles traités comme lus dans FreshRSS (`edit-tag`)
+3. notation de chaque article de 0 à 10 selon un profil de pertinence, sur titre + extrait court
+4. sélection des articles au-dessus du seuil, les mieux notés d'abord
+5. résumé texte de la sélection, sur le texte intégral des articles retenus
+6. synthèse audio par catégorie (API OpenAI-compatible si configurée, sinon `espeak` en local)
+7. écriture des tags de la catégorie : `score-NN`, `scoring-<hash>`, `digested` sur les retenus
+8. envoi d'un email avec les fichiers audio en pièces jointes
+9. marquage comme lu de tous les articles récupérés
 
-Le marquage n'intervient qu'après l'envoi de l'email : un échec d'envoi laisse les articles non lus,
-et le prochain passage les reprend.
+Les étapes 2 à 7 se répètent par catégorie. Les tags sont écrits au fil de l'eau — ce sont des
+données de cache, une panne en cours de route ne doit pas faire repayer le scoring déjà effectué.
+Le marquage comme lu, lui, n'intervient qu'après l'envoi : un échec d'email laisse les articles non
+lus, et le prochain passage les reprend sans repayer le scoring.
+
+Un article déjà noté n'est **pas renoté** : sa note est relue de ses tags FreshRSS. Le scoring n'est
+recalculé que si le prompt ou le modèle a changé, ce que détecte un tag d'empreinte. Relancer la
+même journée ne coûte donc rien en scoring.
 
 Une catégorie sans article du jour ne déclenche aucun appel IA ni synthèse vocale : seul un fichier
 marqueur vide `<categorie>.no-article` est écrit.
+
+Le détail de chaque étape, les schémas et les tags posés : **[FONCTIONNEMENT.md](FONCTIONNEMENT.md)**.
 
 ## Fichiers produits
 
@@ -44,9 +55,13 @@ Variables optionnelles :
 - `RSSRESUME_EXCLUDED_CATEGORIES=Non classé`
 - `RSSRESUME_OUTPUT_DIR=output`
 - `RSSRESUME_SUMMARY_LANGUAGE=fr`
+- `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
+- `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
-- `OPENAI_SUMMARY_MODEL`
+- `OPENAI_SUMMARY_MODEL=gpt-4o-mini` — résumé audio d'une catégorie
+- `OPENAI_SCORING_MODEL=gpt-4o-mini` — notation des articles
+- `OPENAI_ARTICLE_MODEL=gpt-4o` — résumé par article (`summarize_top`, hors pipeline)
 - `OPENAI_TTS_MODEL`
 - `OPENAI_TTS_VOICE`
 - `SMTP_HOST`
@@ -66,12 +81,50 @@ Get-Content .env.local | ? {$_ -match '^\s*[^#]'} | % { $kv = $_ -split '=',2; S
 ```
 
 ```bash
-python -m rssresume --date 2026-08-23 --dry-run
+python -m rssresume                        # exécution normale du jour
+python -m rssresume --date 2026-08-23      # rejouer une journée précise
 ```
 
-- `--dry-run` génère les résumés et les fichiers audio sans envoyer d'email ni marquer les articles comme lus.
+### Options
+
+| Option | Effet |
+| --- | --- |
+| `--date YYYY-MM-DD` | journée à traiter (défaut : aujourd'hui) |
+| `--no-email` | n'envoie pas l'email |
+| `--no-tags` | n'écrit aucun tag FreshRSS (`score-NN`, `scoring-<hash>`, `digested`) |
+| `--no-mark-read` | laisse les articles non lus dans FreshRSS |
+| `--dry-run` | raccourci pour les trois options précédentes |
+
+Les trois axes sont indépendants et se cumulent :
+
+| Commande | Email | Tags | Marqué lu |
+| --- | :---: | :---: | :---: |
+| `python -m rssresume` | oui | oui | oui |
+| `--no-email` | non | oui | oui |
+| `--no-tags` | oui | non | oui |
+| `--no-mark-read` | oui | oui | non |
+| `--no-email --no-mark-read` | non | oui | non |
+| `--dry-run` | non | non | non |
+
+### Mettre au point le prompt de scoring
+
+```bash
+python -m rssresume --no-email --no-mark-read
+```
+
+Les scores sont écrits — donc mis en cache — mais les articles restent non lus et aucun email ne
+part. Tant que `PROFIL` et le barème ne changent pas, les essais suivants ne repaient pas le
+scoring. Modifier l'un des deux change l'empreinte et déclenche la renotation des seuls articles
+concernés.
+
+`--dry-run` n'écrit rien, y compris les scores : chaque essai repaie alors le scoring complet.
+
+### Divers
+
 - sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées.
 - `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse).
+- tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
+  `python -m rssresume.processing` (nécessite `OPENAI_API_KEY`).
 
 ## Organisation du code
 
@@ -82,8 +135,9 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `config.py` | configuration lue depuis l'environnement |
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |
-| `freshrss.py` | client de l'API Google Reader de FreshRSS (lecture et marquage comme lu) |
-| `llm.py` | transport HTTP vers une API compatible OpenAI |
+| `freshrss.py` | client de l'API Google Reader de FreshRSS (lecture, tags, marquage comme lu) |
+| `llm.py` | adaptateur vers une API compatible OpenAI : requêtes, réglages par type d'appel |
+| `processing.py` | notation des articles selon le profil de pertinence |
 | `summaries.py` | génération des résumés textuels |
 | `audio.py` | synthèse vocale (OpenAI ou `espeak`) |
 | `mailer.py` | construction et envoi de l'email |
@@ -102,16 +156,20 @@ RSSResume : digest du 2026-08-23 vers output/2026-08-23
 FreshRSS : authentifié en tant que mon-utilisateur
 FreshRSS : 3 catégorie(s) découverte(s)
 3 catégorie(s) à traiter : Tech, News, Culture
-[Tech] 3 article(s)
-  résumé via l'API gpt-4o-mini (3 article(s))
+[Tech] 24 article(s)
+  scoring : 18 score(s) relu(s) des tags, 6 à calculer
+  sélection : 5 article(s) retenu(s) sur 24 (seuil 7)
+  résumé via l'API gpt-4o-mini (5 article(s))
   synthèse vocale via l'API gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
+FreshRSS : notation de 6 article(s) sur 4 valeur(s) de score
+FreshRSS : tag 'digested' sur 5 article(s)
 [Culture] 0 article(s)
   aucun article : culture.no-article (ni IA ni synthèse vocale)
 Email : envoi à dest@example.com via smtp.example.com:587 (2 pièce(s) jointe(s))
 Email : envoyé
-FreshRSS : marquage de 4 article(s) comme lus
-Terminé : 4 article(s), 2 fichier(s) audio, 1 catégorie(s) sans article
+FreshRSS : marquage de 24 article(s) comme lus
+Terminé : 24 article(s) lu(s), 5 retenu(s), 2 fichier(s) audio, 1 catégorie(s) sans article
 ```
 
 Pour utiliser le paquet comme bibliothèque sans cette sortie : `rssresume.console.enable(False)`.
@@ -119,5 +177,5 @@ Pour utiliser le paquet comme bibliothèque sans cette sortie : `rssresume.conso
 ## Tests
 
 ```bash
-python -m unittest discover -s tests
+python -m unittest discover -s tests -t tests
 ```

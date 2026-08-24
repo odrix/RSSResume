@@ -8,9 +8,8 @@ import subprocess
 
 from rssresume import console
 from rssresume.config import AppConfig
-from rssresume.llm import post
+from rssresume import llm
 
-ERROR_LABEL = "OpenAI-compatible audio"
 OPENAI_EXTENSION = ".mp3"
 ESPEAK_EXTENSION = ".wav"
 
@@ -32,18 +31,13 @@ class AudioGenerator:
 
     def _synthesize_with_openai(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
         console.detail(f"synthèse vocale via l'API {self._config.tts_model} (voix {self._config.tts_voice})")
-        payload = {
-            "model": self._config.tts_model,
-            "voice": self._config.tts_voice,
-            "input": text,
-            "format": output_path.suffix.lstrip(".") or OPENAI_EXTENSION.lstrip("."),
-        }
-        audio = post(
+        audio = llm.speak(
             self._config.llm_base_url,
             self._config.llm_api_key,
-            "/audio/speech",
-            payload,
-            ERROR_LABEL,
+            self._config.tts_model,
+            self._config.tts_voice,
+            text,
+            output_path.suffix.lstrip(".") or OPENAI_EXTENSION.lstrip("."),
         )
         output_path.write_bytes(audio)
         return output_path
