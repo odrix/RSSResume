@@ -47,7 +47,7 @@ class MarkAsReadTests(unittest.TestCase):
         self.assertEqual(["item-1", "item-2"], [article.item_id for article in client.marked_as_read])
 
     def test_dry_run_does_not_mark_articles_as_read(self):
-        client = self._run({"Tech": [make_article()], "News": []}, send_email=False, mark_read=False)
+        client = self._run({"Tech": [make_article()], "News": []}, send_email=False, write_tags=False, mark_read=False)
 
         self.assertEqual([], client.marked_as_read)
 
@@ -55,6 +55,22 @@ class MarkAsReadTests(unittest.TestCase):
         client = self._run({"Tech": [], "News": []}, send_email=False)
 
         self.assertEqual([], client.marked_as_read)
+
+    def test_digested_articles_are_tagged(self):
+        articles = [make_article(item_id="item-1"), make_article(item_id="item-2")]
+        client = self._run({"Tech": articles, "News": []}, send_email=False)
+
+        self.assertEqual(["item-1", "item-2"], client.digested)
+
+    def test_dry_run_does_not_tag_digested_articles(self):
+        client = self._run({"Tech": [make_article()], "News": []}, send_email=False, write_tags=False, mark_read=False)
+
+        self.assertEqual([], client.digested)
+
+    def test_empty_categories_are_not_tagged(self):
+        client = self._run({"Tech": [], "News": []}, send_email=False)
+
+        self.assertEqual([], client.digested)
 
 
 class DigestServiceTests(unittest.TestCase):

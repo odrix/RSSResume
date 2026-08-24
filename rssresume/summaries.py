@@ -6,14 +6,20 @@ import json
 
 from rssresume import console
 from rssresume.config import AppConfig
-from rssresume.llm import post_json
+from rssresume import llm
 from rssresume.models import Article
 from rssresume.text import no_article_message
 
-ERROR_LABEL = "OpenAI-compatible summary"
-EXCERPT_LENGTH = 800
 FALLBACK_ARTICLES = 5
 FALLBACK_EXCERPT_LENGTH = 180
+
+#: Nombre de points clés demandés, par palier de volume d'articles.
+BULLET_TIERS = (
+    (5, "2 à 3 points clés"),
+    (15, "3 à 6 points clés"),
+    (35, "6 à 10 points clés, regroupés par thème"),
+)
+BULLET_DEFAULT = "8 à 12 points clés, regroupés par thème, en signalant les sujets majeurs"
 
 SYSTEM_PROMPT = (
     "Tu rédiges des résumés audio quotidiens de flux RSS. "
@@ -38,34 +44,35 @@ class SummaryGenerator:
                 "title": article.title,
                 "feed": article.feed_title,
                 "url": article.url,
-                "excerpt": article.content_text[:EXCERPT_LENGTH],
+                "content": article.content_text,
             }
             for article in articles
         ]
-        payload = {
-            "model": self._config.summary_model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": self._user_prompt(category, prompt_articles)},
-            ],
-        }
         console.detail(f"résumé via l'API {self._config.summary_model} ({len(articles)} article(s))")
-        response = post_json(
+        return llm.chat(
             self._config.llm_base_url,
             self._config.llm_api_key,
-            "/chat/completions",
-            payload,
-            ERROR_LABEL,
+            llm.DIGEST,
+            SYSTEM_PROMPT,
+            self._user_prompt(category, prompt_articles, len(articles)),
+            model=self._config.summary_model,
         )
-        return response["choices"][0]["message"]["content"].strip()
 
-    def _user_prompt(self, category: str, prompt_articles: list[dict]) -> str:
+    def _user_prompt(self, category: str, prompt_articles: list[dict], article_count: int) -> str:
         return (
             f"Résume les articles du jour pour la catégorie '{category}' en {self._config.summary_language}. "
-            "Fais un court paragraphe d'introduction, puis 3 à 6 points clés maximum, "
+            f"Fais un court paragraphe d'introduction, puis {self._bullet_instruction(article_count)}, "
             "et une phrase de conclusion." + "\n\n"
             "Articles:\n" + json.dumps(prompt_articles, ensure_ascii=False)
         )
+
+    @staticmethod
+    def _bullet_instruction(article_count: int) -> str:
+        """Nombre de points clés proportionné au volume : 6 points pour 50 articles diluent tout."""
+        for threshold, instruction in BULLET_TIERS:
+            if article_count <= threshold:
+                return instruction
+        return BULLET_DEFAULT
 
     @staticmethod
     def _summarize_fallback(category: str, articles: list[Article]) -> str:

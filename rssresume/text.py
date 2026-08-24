@@ -17,3 +17,10 @@ def slugify(value: str) -> str:
 
 def no_article_message(category: str) -> str:
     return f"Aucun nouvel article aujourd'hui dans la catégorie {category}."
+
+
+def no_selection_message(category: str, threshold: int) -> str:
+    return (
+        f"Aucun article retenu aujourd'hui dans la catégorie {category} "
+        f"(score minimal {threshold})."
+    )

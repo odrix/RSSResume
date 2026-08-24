@@ -13,6 +13,10 @@ class FakeFreshRSSClient:
     def __init__(self, articles_by_category):
         self._articles_by_category = articles_by_category
         self.marked_as_read = []
+        self.digested = []
+        self.scored = {}
+        self.scoring_digest = None
+        self.cleared = []
 
     def list_categories(self):
         return list(self._articles_by_category)
@@ -22,6 +26,16 @@ class FakeFreshRSSClient:
 
     def mark_as_read(self, articles):
         self.marked_as_read.extend(articles)
+
+    def mark_digested(self, item_ids):
+        self.digested.extend(item_ids)
+
+    def tag_scores(self, scores, scoring_digest=None):
+        self.scored.update(scores)
+        self.scoring_digest = scoring_digest
+
+    def clear_scoring_tags(self, articles):
+        self.cleared.extend(article.item_id for article in articles)
 
 
 class FakeAudioGenerator:
@@ -51,6 +65,8 @@ def make_config(output_dir):
         categories=["Tech", "News"],
         excluded_categories=[],
         summary_language="fr",
+        score_threshold=7,
+        max_digest_items=12,
         summary_model=None,
         tts_model=None,
         tts_voice=None,

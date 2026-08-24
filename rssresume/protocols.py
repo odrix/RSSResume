@@ -19,6 +19,15 @@ class FreshRSSClientProtocol(Protocol):
     def mark_as_read(self, articles: list[Article]) -> None:
         ...
 
+    def mark_digested(self, item_ids: list[str]) -> None:
+        ...
+
+    def tag_scores(self, scores: dict[str, int], scoring_digest: str | None = None) -> None:
+        ...
+
+    def clear_scoring_tags(self, articles: list[Article]) -> None:
+        ...
+
 
 class SummaryGeneratorProtocol(Protocol):
     def summarize(self, category: str, articles: list[Article]) -> str:
