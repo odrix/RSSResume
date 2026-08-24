@@ -11,7 +11,7 @@ from rssresume.freshrss import (
     READ_STATE,
     FreshRSSClient,
 )
-from rssresume.models import Article
+from rssresume.models import Article, Note
 from support import make_config
 
 
@@ -121,57 +121,90 @@ class TagTests(unittest.TestCase):
         self.assertEqual([("i", f"item-{EDIT_TAG_BATCH_SIZE}")], post_form.call_args_list[-1].args[1][2:])
 
     def test_scores_are_grouped_one_call_per_distinct_value(self):
-        scores = {"item-1": 9, "item-2": 3, "item-3": 9}
+        notes = {
+            "item-1": Note(9, "cyber", "a"),
+            "item-2": Note(3, "cyber", "a"),
+            "item-3": Note(9, "cyber", "a"),
+        }
 
-        post_form = capture_posts(lambda client: client.tag_scores(scores))
+        post_form = capture_posts(lambda client: client.tag_notes(notes))
 
-        self.assertEqual(2, post_form.call_count)
+        # Deux valeurs de score, une seule thématique : trois appels.
+        self.assertEqual(3, post_form.call_count)
         labels = [fields[1] for _, fields in (call.args for call in post_form.call_args_list)]
         self.assertEqual(
-            [("a", f"{LABEL_STREAM_PREFIX}score-03"), ("a", f"{LABEL_STREAM_PREFIX}score-09")],
+            [
+                ("a", f"{LABEL_STREAM_PREFIX}score-03"),
+                ("a", f"{LABEL_STREAM_PREFIX}score-09"),
+                ("a", f"{LABEL_STREAM_PREFIX}theme-cyber"),
+            ],
             labels,
         )
-        neuf = post_form.call_args_list[-1].args[1][2:]
+        neuf = post_form.call_args_list[1].args[1][2:]
         self.assertEqual([("i", "item-1"), ("i", "item-3")], neuf)
 
-    def test_score_tag_is_zero_padded_for_alphabetical_order(self):
-        post_form = capture_posts(lambda client: client.tag_scores({"item-1": 7}))
+    def test_thematique_is_tagged_so_the_cache_can_group_later(self):
+        """Sans ce tag, un score relu du cache ne saurait plus dans quel groupe ranger l'article."""
+        notes = {"item-1": Note(9, "reglementaire", "a"), "item-2": Note(9, "cyber", "a")}
 
-        self.assertEqual(f"{LABEL_STREAM_PREFIX}score-07", post_form.call_args.args[1][1][1])
+        post_form = capture_posts(lambda client: client.tag_notes(notes))
+
+        labels = [fields[1] for _, fields in (call.args for call in post_form.call_args_list)]
+        self.assertEqual(
+            [
+                ("a", f"{LABEL_STREAM_PREFIX}score-09"),
+                ("a", f"{LABEL_STREAM_PREFIX}theme-cyber"),
+                ("a", f"{LABEL_STREAM_PREFIX}theme-reglementaire"),
+            ],
+            labels,
+        )
+        self.assertEqual([("i", "item-2")], post_form.call_args_list[1].args[1][2:])
+
+    def test_score_tag_is_zero_padded_for_alphabetical_order(self):
+        post_form = capture_posts(lambda client: client.tag_notes({"item-1": Note(7)}))
+
+        self.assertEqual(f"{LABEL_STREAM_PREFIX}score-07", post_form.call_args_list[0].args[1][1][1])
 
     def test_clearing_scoring_tags_removes_only_the_tags_actually_carried(self):
         articles = [
             make_article("item-1"),
             make_article("item-2"),
         ]
-        articles[0] = dataclasses.replace(articles[0], tags=("score-02", "scoring-abc123", "digested"))
+        articles[0] = dataclasses.replace(
+            articles[0], tags=("score-02", "scoring-abc123", "theme-cyber", "digested")
+        )
         articles[1] = dataclasses.replace(articles[1], tags=("score-09", "scoring-abc123"))
 
         post_form = capture_posts(lambda client: client.clear_scoring_tags(articles))
 
-        # Trois tags distincts portés : score-02, score-09, scoring-abc123. 'digested' est préservé.
-        self.assertEqual(3, post_form.call_count)
+        # Quatre tags distincts portés : les deux scores, l'empreinte et la thématique.
+        # 'digested' est préservé : il dit que l'article est passé dans un digest, pas comment.
+        self.assertEqual(4, post_form.call_count)
         appels = [fields[1] for _, fields in (call.args for call in post_form.call_args_list)]
         self.assertEqual(
             [
                 ("r", f"{LABEL_STREAM_PREFIX}score-02"),
                 ("r", f"{LABEL_STREAM_PREFIX}score-09"),
                 ("r", f"{LABEL_STREAM_PREFIX}scoring-abc123"),
+                ("r", f"{LABEL_STREAM_PREFIX}theme-cyber"),
             ],
             appels,
         )
-        self.assertEqual([("i", "item-1"), ("i", "item-2")], post_form.call_args_list[-1].args[1][2:])
+        self.assertEqual([("i", "item-1")], post_form.call_args_list[-1].args[1][2:])
 
     def test_score_tags_carry_the_prompt_digest(self):
-        post_form = capture_posts(lambda client: client.tag_scores({"item-1": 9}, "abc123"))
+        post_form = capture_posts(
+            lambda client: client.tag_notes({"item-1": Note(9, "cyber", "a")}, "abc123")
+        )
 
-        self.assertEqual(2, post_form.call_count)
+        self.assertEqual(3, post_form.call_count)
         self.assertEqual(f"{LABEL_STREAM_PREFIX}score-09", post_form.call_args_list[0].args[1][1][1])
-        self.assertEqual(f"{LABEL_STREAM_PREFIX}scoring-abc123", post_form.call_args_list[1].args[1][1][1])
+        self.assertEqual(f"{LABEL_STREAM_PREFIX}theme-cyber", post_form.call_args_list[1].args[1][1][1])
+        self.assertEqual(f"{LABEL_STREAM_PREFIX}scoring-abc123", post_form.call_args_list[2].args[1][1][1])
 
     def test_tagging_without_item_makes_no_request(self):
         self.assertEqual(0, capture_posts(lambda client: client.mark_digested([])).call_count)
-        self.assertEqual(0, capture_posts(lambda client: client.tag_scores({})).call_count)
+        self.assertEqual(0, capture_posts(lambda client: client.tag_notes({})).call_count)
 
 
 if __name__ == "__main__":

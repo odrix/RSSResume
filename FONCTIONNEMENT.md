@@ -9,17 +9,17 @@ Pour l'installation et les commandes, voir [README.md](README.md).
 flowchart TD
     A[FreshRSS<br/>API Google Reader] -->|articles du jour + leurs tags| B{Scoring<br/>nécessaire ?}
 
-    B -->|tag scoring-hash à jour| C[Score relu du tag<br/>zéro appel IA]
-    B -->|tag absent ou périmé| D[score_articles<br/>titre + extrait 400 car.]
+    B -->|tags scoring-hash + theme à jour| C[Note relue des tags<br/>zéro appel IA]
+    B -->|tag absent ou périmé| D[score_articles<br/>score + thématique + angle]
 
     C --> E[Sélection]
     D --> E
 
-    E -->|score ≥ seuil, trié, plafonné| F[SummaryGenerator<br/>texte intégral des retenus]
+    E -->|score ≥ seuil, plafonné,<br/>regroupé par thématique| F[SummaryGenerator<br/>texte intégral + angle]
     E -->|aucun retenu| N[".no-article<br/>liste des scores obtenus"]
     N --> T
     F --> G[AudioGenerator<br/>synthèse vocale]
-    G --> T[tags score-NN + scoring-hash<br/>tag digested sur les retenus]
+    G --> T[tags score-NN + theme + scoring-hash<br/>tag digested sur les retenus]
     T -->|catégorie suivante| B
     T --> H[Email<br/>audio en pièces jointes]
     H --> L[marquage comme lu<br/>sur tous les articles]
@@ -56,17 +56,34 @@ Une catégorie sans article s'arrête ici : un fichier marqueur vide `<categorie
 
 ### 3. Scoring
 
-Chaque article reçoit une note de 0 à 10 selon un profil de pertinence unique, défini dans
-`PROFIL` ([processing.py](rssresume/processing.py)). Le scoring ne voit que le **titre et un
-extrait de 400 caractères** : c'est une étape de tri, pas de compréhension.
+Chaque article reçoit une **note** selon un profil de pertinence unique
+([profil.py](rssresume/profil.py)). Le scoring ne voit que le **titre et un extrait de
+400 caractères** : c'est une étape de tri, pas de compréhension.
+
+Une note, c'est trois champs — et les trois servent :
+
+| Champ | Ce que c'est | Où il sert |
+| --- | --- | --- |
+| `score` | 0 à 10 | seuil de sélection, plafond, tag `score-NN` |
+| `thematique` | reglementaire, cyber, marche, stack, autre | ordre de lecture du digest, tag `theme-<x>` |
+| `angle` | une phrase : en quoi l'article compte pour ce profil | passé au résumeur avec l'article |
+
+Les trois arrivent dans le même appel. Le score seul pilotait tout et les deux autres étaient
+jetés : payés puis perdus. L'angle est précisément le contexte qui manquait au résumé — il dit
+*pourquoi* l'article est là — et la thématique donne gratuitement le regroupement à l'écoute.
 
 Trois cas par article :
 
 ```
-article porte scoring-<hash courant> + score-NN  →  score relu du tag, aucun appel
-article porte scoring-<autre hash>               →  renoté, anciens tags à nettoyer
-article sans tag de scoring                      →  noté
+article porte scoring-<hash courant> + score-NN + theme-<x>  →  note relue des tags, aucun appel
+article porte scoring-<autre hash>                           →  renoté, anciens tags à nettoyer
+article sans tag de scoring                                  →  noté
 ```
+
+Le cache exige le score **et** la thématique : une note partielle rangerait l'article dans le
+mauvais groupe, elle est donc traitée comme absente. L'angle, lui, n'est pas mis en tag — une
+phrase entière n'a rien à faire dans un label FreshRSS. Un article relu du cache part donc au
+résumé sans son angle, et le prompt le prévoit.
 
 Les articles à noter partent par lots de 40 en un appel chacun. Le module vérifie que le modèle
 renvoie **autant de notes que d'articles envoyés** ; sinon l'exécution s'arrête plutôt que de
@@ -86,6 +103,13 @@ Sans API configurée, cette étape est sautée : tous les articles passent à l'
 Articles dont le score atteint `RSSRESUME_SCORE_THRESHOLD` (défaut 7), triés par score décroissant,
 plafonnés à `RSSRESUME_MAX_DIGEST_ITEMS` (défaut 12).
 
+**Puis regroupés par thématique.** Le plafond s'applique sur le score — c'est lui qui décide qui
+entre —, mais l'ordre de lecture, lui, est thématique : le tri par score seul faisait sauter du
+réglementaire au cyber, puis au marché, puis de nouveau au réglementaire, ce qui interdit toute
+transition à l'oral. L'urgence reste respectée : un groupe est classé sur son meilleur article,
+et à l'intérieur d'un groupe l'ordre reste le score décroissant. Le regroupement ne coûte aucun
+appel supplémentaire, la thématique étant déjà notée.
+
 C'est cette sélection — et elle seule — qui alimente le résumé **et** qui reçoit le tag `digested`.
 Les deux ne peuvent pas diverger : un test le verrouille.
 
@@ -96,9 +120,9 @@ catégorie sans article : ni résumé ni synthèse vocale — l'audio n'aurait r
 ```
 Aucun article retenu sur 3 (seuil 7).
 
- 5/10 - Un nouveau format d'archive open source
- 4/10 - Bilan trimestriel d'un fournisseur cloud américain
- 1/10 - Test d'un casque audio sans fil
+ 5/10 stack         - Un nouveau format d'archive open source
+ 4/10 marche        - Bilan trimestriel d'un fournisseur cloud américain
+ 1/10 autre         - Test d'un casque audio sans fil
 ```
 
 C'est ce qui permet de juger un seuil trop haut sans rouvrir FreshRSS. Les tags de scoring, eux,
@@ -107,22 +131,72 @@ chaque passage.
 
 ### 5. Résumé et audio
 
-Le résumé reçoit le **texte intégral** des articles retenus, sans troncature. Le nombre de points
-clés demandé s'ajuste au volume :
+Le résumé reçoit le **texte intégral** des articles retenus, sans troncature, chacun accompagné de
+sa thématique et de son `angle` — la phrase du scoring qui dit en quoi l'article compte pour ce
+profil. C'est l'angle à prendre, pas une phrase à recopier, et il ne coûte rien : il est produit par
+l'appel de scoring, qui a déjà eu lieu.
 
-| Articles retenus | Points clés demandés |
+Le texte est écrit pour être **écouté**, pas lu, ce qui dicte quatre contraintes :
+
+- **prose continue** : des phrases enchaînées avec des transitions, jamais de puces ni de
+  « premièrement, deuxièmement » — une énumération à l'oral ne s'écoute pas ;
+- **aucun lien** : l'URL des articles n'est même pas mise dans le prompt. Ce qui n'entre pas dans
+  le contexte ne peut pas ressortir dans le texte lu à voix haute — et une URL vue par le modèle
+  est une URL qu'il peut recopier de travers. L'attribution passe donc par le **nom du flux**,
+  cité entre parenthèses : « … (CERT-FR) », ou « … (CERT-FR, LeMagIT) » pour un fait couvert par
+  plusieurs sources. Le champ `feed` est la seule source de vérité ; tout nom absent des articles
+  reçus serait inventé. Les liens, eux, partent dans l'email (étape 7) ;
+- **fin brève** : « Bonne journée. » et rien de plus. La conclusion passe-partout sur l'importance
+  de la sécurité est explicitement interdite — entendue tous les jours, elle n'apporte rien ;
+- **longueur proportionnée au volume**, sans quoi le même texte servirait pour 3 comme pour 30
+  articles :
+
+| Articles retenus | Profondeur demandée |
 | --- | --- |
-| ≤ 5 | 2 à 3 |
-| ≤ 15 | 3 à 6 |
-| ≤ 35 | 6 à 10, regroupés par thème |
-| > 35 | 8 à 12, regroupés par thème |
+| ≤ 3 | deux à trois phrases par sujet |
+| ≤ 8 | une à deux phrases par sujet |
+| > 8 | une phrase par sujet, les sujets proches fondus ensemble |
+
+Les articles arrivent dans l'ordre de lecture décidé à l'étape 4, regroupés par thématique. Le
+prompt demande de garder cet ordre et de marquer le passage d'une thématique à la suivante par une
+transition courte — sans annoncer de rubrique, ce qui reviendrait à réintroduire une liste.
+
+**Fusion des doublons.** Un même événement est souvent couvert par plusieurs flux : trois dépêches
+sur le même incident produisaient trois passages, dont deux redites que l'auditeur subit sans pouvoir
+sauter. Le prompt impose donc de traiter ces articles comme **un seul sujet** — le fait dit une seule
+fois, les sources qui l'ont couvert nommées ensemble, ce que chacune apporte de plus gardé au même
+endroit — et les paliers de longueur ci-dessus se comptent en sujets après fusion, pas en articles
+reçus.
+
+**Le cas des CVE.** Les vulnérabilités sortent du régime commun : **une CVE est un sujet à elle
+seule**, jamais fondue avec une autre — même jour, même source et même produit n'y changent rien —
+et les paliers de longueur ne s'y appliquent pas. Chacune se dit en une à deux phrases factuelles,
+dans un ordre fixe : identifiant, produit et versions, ce que la faille permet, exploitée ou non,
+ce qu'il y a à faire. C'est le seul endroit du digest où la précision passe avant le style : les
+règles de prose, de fusion et de longueur diluaient exactement ce qui rend un avis utile.
+
+Un avis de vulnérabilité arrive souvent réduit à son titre :
+« CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
+touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. Avant le résumé, la page de
+l'avis est donc lue (`cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en
+deux phrases le produit et les versions concernés, ce que la faille permet, si elle est exploitée et
+ce qu'il y a à faire.
+
+La lecture est ciblée pour ne pas coûter cher : uniquement les articles qui mentionnent une CVE
+**et** dont le flux fournit moins de 1200 caractères — au-delà, le détail est déjà là. Le texte
+extrait est plafonné à 6000 caractères (au-delà, on paierait des tokens pour des menus et des pieds
+de page) et les blocs `<script>`/`<style>` sont retirés avant les balises. Une page injoignable
+n'est pas bloquante : l'article repart tel quel, le digest du jour se fait quand même.
 
 Le texte produit part ensuite en synthèse vocale (API OpenAI-compatible, sinon `espeak` en local).
+`OPENAI_TTS_INSTRUCTIONS` permet de diriger la diction — ton, débit, émotion, prononciation.
+Ces consignes ne sont **pas** envoyées quand la variable est vide : les modèles de synthèse plus
+anciens, `tts-1` en tête, rejettent les paramètres qu'ils ne connaissent pas.
 
 ### 6. Tags de la catégorie
 
 Dès que le résumé de la catégorie est produit, ses tags sont écrits : nettoyage des tags périmés,
-`score-NN`, `scoring-<hash>`, puis `digested` sur les retenus.
+`score-NN`, `theme-<thematique>`, `scoring-<hash>`, puis `digested` sur les retenus.
 
 **Pourquoi ici et pas à la fin.** Ce sont des données de cache et de navigation, pas un accusé de
 livraison. Les écrire au fil de l'eau garantit qu'une panne à la 5ᵉ catégorie ne fait pas perdre le
@@ -138,11 +212,56 @@ survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre 
 Un seul email pour toutes les catégories, les fichiers audio en pièces jointes. Sans `SMTP_HOST`
 ni `SMTP_TO`, l'étape est sautée sans erreur.
 
+**Les liens sont ici, et seulement ici.** Sous le résumé de chaque catégorie, l'email liste ses
+articles retenus avec leur URL, dans l'ordre où le résumé les a racontés :
+
+```
+<le résumé de la catégorie, sans aucune URL>
+
+Sources :
+- Avis du CERT-FR sur une RCE (CERT-FR) : https://cert.ssi.gouv.fr/avis/…
+- Nouveau référentiel SecNumCloud (ANSSI) : https://…
+```
+
+La répartition est volontaire : l'audio n'a pas de liens — une URL lue à voix haute est
+inutilisable —, l'email en a, parce que c'est le seul endroit où retrouver l'article derrière un
+sujet entendu. Ces liens viennent de `CategoryDigest.links`, **dérivé de la sélection** et non
+d'un texte produit par le modèle : ils ne peuvent donc pas être hallucinés. Une catégorie sans
+sélection n'ajoute aucun bloc.
+
 ### 8. Marquage comme lu
 
 **Après l'envoi uniquement**, et sur **tous** les articles récupérés, pas seulement les retenus. Un
 échec d'email les laisse non lus : le passage suivant les reprend, et le cache de scoring fait qu'il
 ne repaie rien.
+
+## Le profil de pertinence
+
+Un seul texte, dans [profil.py](rssresume/profil.py), utilisé par les **trois** prompts : noter,
+résumer un article, dicter le digest audio. C'est lui qui définit ce qu'est une information pour
+cet auditeur — le reste du système n'est que de la plomberie autour.
+
+Il est donc **injectable de l'extérieur**, dans cet ordre de priorité :
+
+| Source | Usage |
+| --- | --- |
+| argument explicite (`score_articles(..., profil=…)`, `AppConfig.profil`) | appel programmatique, tests |
+| `RSSRESUME_PROFILE` | un profil court, en clair |
+| `RSSRESUME_PROFILE_FILE` | un profil long, ou versionné à part du dépôt |
+| `DEFAULT_PROFIL` | le profil par défaut du dépôt |
+
+Trois conséquences de conception :
+
+- **Les prompts sont assemblés à l'appel, pas figés à l'import.** `processing.scoring_system()` et
+  `summaries.system_prompt()` sont des fonctions, non des constantes : un profil injecté doit
+  pouvoir arriver après le chargement des modules.
+- **L'assemblage est une concaténation, jamais un `format`.** Le prompt de scoring contient des
+  accolades — le format JSON attendu — et un profil venu de l'extérieur peut en contenir aussi.
+- **Un fichier de profil illisible lève une erreur.** Retomber en silence sur le profil par défaut
+  ferait noter toute une journée contre le mauvais critère sans que personne ne le voie.
+
+Le profil de l'application est résolu **une fois**, dans `AppConfig.from_env()` : un chemin de
+fichier fautif fait échouer le lancement, pas la troisième catégorie.
 
 ## Le cache de scoring
 
@@ -166,7 +285,8 @@ sur l'article en même temps que sa note.
 ```
 
 Conséquence pratique : tant que tu ne touches ni au profil, ni au barème, ni au modèle, relancer la
-même journée ne coûte **rien** en scoring. Dès que tu modifies l'un des trois, l'empreinte change et
+même journée ne coûte **rien** en scoring. Le profil entrant dans l'empreinte, en injecter un autre
+renote automatiquement : aucun score calculé contre l'ancien profil ne peut survivre. Dès que tu modifies l'un des trois, l'empreinte change et
 les articles concernés sont renotés automatiquement — sans que tu aies à purger quoi que ce soit.
 
 Le nettoyage ne balaie pas les onze valeurs possibles : seuls les tags réellement portés par les
@@ -178,12 +298,16 @@ jamais touché par ce nettoyage.
 | Tag | Posé sur | Sert à |
 | --- | --- | --- |
 | `score-00` … `score-10` | tout article noté | filtrer et trier dans FreshRSS ; relu comme cache |
+| `theme-<thematique>` | tout article noté | regrouper le digest à l'écoute ; relu comme cache |
 | `scoring-<hash>` | tout article noté | savoir quelle version du prompt a produit la note |
 | `digested` | les articles retenus | retrouver ce qui a réellement alimenté le résumé du jour |
 
 Le zéro initial de `score-NN` garde l'ordre alphabétique de la liste des tags FreshRSS cohérent avec
 l'ordre numérique. `digested` est posé mais jamais relu par le code : reposer un tag existant est
 sans effet côté API, donc relancer la même journée est idempotent.
+
+L'`angle` de la note n'a pas de tag : il ne vaut que pour l'exécution qui l'a produit et sert
+immédiatement, au résumé. Le mettre en label ferait une phrase entière dans la liste des tags.
 
 ## Les appels à l'IA
 
@@ -232,7 +356,7 @@ FreshRSS : authentifié en tant que mon-utilisateur
   synthèse vocale via l'API gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : nettoyage de 2 tag(s) de scoring obsolète(s)
-FreshRSS : notation de 2 article(s) sur 2 valeur(s) de score
+FreshRSS : notation de 2 article(s) sur 2 valeur(s) de score et 1 thématique(s)
 FreshRSS : tag 'digested' sur 2 article(s)
 Email : envoyé
 FreshRSS : marquage de 4 article(s) comme lus

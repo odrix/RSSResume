@@ -7,8 +7,8 @@ import unittest
 from unittest import mock
 
 from rssresume.digest import DigestService
-from rssresume.freshrss import score_tag, scoring_tag
-from rssresume.models import Article
+from rssresume.freshrss import score_tag, scoring_tag, theme_tag
+from rssresume.models import Article, Note
 from rssresume.processing import scoring_prompt_digest
 from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
@@ -55,8 +55,8 @@ class PipelineHarness:
             return client, scorer, digests
 
     @staticmethod
-    def note(item_id, score):
-        return {"id": item_id, "score": score, "thematique": "cyber", "angle": "a"}
+    def note(item_id, score, thematique="cyber", angle="a"):
+        return {"id": item_id, "score": score, "thematique": thematique, "angle": angle}
 
 
 class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
@@ -82,8 +82,8 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
     def test_already_scored_articles_are_not_rescored(self):
         courant = scoring_prompt_digest()
         articles = [
-            make_article("item-1", tags=(scoring_tag(courant), score_tag(9))),
-            make_article("item-2", tags=(scoring_tag(courant), score_tag(2))),
+            make_article("item-1", tags=(scoring_tag(courant), score_tag(9), theme_tag("cyber"))),
+            make_article("item-2", tags=(scoring_tag(courant), score_tag(2), theme_tag("marche"))),
         ]
 
         client, scorer, _ = self._run(articles, [])
@@ -96,7 +96,10 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
     def test_stale_prompt_digest_triggers_rescoring_and_cleanup(self):
         articles = [
             make_article("item-1", tags=(scoring_tag("0123456789ab"), score_tag(2))),
-            make_article("item-2", tags=(scoring_tag(scoring_prompt_digest()), score_tag(8))),
+            make_article(
+                "item-2",
+                tags=(scoring_tag(scoring_prompt_digest()), score_tag(8), theme_tag("cyber")),
+            ),
         ]
 
         client, scorer, _ = self._run(articles, [self.note("item-1", 9)])
@@ -124,6 +127,68 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
         _, _, digests = self._run(articles, notes, config_overrides={"max_digest_items": 3})
 
         self.assertEqual(["item-3", "item-2", "item-1"], [a.item_id for a in digests[0].selected])
+
+    def test_selection_is_grouped_by_thematique(self):
+        """Le tri par score seul faisait sauter d'une thématique à l'autre sans transition."""
+        articles = [make_article(f"item-{i}") for i in range(4)]
+        notes = [
+            self.note("item-0", 10, "cyber"),
+            self.note("item-1", 9, "reglementaire"),
+            self.note("item-2", 8, "cyber"),
+            self.note("item-3", 7, "reglementaire"),
+        ]
+
+        _, _, digests = self._run(articles, notes)
+
+        # Cyber d'abord : son meilleur article est le meilleur du lot. Le score reste
+        # décroissant à l'intérieur de chaque groupe.
+        self.assertEqual(
+            ["item-0", "item-2", "item-1", "item-3"],
+            [a.item_id for a in digests[0].selected],
+        )
+
+    def test_the_cap_is_applied_on_the_score_not_on_the_grouping(self):
+        """La thématique décide de l'ordre, jamais de qui entre dans le digest."""
+        articles = [make_article(f"item-{i}") for i in range(3)]
+        notes = [
+            self.note("item-0", 10, "cyber"),
+            self.note("item-1", 9, "cyber"),
+            self.note("item-2", 8, "reglementaire"),
+        ]
+
+        _, _, digests = self._run(articles, notes, config_overrides={"max_digest_items": 2})
+
+        self.assertEqual(["item-0", "item-1"], [a.item_id for a in digests[0].selected])
+
+    def test_thematique_and_angle_reach_the_summarizer(self):
+        """Ils sont payés par le scoring : les jeter privait le résumé de son contexte."""
+        articles = [make_article("item-1")]
+        notes = [self.note("item-1", 9, "reglementaire", "Impose une échéance à l'éditeur.")]
+
+        _, _, digests = self._run(articles, notes)
+
+        self.assertEqual(
+            Note(9, "reglementaire", "Impose une échéance à l'éditeur."),
+            digests[0].new_notes["item-1"],
+        )
+
+    def test_thematiques_are_written_to_freshrss(self):
+        articles = [make_article("item-1"), make_article("item-2")]
+        notes = [self.note("item-1", 9, "cyber"), self.note("item-2", 8, "marche")]
+
+        client, _, _ = self._run(articles, notes)
+
+        self.assertEqual({"item-1": "cyber", "item-2": "marche"}, client.themed)
+
+    def test_a_score_without_its_thematique_is_not_a_usable_cache(self):
+        """Une note partielle rangerait l'article dans le mauvais groupe : on la renote."""
+        courant = scoring_prompt_digest()
+        articles = [make_article("item-1", tags=(scoring_tag(courant), score_tag(9)))]
+
+        client, scorer, _ = self._run(articles, [self.note("item-1", 9, "cyber")])
+
+        scorer.assert_called_once()
+        self.assertEqual({"item-1": "cyber"}, client.themed)
 
     def test_threshold_is_read_from_the_config(self):
         articles = [make_article("item-1"), make_article("item-2")]
@@ -244,7 +309,7 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
             client = FakeFreshRSSClient({"Tech": tech, "News": news})
             appels = [[self.note("item-1", 9)], RuntimeError("API down")]
 
-            def scorer(payload, credentials=None):
+            def scorer(payload, credentials=None, profil=None):
                 resultat = appels.pop(0)
                 if isinstance(resultat, Exception):
                     raise resultat
@@ -313,7 +378,12 @@ class NoSelectionMarkerTests(unittest.TestCase):
         audio_generator.synthesize.assert_not_called()
         # Les scores, les meilleurs d'abord, pour juger le seuil sans ouvrir FreshRSS.
         self.assertEqual(
-            ["Aucun article retenu sur 2 (seuil 7).", "", " 5/10 - Titre item-2", " 3/10 - Titre item-1"],
+            [
+                "Aucun article retenu sur 2 (seuil 7).",
+                "",
+                " 5/10 cyber         - Titre item-2",
+                " 3/10 cyber         - Titre item-1",
+            ],
             contenu.splitlines(),
         )
 

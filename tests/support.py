@@ -4,6 +4,7 @@ import pathlib
 
 from rssresume import console
 from rssresume.config import AppConfig
+from rssresume.profil import DEFAULT_PROFIL
 
 # Les tests n'affichent pas le suivi d'exécution.
 console.enable(False)
@@ -15,6 +16,7 @@ class FakeFreshRSSClient:
         self.marked_as_read = []
         self.digested = []
         self.scored = {}
+        self.themed = {}
         self.scoring_digest = None
         self.cleared = []
 
@@ -30,8 +32,10 @@ class FakeFreshRSSClient:
     def mark_digested(self, item_ids):
         self.digested.extend(item_ids)
 
-    def tag_scores(self, scores, scoring_digest=None):
-        self.scored.update(scores)
+    def tag_notes(self, notes, scoring_digest=None):
+        # Les deux tags sont relevés séparément : les tests s'intéressent surtout aux scores.
+        self.scored.update({item_id: note.score for item_id, note in notes.items()})
+        self.themed.update({item_id: note.thematique for item_id, note in notes.items()})
         self.scoring_digest = scoring_digest
 
     def clear_scoring_tags(self, articles):
@@ -65,11 +69,15 @@ def make_config(output_dir):
         categories=["Tech", "News"],
         excluded_categories=[],
         summary_language="fr",
+        # Le profil par défaut, pour que l'empreinte de scoring des tests soit celle
+        # que `scoring_prompt_digest()` calcule sans argument.
+        profil=DEFAULT_PROFIL,
         score_threshold=7,
         max_digest_items=12,
         summary_model=None,
         tts_model=None,
         tts_voice=None,
+        tts_instructions=None,
         llm_base_url=None,
         llm_api_key=None,
         smtp_host="smtp.example.com",

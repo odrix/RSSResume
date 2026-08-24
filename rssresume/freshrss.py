@@ -11,7 +11,7 @@ import urllib.request
 
 from rssresume import console
 from rssresume.config import AppConfig
-from rssresume.models import Article
+from rssresume.models import Article, Note
 from rssresume.text import strip_html
 
 API_ROOT = "/api/greader.php"
@@ -31,9 +31,13 @@ SCORE_TAG_TEMPLATE = "score-{score:02d}"
 DIGEST_TAG = "digested"
 #: Tag mémorisant le prompt qui a produit le score, pour ne renoter qu'après l'avoir changé.
 SCORING_TAG_TEMPLATE = "scoring-{digest}"
+#: Tag portant la thématique attribuée par le scoring. Persistée, contrairement à l'angle :
+#: sans elle, un score relu du cache ne saurait plus dans quel groupe ranger son article.
+THEME_TAG_TEMPLATE = "theme-{thematique}"
 
 SCORE_TAG_PATTERN = re.compile(r"^score-(\d{2})$")
 SCORING_TAG_PATTERN = re.compile(r"^scoring-([0-9a-f]+)$")
+THEME_TAG_PATTERN = re.compile(r"^theme-([a-z]+)$")
 
 
 def score_tag(score: int) -> str:
@@ -42,6 +46,10 @@ def score_tag(score: int) -> str:
 
 def scoring_tag(digest: str) -> str:
     return SCORING_TAG_TEMPLATE.format(digest=digest)
+
+
+def theme_tag(thematique: str) -> str:
+    return THEME_TAG_TEMPLATE.format(thematique=thematique)
 
 
 def user_labels(categories: list) -> tuple[str, ...]:
@@ -66,6 +74,15 @@ def scoring_digest_from_tags(tags: tuple[str, ...]) -> str | None:
     """Empreinte du prompt ayant produit le score de l'article."""
     for tag in tags:
         match = SCORING_TAG_PATTERN.match(tag)
+        if match:
+            return match.group(1)
+    return None
+
+
+def theme_from_tags(tags: tuple[str, ...]) -> str | None:
+    """Thématique déjà posée sur l'article, relue depuis ses tags."""
+    for tag in tags:
+        match = THEME_TAG_PATTERN.match(tag)
         if match:
             return match.group(1)
     return None
@@ -221,45 +238,57 @@ class FreshRSSClient:
         """Pose un tag utilisateur sur des articles. Reposer un tag existant est sans effet."""
         self._edit_tag(item_ids, f"{LABEL_STREAM_PREFIX}{label}")
 
-    def tag_scores(self, scores: dict[str, int], scoring_digest: str | None = None) -> None:
-        """Pose un tag `score-NN` par article, un appel par valeur de score distincte.
+    def tag_notes(self, notes: dict[str, Note], scoring_digest: str | None = None) -> None:
+        """Pose les tags de notation : `score-NN` et `theme-<thematique>`.
 
-        Prend un dict {item_id: score}. `scoring_digest` ajoute l'empreinte du prompt,
+        Prend un dict {item_id: Note}. Un appel par valeur distincte, l'API edit-tag
+        ne posant qu'un label à la fois. `scoring_digest` ajoute l'empreinte du prompt,
         qui sert de cache : un article la portant déjà n'a pas besoin d'être renoté.
+
+        L'angle n'est pas écrit : une phrase entière n'a rien à faire dans un tag.
         """
-        par_score: dict[int, list[str]] = {}
-        for item_id, score in scores.items():
-            if item_id:
-                par_score.setdefault(int(score), []).append(item_id)
-        if not par_score:
+        retenues = {item_id: note for item_id, note in notes.items() if item_id}
+        if not retenues:
             return
 
+        par_score: dict[int, list[str]] = {}
+        par_theme: dict[str, list[str]] = {}
+        for item_id, note in retenues.items():
+            par_score.setdefault(int(note.score), []).append(item_id)
+            par_theme.setdefault(note.thematique, []).append(item_id)
+
         console.log(
-            f"FreshRSS : notation de {sum(len(ids) for ids in par_score.values())} article(s) "
-            f"sur {len(par_score)} valeur(s) de score"
+            f"FreshRSS : notation de {len(retenues)} article(s) "
+            f"sur {len(par_score)} valeur(s) de score et {len(par_theme)} thématique(s)"
         )
         for score in sorted(par_score):
             self.add_label(par_score[score], score_tag(score))
+        for thematique in sorted(par_theme):
+            self.add_label(par_theme[thematique], theme_tag(thematique))
         if scoring_digest:
-            self.add_label([item_id for ids in par_score.values() for item_id in ids],
-                           scoring_tag(scoring_digest))
+            self.add_label(list(retenues), scoring_tag(scoring_digest))
 
     def remove_label(self, item_ids: list[str], label: str) -> None:
         """Retire un tag utilisateur des articles."""
         self._edit_tag(item_ids, f"{LABEL_STREAM_PREFIX}{label}", TAG_REMOVE)
 
     def clear_scoring_tags(self, articles: list[Article]) -> None:
-        """Retire score et empreinte des articles notés par un prompt devenu obsolète.
+        """Retire score, thématique et empreinte des articles notés par un prompt obsolète.
 
         Ne balaie que les tags réellement portés par les articles : un article renoté
-        ne garde jamais l'empreinte ni le score de la version précédente du prompt.
+        ne garde jamais l'empreinte, le score ni la thématique de la version précédente
+        du prompt.
         """
         par_label: dict[str, list[str]] = {}
         for article in articles:
             if not article.item_id:
                 continue
             for tag in article.tags:
-                if SCORE_TAG_PATTERN.match(tag) or SCORING_TAG_PATTERN.match(tag):
+                if (
+                    SCORE_TAG_PATTERN.match(tag)
+                    or SCORING_TAG_PATTERN.match(tag)
+                    or THEME_TAG_PATTERN.match(tag)
+                ):
                     par_label.setdefault(tag, []).append(article.item_id)
         if not par_label:
             return

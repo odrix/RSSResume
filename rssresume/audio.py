@@ -30,7 +30,10 @@ class AudioGenerator:
         return self._synthesize_with_espeak(text, output_path)
 
     def _synthesize_with_openai(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
-        console.detail(f"synthèse vocale via l'API {self._config.tts_model} (voix {self._config.tts_voice})")
+        console.detail(
+            f"synthèse vocale via l'API {self._config.tts_model} (voix {self._config.tts_voice}"
+            + (", consignes de diction)" if self._config.tts_instructions else ")")
+        )
         audio = llm.speak(
             self._config.llm_base_url,
             self._config.llm_api_key,
@@ -38,6 +41,7 @@ class AudioGenerator:
             self._config.tts_voice,
             text,
             output_path.suffix.lstrip(".") or OPENAI_EXTENSION.lstrip("."),
+            self._config.tts_instructions,
         )
         output_path.write_bytes(audio)
         return output_path
