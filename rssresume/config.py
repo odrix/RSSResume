@@ -6,6 +6,8 @@ import dataclasses
 import os
 import pathlib
 
+from rssresume.profil import load_profil
+
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
@@ -15,6 +17,28 @@ def _env(name: str, default: str | None = None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+#: Guillemets qu'un fichier .env peut laisser autour d'une valeur, du plus long au plus court.
+_QUOTES = ('"""', "'''", '"', "'")
+
+
+def _env_text(name: str) -> str | None:
+    """Variable de texte libre, éventuellement multi-ligne, telle qu'un fichier .env la livre.
+
+    Le chargeur documenté dans le README ne fait que couper sur le premier `=` : les
+    guillemets qui encadrent la valeur arrivent tels quels, et un saut de ligne y est
+    écrit `\\n`. On retire les uns et on rétablit les autres — sans quoi le modèle de
+    synthèse lirait ces caractères comme du texte à dire.
+    """
+    value = _env(name)
+    if not value:
+        return None
+    for quote in _QUOTES:
+        if len(value) > 2 * len(quote) and value.startswith(quote) and value.endswith(quote):
+            value = value[len(quote) : -len(quote)]
+            break
+    return value.replace("\\n", "\n").strip() or None
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -32,6 +56,10 @@ class AppConfig:
     categories: list[str]
     excluded_categories: list[str]
     summary_language: str
+    #: Profil de pertinence : le texte qui définit ce qui mérite d'être noté et raconté.
+    #: Résolu une fois au démarrage — un fichier de profil illisible doit faire échouer
+    #: le lancement, pas la troisième catégorie.
+    profil: str
     #: Score minimal pour qu'un article entre dans le digest.
     score_threshold: int
     #: Nombre maximum d'articles retenus par catégorie.
@@ -39,6 +67,9 @@ class AppConfig:
     summary_model: str | None
     tts_model: str | None
     tts_voice: str | None
+    #: Consignes de diction passées au modèle de synthèse (ton, débit, émotion).
+    #: Seuls les modèles qui les acceptent les reçoivent ; vide, le paramètre n'est pas envoyé.
+    tts_instructions: str | None
     llm_base_url: str | None
     llm_api_key: str | None
     smtp_host: str | None
@@ -81,11 +112,13 @@ class AppConfig:
             categories=_split_csv(_env("RSSRESUME_CATEGORIES")),
             excluded_categories=_split_csv(_env("RSSRESUME_EXCLUDED_CATEGORIES")),
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
+            profil=load_profil(),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
             summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-4o-mini"),
             tts_model=_env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             tts_voice=_env("OPENAI_TTS_VOICE", "alloy"),
+            tts_instructions=_env_text("OPENAI_TTS_INSTRUCTIONS"),
             llm_base_url=_env("OPENAI_BASE_URL") or (DEFAULT_OPENAI_BASE_URL if openai_api_key else None),
             llm_api_key=openai_api_key,
             smtp_host=_env("SMTP_HOST"),

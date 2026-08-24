@@ -146,7 +146,16 @@ def speak(
     voice: str,
     text: str,
     audio_format: str,
+    instructions: str | None = None,
 ) -> bytes:
-    """Synthèse vocale ; renvoie les octets audio."""
+    """Synthèse vocale ; renvoie les octets audio.
+
+    `instructions` dirige la diction — ton, débit, émotion, prononciation — et n'est
+    accepté que par les modèles qui le prennent en charge (`gpt-4o-mini-tts` et suivants).
+    Absent du payload quand il est vide : les modèles plus anciens, `tts-1` en tête,
+    rejettent les paramètres qu'ils ne connaissent pas.
+    """
     payload = {"model": model, "voice": voice, "input": text, "format": audio_format}
+    if instructions:
+        payload["instructions"] = instructions
     return post(base_url, api_key, SPEECH_PATH, payload, "tts")

@@ -1,3 +1,4 @@
+import dataclasses
 import datetime as dt
 import pathlib
 import tempfile
@@ -6,7 +7,7 @@ from unittest import mock
 
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
-from rssresume.models import Article
+from rssresume.models import Article, CategoryDigest, Link
 from rssresume.summaries import SummaryGenerator
 from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
@@ -94,6 +95,26 @@ class DigestServiceTests(unittest.TestCase):
             self.assertEqual(1, len(email_sender.messages))
             self.assertEqual([pathlib.Path(tmpdir) / "2026-08-23" / "tech.wav"], email_sender.messages[0][2])
 
+    def test_email_body_carries_the_links_the_audio_cannot(self):
+        """L'audio ne cite aucune URL ; l'email est le seul endroit pour retrouver l'article."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = make_config(tmpdir)
+            email_sender = FakeEmailSender()
+            DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": [make_article()], "News": []}),
+                summary_generator=SummaryGenerator(config),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=email_sender,
+            ).run(DAY)
+
+            body = email_sender.messages[0][1]
+
+            self.assertIn("Sources :", body)
+            self.assertIn("- Nouveau modèle (AI Feed) : https://example.com/article", body)
+            # La catégorie sans article n'ajoute pas de bloc de liens vide.
+            self.assertEqual(1, body.count("Sources :"))
+
     def test_run_writes_one_directory_per_day(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = make_config(tmpdir)
@@ -180,6 +201,40 @@ class DigestServiceTests(unittest.TestCase):
             digests = service.run(DAY, send_email=False)
 
             self.assertEqual(["Tech"], [digest.category for digest in digests])
+
+
+class LinksTests(unittest.TestCase):
+    """`CategoryDigest.links` est dérivé de la sélection, jamais saisi à part."""
+
+    def test_links_follow_the_reading_order_of_the_summary(self):
+        selected = [
+            make_article(title="Premier", item_id="item-1"),
+            make_article(title="Second", item_id="item-2"),
+        ]
+        digest = CategoryDigest(
+            category="Tech", articles=selected, summary_text="résumé", selected=selected
+        )
+
+        self.assertEqual(
+            [
+                Link("Premier", "AI Feed", "https://example.com/article"),
+                Link("Second", "AI Feed", "https://example.com/article"),
+            ],
+            digest.links,
+        )
+
+    def test_an_article_without_url_yields_no_link(self):
+        selected = [dataclasses.replace(make_article(), url="")]
+        digest = CategoryDigest(
+            category="Tech", articles=selected, summary_text="résumé", selected=selected
+        )
+
+        self.assertEqual([], digest.links)
+
+    def test_a_category_without_selection_has_no_link(self):
+        digest = CategoryDigest(category="Tech", articles=[], summary_text="aucun article")
+
+        self.assertEqual([], digest.links)
 
 
 if __name__ == "__main__":

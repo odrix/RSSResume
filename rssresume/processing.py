@@ -17,6 +17,8 @@ import re
 from typing import Any
 
 from rssresume import llm
+from rssresume.models import DEFAULT_THEMATIQUE, THEMATIQUES
+from rssresume.profil import load_profil
 
 logger = logging.getLogger(__name__)
 
@@ -24,44 +26,27 @@ logger = logging.getLogger(__name__)
 #: À changer en même temps que `llm.SCORING.max_tokens`, qui la dimensionne.
 SCORING_BATCH_SIZE = 40
 
-THEMATIQUES = ("reglementaire", "cyber", "marche", "stack", "autre")
-DEFAULT_THEMATIQUE = "autre"
+#: Le profil de pertinence vit dans `profil.py` : il est injectable de l'extérieur, donc
+#: les prompts qui le contiennent sont assemblés à l'appel, pas figés à l'import. L'assemblage
+#: est une concaténation et non un `format` : ces prompts contiennent des accolades — le
+#: format JSON attendu — et un profil venu de l'extérieur peut en contenir aussi.
+SCORING_INTRO = (
+    "Tu assistes la veille quotidienne de la personne dont voici le profil. Ce profil est "
+    "le SEUL critère de pertinence :\n\n"
+)
 
-PROFIL = """CTO d'un SaaS B2B français de stockage, partage et transfert de fichiers
-sécurisé. Infrastructure hébergée en France, qualifiée SecNumCloud, produit certifié
-CSPN par l'ANSSI.
-
-Axes de veille pertinents :
-- reglementaire : souveraineté et conformité (SecNumCloud, EUCS, NIS2, DORA, RGPD,
-  doctrine ANSSI, Cloud Act / FISA, décisions CNIL).
-- cyber : cybersécurité technique (CVE exploitables, chiffrement, gestion de clés,
-  crypto post-quantique, chaîne d'approvisionnement logicielle, incidents majeurs).
-- marche : marché et concurrence (acteurs du transfert de fichiers sécurisé et du
-  cloud souverain français ou européen, levées, rachats, appels d'offres publics).
-- stack : veille technologique sur la stack d'un SaaS de ce type (stockage objet,
-  chiffrement de bout en bout, performance de transfert, observabilité, coûts cloud).
-
-Ne sont PAS pertinents : l'actualité IA grand public, les levées de fonds hors de ce
-marché, le hardware grand public, les annonces produit sans impact technique ou
-réglementaire pour cet éditeur."""
-
-SCORING_SYSTEM = (
-    "Tu assistes la veille quotidienne d'un décideur technique. Voici son profil, "
-    "qui est le SEUL critère de pertinence :\n\n"
-    + PROFIL
-    + "\n\n"
-    + """Tu reçois une liste d'articles (id, titre, résumé court). Pour CHAQUE article tu produis :
+SCORING_RULES = """Tu reçois une liste d'articles (id, titre, résumé court). Pour CHAQUE article tu produis :
 - "score" : entier de 0 à 10 selon le barème ci-dessous ;
 - "thematique" : exactement une valeur parmi reglementaire, cyber, marche, stack, autre ;
 - "angle" : UNE phrase expliquant en quoi l'article compte (ou non) pour ce profil précis.
 
 Barème :
 0-2  hors sujet pour ce profil
-3-4  connexe, mais sans conséquence pour lui
+3-4  connexe, mais sans conséquence pour ce profil
 5-6  intéressant à connaître, non actionnable
 7-8  pertinent, à lire aujourd'hui
-9-10 critique ou directement actionnable (obligation réglementaire, faille sur sa stack,
-     mouvement d'un concurrent direct)
+9-10 critique ou directement actionnable (obligation à respecter, faille sur ses propres
+     outils, mouvement d'un concurrent direct)
 
 Règles impératives :
 - Traite TOUS les articles reçus, sans exception ni échantillonnage. Un article hors sujet
@@ -73,31 +58,39 @@ Règles impératives :
 
 Format JSON exact attendu :
 {"resultats": [{"id": "...", "score": 0, "thematique": "...", "angle": "..."}]}"""
-)
 
-SUMMARY_SYSTEM = (
-    "Tu résumes des articles de veille pour un décideur technique. Voici son profil :\n\n"
-    + PROFIL
-    + "\n\n"
-    + """Tu reçois un article en texte intégral. Rends un résumé de 3 à 4 phrases, en français,
+SUMMARY_INTRO = "Tu résumes des articles de veille pour le profil suivant :\n\n"
+
+SUMMARY_RULES = """Tu reçois un article en texte intégral. Rends un résumé de 3 à 4 phrases, en français,
 qui privilégie ce qui a des conséquences concrètes pour ce profil : ce qui change, à quelle
-échéance, et ce que cela implique pour lui.
+échéance, et ce que cela implique pour lui — « lui » étant le profil, quel qu'il soit.
 
 Règles :
 - 3 à 4 phrases, pas davantage. Pas de liste à puces, pas de titre.
 - Aucune formule d'introduction du type "Voici le résumé" ou "Cet article traite de".
 - Rends le résumé seul, sans commentaire ni balise Markdown."""
-)
 
 
-def scoring_prompt_digest() -> str:
-    """Empreinte courte du prompt de scoring, modèle compris.
+def scoring_system(profil: str | None = None) -> str:
+    """Prompt de scoring, profil de pertinence inclus."""
+    return f"{SCORING_INTRO}{load_profil(profil)}\n\n{SCORING_RULES}"
+
+
+def summary_system(profil: str | None = None) -> str:
+    """Prompt de résumé d'un article, profil de pertinence inclus."""
+    return f"{SUMMARY_INTRO}{load_profil(profil)}\n\n{SUMMARY_RULES}"
+
+
+def scoring_prompt_digest(profil: str | None = None) -> str:
+    """Empreinte courte du prompt de scoring, profil et modèle compris.
 
     Sert de clé de cache : tant qu'elle ne change pas, un article déjà noté n'est pas
-    renoté. Toute retouche de PROFIL, du barème ou du modèle produit une empreinte
-    différente et déclenche donc la renotation.
+    renoté. Toute retouche du profil, du barème ou du modèle produit une empreinte
+    différente et déclenche donc la renotation — c'est ce qui rend le profil injectable
+    sans risque : changer de profil ne peut pas laisser traîner des scores calculés
+    contre l'ancien.
     """
-    material = f"{SCORING_SYSTEM}\n{llm.SCORING.model}"
+    material = f"{scoring_system(profil)}\n{llm.SCORING.model}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
@@ -199,7 +192,9 @@ def _rank(value: Any, taille: int) -> int | None:
     return rang - 1 if 1 <= rang <= taille else None
 
 
-def _score_batch(batch: list[dict], credentials: Credentials | None = None) -> list[dict]:
+def _score_batch(
+    batch: list[dict], credentials: Credentials | None = None, profil: str | None = None
+) -> list[dict]:
     """Score un lot en un seul appel, et vérifie qu'aucun article n'a été perdu."""
     payload = [
         {
@@ -213,7 +208,7 @@ def _score_batch(batch: list[dict], credentials: Credentials | None = None) -> l
         for rang, article in enumerate(batch, start=1)
     ]
     raw = _call(
-        SCORING_SYSTEM,
+        scoring_system(profil),
         f"{len(payload)} articles à évaluer :\n\n{json.dumps(payload, ensure_ascii=False)}",
         llm.SCORING,
         credentials,
@@ -237,10 +232,13 @@ def _score_batch(batch: list[dict], credentials: Credentials | None = None) -> l
     ]
 
 
-def score_articles(articles: list[dict], credentials: Credentials | None = None) -> list[dict]:
+def score_articles(
+    articles: list[dict], credentials: Credentials | None = None, profil: str | None = None
+) -> list[dict]:
     """Note la pertinence de chaque article, sur titre + résumé court uniquement.
 
     Renvoie un dict {id, score, thematique, angle} par article d'entrée, dans le même ordre.
+    `profil` surcharge le profil de pertinence ; sans lui, celui de l'environnement.
     """
     logger.info("Scoring : %d article(s) en entrée", len(articles))
     if not articles:
@@ -255,7 +253,7 @@ def score_articles(articles: list[dict], credentials: Credentials | None = None)
             start + 1,
             start + len(batch),
         )
-        scored.extend(_score_batch(batch, credentials))
+        scored.extend(_score_batch(batch, credentials, profil))
 
     if len(scored) != len(articles):
         raise ProcessingError(f"Scoring incomplet : {len(articles)} entrées, {len(scored)} sorties.")
@@ -275,6 +273,7 @@ def summarize_top(
     seuil: int = 7,
     max_items: int = 12,
     credentials: Credentials | None = None,
+    profil: str | None = None,
 ) -> list[dict]:
     """Résume en texte intégral les articles dont le score atteint le seuil.
 
@@ -306,7 +305,7 @@ def summarize_top(
 
         logger.info("Résumé : %d/%d — %s", rang, len(retenus), titre[:70])
         resume = _call(
-            SUMMARY_SYSTEM,
+            summary_system(profil),
             f"Titre : {titre}\nSource : {article.get('source') or 'inconnue'}\n\n{texte}",
             llm.ARTICLE_SUMMARY,
             credentials,

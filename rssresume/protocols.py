@@ -6,7 +6,7 @@ import datetime as dt
 import pathlib
 from typing import Iterable, Protocol
 
-from rssresume.models import Article
+from rssresume.models import Article, Note
 
 
 class FreshRSSClientProtocol(Protocol):
@@ -22,7 +22,7 @@ class FreshRSSClientProtocol(Protocol):
     def mark_digested(self, item_ids: list[str]) -> None:
         ...
 
-    def tag_scores(self, scores: dict[str, int], scoring_digest: str | None = None) -> None:
+    def tag_notes(self, notes: dict[str, Note], scoring_digest: str | None = None) -> None:
         ...
 
     def clear_scoring_tags(self, articles: list[Article]) -> None:
@@ -30,7 +30,9 @@ class FreshRSSClientProtocol(Protocol):
 
 
 class SummaryGeneratorProtocol(Protocol):
-    def summarize(self, category: str, articles: list[Article]) -> str:
+    def summarize(
+        self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
+    ) -> str:
         ...
 
 

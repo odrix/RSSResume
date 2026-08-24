@@ -24,3 +24,16 @@ def no_selection_message(category: str, threshold: int) -> str:
         f"Aucun article retenu aujourd'hui dans la catégorie {category} "
         f"(score minimal {threshold})."
     )
+
+
+def strip_html_document(value: str) -> str:
+    """Texte lisible d'une page HTML complète.
+
+    `strip_html` retire les balises mais laisse le contenu des `<script>` et
+    `<style>` : sur une page web réelle, cela ramène des kilo-octets de
+    JavaScript dans le prompt. Ces blocs partent donc avant les balises.
+    """
+    without_code = re.sub(
+        r"(?is)<(script|style|noscript|template|svg)\b[^>]*>.*?</\1\s*>", " ", value or ""
+    )
+    return strip_html(without_code)

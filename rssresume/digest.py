@@ -8,8 +8,8 @@ import pathlib
 from rssresume import console, processing
 from rssresume.audio import audio_extension
 from rssresume.config import AppConfig
-from rssresume.freshrss import score_from_tags, scoring_digest_from_tags
-from rssresume.models import Article, CategoryDigest
+from rssresume.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
+from rssresume.models import Article, CategoryDigest, Note
 from rssresume.protocols import (
     AudioGeneratorProtocol,
     EmailSenderProtocol,
@@ -20,6 +20,8 @@ from rssresume.text import no_article_message, no_selection_message, slugify
 
 NO_ARTICLE_SUFFIX = ".no-article"
 BODY_SEPARATOR = "\n\n"
+#: En-tête du bloc de liens ajouté sous chaque résumé, dans l'email seulement.
+LINKS_HEADER = "Sources :"
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
 SCORING_EXCERPT_LENGTH = 400
 
@@ -119,29 +121,29 @@ class DigestService:
                 marker_path=marker_path,
             )
 
-        scores, new_scores, stale = self._score(articles)
-        selected = self._select(articles, scores)
+        notes, new_notes, stale = self._score(articles)
+        selected = self._select(articles, notes)
 
         if not selected:
             # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
             # Ni résumé ni synthèse vocale — l'audio n'aurait rien à dire.
-            marker_path = self._write_marker(day_dir, slug, self._score_listing(articles, scores))
+            marker_path = self._write_marker(day_dir, slug, self._score_listing(articles, notes))
             console.detail(
                 f"aucun article retenu : {marker_path.name} (ni IA ni synthèse vocale)"
             )
             if write_tags:
-                # Les scores restent à écrire : sans eux, tout serait renoté au passage suivant.
-                self._write_tags(articles, selected, new_scores, stale)
+                # Les notes restent à écrire : sans elles, tout serait renoté au passage suivant.
+                self._write_tags(articles, selected, new_notes, stale)
             return CategoryDigest(
                 category=category,
                 articles=articles,
                 summary_text=no_selection_message(category, self._config.score_threshold),
-                new_scores=new_scores,
+                new_notes=new_notes,
                 stale_item_ids=stale,
                 marker_path=marker_path,
             )
 
-        summary_text = self._summary_generator.summarize(category, selected)
+        summary_text = self._summary_generator.summarize(category, selected, notes)
         audio_path = self._audio_generator.synthesize(
             summary_text,
             day_dir / f"{slug}{audio_extension(self._config)}",
@@ -149,14 +151,14 @@ class DigestService:
         console.detail(f"audio écrit : {audio_path.name} ({audio_path.stat().st_size} octets)")
 
         if write_tags:
-            self._write_tags(articles, selected, new_scores, stale)
+            self._write_tags(articles, selected, new_notes, stale)
 
         return CategoryDigest(
             category=category,
             articles=articles,
             summary_text=summary_text,
             selected=selected,
-            new_scores=new_scores,
+            new_notes=new_notes,
             stale_item_ids=stale,
             audio_path=audio_path,
         )
@@ -169,36 +171,59 @@ class DigestService:
         marker_path.write_text(content, encoding="utf-8")
         return marker_path
 
-    def _score_listing(self, articles: list[Article], scores: dict[str, int]) -> str:
-        """Les scores obtenus, les meilleurs d'abord : de quoi juger le seuil sans FreshRSS."""
+    def _score_listing(self, articles: list[Article], notes: dict[str, Note]) -> str:
+        """Les notes obtenues, les meilleures d'abord : de quoi juger le seuil sans FreshRSS.
+
+        La thématique y figure aussi : elle est calculée de toute façon, et c'est elle
+        qui explique l'ordre de lecture du digest quand il y a une sélection.
+        """
         lines = [
             f"Aucun article retenu sur {len(articles)} "
             f"(seuil {self._config.score_threshold}).",
             "",
         ]
-        classes = sorted(articles, key=lambda a: scores.get(a.item_id, 0), reverse=True)
-        lines.extend(f"{scores.get(a.item_id, 0):>2}/10 - {a.title}" for a in classes)
+        classes = sorted(articles, key=lambda a: self._score_of(a, notes), reverse=True)
+        lines.extend(
+            f"{self._score_of(a, notes):>2}/10 {self._note_of(a, notes).thematique:<13} - {a.title}"
+            for a in classes
+        )
         return "\n".join(lines) + "\n"
 
-    def _score(self, articles: list[Article]) -> tuple[dict[str, int], dict[str, int], list[str]]:
-        """Note les articles, en réutilisant les scores déjà posés comme tags.
+    @staticmethod
+    def _note_of(article: Article, notes: dict[str, Note]) -> Note:
+        """Note de l'article, note neutre si le scoring est désactivé."""
+        return notes.get(article.item_id) or Note(score=0)
 
-        Renvoie (tous les scores, ceux calculés maintenant, les articles à renettoyer).
-        Sans API configurée, aucun score : tous les articles entrent dans le digest.
+    @classmethod
+    def _score_of(cls, article: Article, notes: dict[str, Note]) -> int:
+        return cls._note_of(article, notes).score
+
+    def _score(
+        self, articles: list[Article]
+    ) -> tuple[dict[str, Note], dict[str, Note], list[str]]:
+        """Note les articles, en réutilisant les notes déjà posées comme tags.
+
+        Renvoie (toutes les notes, celles calculées maintenant, les articles à renettoyer).
+        Sans API configurée, aucune note : tous les articles entrent dans le digest.
         """
         if not self._config.uses_llm:
             return {}, {}, []
 
-        digest = processing.scoring_prompt_digest()
+        digest = processing.scoring_prompt_digest(self._config.profil)
         a_noter: list[Article] = []
         stale: list[str] = []
-        scores: dict[str, int] = {}
+        notes: dict[str, Note] = {}
 
         for article in articles:
             porte = scoring_digest_from_tags(article.tags)
             score = score_from_tags(article.tags)
-            if porte == digest and score is not None:
-                scores[article.item_id] = score
+            thematique = theme_from_tags(article.tags)
+            # La thématique est exigée autant que le score : une note partielle n'est pas
+            # un cache utilisable, elle rangerait l'article dans le mauvais groupe.
+            if porte == digest and score is not None and thematique is not None:
+                # L'angle, lui, n'est pas dans les tags : cet article ira au résumé sans
+                # sa phrase de contexte, ce dont le prompt tient compte.
+                notes[article.item_id] = Note(score=score, thematique=thematique)
                 continue
             a_noter.append(article)
             if porte is not None:
@@ -206,18 +231,24 @@ class DigestService:
                 stale.append(article.item_id)
 
         console.detail(
-            f"scoring : {len(scores)} score(s) relu(s) des tags, {len(a_noter)} à calculer"
+            f"scoring : {len(notes)} note(s) relue(s) des tags, {len(a_noter)} à calculer"
             + (f", dont {len(stale)} à renoter (prompt modifié)" if stale else "")
         )
         if not a_noter:
-            return scores, {}, stale
+            return notes, {}, stale
 
-        notes = processing.score_articles(
+        calculees = processing.score_articles(
             [self._to_payload(article) for article in a_noter],
             credentials=(self._config.llm_base_url, self._config.llm_api_key),
+            profil=self._config.profil,
         )
-        new_scores = {note["id"]: note["score"] for note in notes}
-        return {**scores, **new_scores}, new_scores, stale
+        new_notes = {
+            note["id"]: Note(
+                score=note["score"], thematique=note["thematique"], angle=note["angle"]
+            )
+            for note in calculees
+        }
+        return {**notes, **new_notes}, new_notes, stale
 
     @staticmethod
     def _to_payload(article: Article) -> dict:
@@ -230,27 +261,46 @@ class DigestService:
             "url": article.url,
         }
 
-    def _select(self, articles: list[Article], scores: dict[str, int]) -> list[Article]:
-        """Articles au-dessus du seuil, les mieux notés d'abord, plafonnés."""
-        if not scores:
+    def _select(self, articles: list[Article], notes: dict[str, Note]) -> list[Article]:
+        """Articles au-dessus du seuil, plafonnés, puis remis en ordre par thématique."""
+        if not notes:
             return articles
 
+        # Le plafond s'applique sur le score : c'est lui qui décide qui entre dans le
+        # digest, la thématique ne décide que de l'ordre dans lequel on les raconte.
         retenus = sorted(
-            (a for a in articles if scores.get(a.item_id, 0) >= self._config.score_threshold),
-            key=lambda a: scores.get(a.item_id, 0),
+            (a for a in articles if self._score_of(a, notes) >= self._config.score_threshold),
+            key=lambda a: self._score_of(a, notes),
             reverse=True,
         )[: self._config.max_digest_items]
         console.detail(
             f"sélection : {len(retenus)} article(s) retenu(s) sur {len(articles)} "
             f"(seuil {self._config.score_threshold})"
         )
-        return retenus
+        return self._grouped_by_theme(retenus, notes)
+
+    @classmethod
+    def _grouped_by_theme(cls, articles: list[Article], notes: dict[str, Note]) -> list[Article]:
+        """Articles regroupés par thématique, le groupe du meilleur article en tête.
+
+        Le tri par score seul faisait sauter du réglementaire au cyber, puis au marché,
+        puis de nouveau au réglementaire : à l'écoute, aucune transition n'est possible.
+        Regrouper ne coûte aucun appel — la thématique est déjà notée — et l'urgence
+        reste respectée : un groupe est classé sur son meilleur article, et l'ordre à
+        l'intérieur du groupe reste le score décroissant.
+        """
+        groupes: dict[str, list[Article]] = {}
+        for article in articles:  # déjà triés par score décroissant
+            groupes.setdefault(cls._note_of(article, notes).thematique, []).append(article)
+        # Tri stable : à meilleur score égal, le groupe apparu le premier reste devant.
+        ordre = sorted(groupes, key=lambda theme: -cls._score_of(groupes[theme][0], notes))
+        return [article for theme in ordre for article in groupes[theme]]
 
     def _write_tags(
         self,
         articles: list[Article],
         selected: list[Article],
-        new_scores: dict[str, int],
+        new_notes: dict[str, Note],
         stale: list[str],
     ) -> None:
         """Écrit les tags d'une catégorie, dès que son résumé est produit.
@@ -261,8 +311,10 @@ class DigestService:
         a_nettoyer = [article for article in articles if article.item_id in set(stale)]
         if a_nettoyer:
             self._freshrss_client.clear_scoring_tags(a_nettoyer)
-        if new_scores:
-            self._freshrss_client.tag_scores(new_scores, processing.scoring_prompt_digest())
+        if new_notes:
+            self._freshrss_client.tag_notes(
+                new_notes, processing.scoring_prompt_digest(self._config.profil)
+            )
         self._tag_digested(selected)
 
     def _mark_read(self, digests: list[CategoryDigest]) -> None:
@@ -277,9 +329,24 @@ class DigestService:
             self._freshrss_client.mark_digested(item_ids)
 
     def _send_email(self, day: dt.date, digests: list[CategoryDigest]) -> None:
-        body = BODY_SEPARATOR.join(digest.summary_text for digest in digests)
+        body = BODY_SEPARATOR.join(self._email_section(digest) for digest in digests)
         self._email_sender.send(
             subject=f"Résumé RSS du {day.isoformat()}",
             body=body or f"Aucun article trouvé pour le {day.isoformat()}.",
             attachments=[digest.audio_path for digest in digests if digest.audio_path],
         )
+
+    @staticmethod
+    def _email_section(digest: CategoryDigest) -> str:
+        """Le résumé de la catégorie, suivi des liens de ses articles retenus.
+
+        L'audio ne porte aucun lien — une URL lue à voix haute est inutilisable, et une
+        URL dans le contexte du modèle est une URL qu'il peut inventer. L'email, lui, est
+        le seul endroit où retrouver l'article derrière un sujet entendu : les liens y
+        figurent, dans l'ordre où le résumé les a racontés.
+        """
+        if not digest.links:
+            return digest.summary_text
+        lignes = [digest.summary_text, "", LINKS_HEADER]
+        lignes.extend(f"- {link.title} ({link.source}) : {link.url}" for link in digest.links)
+        return "\n".join(lignes)
