@@ -16,7 +16,7 @@ from rssresume.protocols import (
     FreshRSSClientProtocol,
     SummaryGeneratorProtocol,
 )
-from rssresume.text import no_article_message, slugify
+from rssresume.text import no_article_message, no_selection_message, slugify
 
 NO_ARTICLE_SUFFIX = ".no-article"
 BODY_SEPARATOR = "\n\n"
@@ -80,9 +80,12 @@ class DigestService:
         audios = sum(1 for digest in digests if digest.audio_path)
         articles = sum(len(digest.articles) for digest in digests)
         retenus = sum(len(digest.selected) for digest in digests)
+        vides = sum(1 for digest in digests if not digest.articles)
+        sans_selection = len(digests) - audios - vides
         return (
             f"Terminé : {articles} article(s) lu(s), {retenus} retenu(s), "
-            f"{audios} fichier(s) audio, {len(digests) - audios} catégorie(s) sans article"
+            f"{audios} fichier(s) audio, {vides} catégorie(s) sans article"
+            + (f", {sans_selection} sans article retenu" if sans_selection else "")
         )
 
     def _day_dir(self, day: dt.date) -> pathlib.Path:
@@ -107,9 +110,7 @@ class DigestService:
 
         if not articles:
             # Aucun article : marqueur vide, ni résumé IA ni synthèse vocale.
-            marker_path = day_dir / f"{slug}{NO_ARTICLE_SUFFIX}"
-            marker_path.parent.mkdir(parents=True, exist_ok=True)
-            marker_path.write_bytes(b"")
+            marker_path = self._write_marker(day_dir, slug)
             console.detail(f"aucun article : {marker_path.name} (ni IA ni synthèse vocale)")
             return CategoryDigest(
                 category=category,
@@ -120,6 +121,25 @@ class DigestService:
 
         scores, new_scores, stale = self._score(articles)
         selected = self._select(articles, scores)
+
+        if not selected:
+            # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
+            # Ni résumé ni synthèse vocale — l'audio n'aurait rien à dire.
+            marker_path = self._write_marker(day_dir, slug, self._score_listing(articles, scores))
+            console.detail(
+                f"aucun article retenu : {marker_path.name} (ni IA ni synthèse vocale)"
+            )
+            if write_tags:
+                # Les scores restent à écrire : sans eux, tout serait renoté au passage suivant.
+                self._write_tags(articles, selected, new_scores, stale)
+            return CategoryDigest(
+                category=category,
+                articles=articles,
+                summary_text=no_selection_message(category, self._config.score_threshold),
+                new_scores=new_scores,
+                stale_item_ids=stale,
+                marker_path=marker_path,
+            )
 
         summary_text = self._summary_generator.summarize(category, selected)
         audio_path = self._audio_generator.synthesize(
@@ -140,6 +160,25 @@ class DigestService:
             stale_item_ids=stale,
             audio_path=audio_path,
         )
+
+    @staticmethod
+    def _write_marker(day_dir: pathlib.Path, slug: str, content: str = "") -> pathlib.Path:
+        """Écrit le marqueur `.no-article` d'une catégorie sans audio."""
+        marker_path = day_dir / f"{slug}{NO_ARTICLE_SUFFIX}"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(content, encoding="utf-8")
+        return marker_path
+
+    def _score_listing(self, articles: list[Article], scores: dict[str, int]) -> str:
+        """Les scores obtenus, les meilleurs d'abord : de quoi juger le seuil sans FreshRSS."""
+        lines = [
+            f"Aucun article retenu sur {len(articles)} "
+            f"(seuil {self._config.score_threshold}).",
+            "",
+        ]
+        classes = sorted(articles, key=lambda a: scores.get(a.item_id, 0), reverse=True)
+        lines.extend(f"{scores.get(a.item_id, 0):>2}/10 - {a.title}" for a in classes)
+        return "\n".join(lines) + "\n"
 
     def _score(self, articles: list[Article]) -> tuple[dict[str, int], dict[str, int], list[str]]:
         """Note les articles, en réutilisant les scores déjà posés comme tags.

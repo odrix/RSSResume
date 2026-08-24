@@ -273,5 +273,78 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 
 
+class NoSelectionMarkerTests(unittest.TestCase):
+    """Aucun article au-dessus du seuil : marqueur listant les scores, pas d'audio."""
+
+    def _run(self, articles, notes):
+        """Renvoie (digest, contenu du marqueur, générateurs) — lus avant le nettoyage du tmpdir."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir),
+                categories=["Tech"],
+                llm_base_url="https://api.example/v1",
+                llm_api_key="key",
+                summary_model="gpt-4o-mini",
+            )
+            summary_generator = mock.Mock()
+            audio_generator = mock.Mock()
+            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
+                digests = DigestService(
+                    config=config,
+                    freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                    summary_generator=summary_generator,
+                    audio_generator=audio_generator,
+                    email_sender=FakeEmailSender(),
+                ).run(DAY, send_email=False)
+            marker = digests[0].marker_path
+            return digests[0], marker.read_text(encoding="utf-8"), summary_generator, audio_generator
+
+    def test_marker_replaces_the_audio_and_lists_the_scores(self):
+        articles = [make_article("item-1"), make_article("item-2")]
+        notes = [{"id": "item-1", "score": 3, "thematique": "cyber", "angle": "a"},
+                 {"id": "item-2", "score": 5, "thematique": "cyber", "angle": "a"}]
+
+        digest, contenu, summary_generator, audio_generator = self._run(articles, notes)
+
+        self.assertIsNone(digest.audio_path)
+        self.assertEqual("tech.no-article", digest.marker_path.name)
+        # Ni résumé ni synthèse vocale : c'est tout l'intérêt du marqueur.
+        summary_generator.summarize.assert_not_called()
+        audio_generator.synthesize.assert_not_called()
+        # Les scores, les meilleurs d'abord, pour juger le seuil sans ouvrir FreshRSS.
+        self.assertEqual(
+            ["Aucun article retenu sur 2 (seuil 7).", "", " 5/10 - Titre item-2", " 3/10 - Titre item-1"],
+            contenu.splitlines(),
+        )
+
+    def test_scores_are_still_cached_in_freshrss(self):
+        """Sans cela, un lot entièrement sous le seuil serait renoté chaque jour."""
+        articles = [make_article("item-1")]
+        notes = [{"id": "item-1", "score": 2, "thematique": "autre", "angle": "a"}]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir),
+                categories=["Tech"],
+                llm_base_url="https://api.example/v1",
+                llm_api_key="key",
+                summary_model="gpt-4o-mini",
+            )
+            client = FakeFreshRSSClient({"Tech": articles})
+            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
+                DigestService(
+                    config=config,
+                    freshrss_client=client,
+                    summary_generator=mock.Mock(),
+                    audio_generator=mock.Mock(),
+                    email_sender=FakeEmailSender(),
+                ).run(DAY, send_email=False)
+
+        self.assertEqual({"item-1": 2}, client.scored)
+        self.assertEqual(scoring_prompt_digest(), client.scoring_digest)
+        self.assertEqual([], client.digested)
+        self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
+
+
 if __name__ == "__main__":
     unittest.main()

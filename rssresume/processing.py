@@ -157,16 +157,60 @@ def _clean_thematique(value: Any) -> str:
     return candidate if candidate in THEMATIQUES else DEFAULT_THEMATIQUE
 
 
+def _by_rank(resultats: list[dict], taille: int) -> list[dict]:
+    """Réaligne les notes sur les articles envoyés, par numéro puis, à défaut, par position.
+
+    Le modèle reçoit des numéros de 1 à N, pas les identifiants FreshRSS : une note dont le
+    numéro est illisible ou dupliqué est rattachée à la première place encore libre, l'ordre
+    de réponse étant imposé par le prompt. Les identifiants longs, eux, étaient recopiés de
+    travers assez souvent pour faire échouer tout le lot.
+    """
+    par_rang: list[dict | None] = [None] * taille
+    en_attente: list[dict] = []
+
+    for item in resultats:
+        if not isinstance(item, dict):
+            # Une entrée qui n'est pas un objet ne porte ni score ni numéro exploitable.
+            en_attente.append({})
+            continue
+        rang = _rank(item.get("id"), taille)
+        if rang is not None and par_rang[rang] is None:
+            par_rang[rang] = item
+        else:
+            en_attente.append(item)
+
+    if en_attente:
+        logger.warning(
+            "Scoring : %d note(s) au numéro illisible ou dupliqué, rattachée(s) par ordre",
+            len(en_attente),
+        )
+    for item in en_attente:
+        par_rang[par_rang.index(None)] = item
+
+    return [item or {} for item in par_rang]
+
+
+def _rank(value: Any, taille: int) -> int | None:
+    """Numéro envoyé au modèle (1 à N) ramené en index, None s'il est inexploitable."""
+    try:
+        rang = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return rang - 1 if 1 <= rang <= taille else None
+
+
 def _score_batch(batch: list[dict], credentials: Credentials | None = None) -> list[dict]:
     """Score un lot en un seul appel, et vérifie qu'aucun article n'a été perdu."""
     payload = [
         {
-            "id": str(article["id"]),
+            # Numéro local, jamais l'identifiant FreshRSS : une chaîne du genre
+            # `tag:google.com,2005:reader/item/000659ce0338ac4f` revient altérée trop souvent.
+            "id": str(rang),
             "titre": article.get("title") or "",
             # Un résumé absent est fréquent : on l'explicite plutôt que d'envoyer du vide.
             "resume": (article.get("summary") or "").strip() or "(aucun résumé fourni)",
         }
-        for article in batch
+        for rang, article in enumerate(batch, start=1)
     ]
     raw = _call(
         SCORING_SYSTEM,
@@ -181,19 +225,15 @@ def _score_batch(batch: list[dict], credentials: Credentials | None = None) -> l
             f"Lot incomplet : {len(batch)} article(s) envoyé(s), {len(resultats)} noté(s)."
         )
 
-    par_id = {str(item.get("id")): item for item in resultats}
-    manquants = [str(article["id"]) for article in batch if str(article["id"]) not in par_id]
-    if manquants:
-        raise ProcessingError(f"Identifiants absents de la réponse : {manquants[:5]}")
-
+    notes = _by_rank(resultats, len(batch))
     return [
         {
             "id": str(article["id"]),
-            "score": _clean_score(par_id[str(article["id"])].get("score")),
-            "thematique": _clean_thematique(par_id[str(article["id"])].get("thematique")),
-            "angle": str(par_id[str(article["id"])].get("angle") or "").strip(),
+            "score": _clean_score(note.get("score")),
+            "thematique": _clean_thematique(note.get("thematique")),
+            "angle": str(note.get("angle") or "").strip(),
         }
-        for article in batch
+        for article, note in zip(batch, notes)
     ]
 
 

@@ -24,7 +24,9 @@ recalculé que si le prompt ou le modèle a changé, ce que détecte un tag d'em
 même journée ne coûte donc rien en scoring.
 
 Une catégorie sans article du jour ne déclenche aucun appel IA ni synthèse vocale : seul un fichier
-marqueur vide `<categorie>.no-article` est écrit.
+marqueur vide `<categorie>.no-article` est écrit. Même chose quand le scoring ne retient **aucun**
+article : pas de résumé ni d'audio, mais le marqueur liste alors les scores obtenus, du meilleur au
+moins bon, de quoi juger le seuil d'un coup d'œil.
 
 Le détail de chaque étape, les schémas et les tags posés : **[FONCTIONNEMENT.md](FONCTIONNEMENT.md)**.
 
@@ -35,8 +37,19 @@ Un sous-répertoire par journée, au format `yyyy-MM-dd` :
 ```
 output/
 └── 2026-08-23/
-    ├── tech.mp3          # catégorie avec articles (.wav sans API OpenAI)
-    └── news.no-article   # catégorie vide, fichier de taille nulle
+    ├── tech.mp3             # catégorie avec articles retenus (.wav sans API OpenAI)
+    ├── news.no-article      # catégorie vide, fichier de taille nulle
+    └── culture.no-article   # articles lus, aucun retenu : la liste des scores
+```
+
+Le marqueur d'une catégorie dont rien n'a passé le seuil ressemble à ceci :
+
+```
+Aucun article retenu sur 3 (seuil 7).
+
+ 5/10 - Un nouveau format d'archive open source
+ 4/10 - Bilan trimestriel d'un fournisseur cloud américain
+ 1/10 - Test d'un casque audio sans fil
 ```
 
 Seuls les fichiers audio sont joints à l'email.
@@ -164,12 +177,17 @@ FreshRSS : 3 catégorie(s) découverte(s)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : notation de 6 article(s) sur 4 valeur(s) de score
 FreshRSS : tag 'digested' sur 5 article(s)
+[News] 9 article(s)
+  scoring : 0 score(s) relu(s) des tags, 9 à calculer
+  sélection : 0 article(s) retenu(s) sur 9 (seuil 7)
+  aucun article retenu : news.no-article (ni IA ni synthèse vocale)
+FreshRSS : notation de 9 article(s) sur 5 valeur(s) de score
 [Culture] 0 article(s)
   aucun article : culture.no-article (ni IA ni synthèse vocale)
-Email : envoi à dest@example.com via smtp.example.com:587 (2 pièce(s) jointe(s))
+Email : envoi à dest@example.com via smtp.example.com:587 (1 pièce(s) jointe(s))
 Email : envoyé
-FreshRSS : marquage de 24 article(s) comme lus
-Terminé : 24 article(s) lu(s), 5 retenu(s), 2 fichier(s) audio, 1 catégorie(s) sans article
+FreshRSS : marquage de 33 article(s) comme lus
+Terminé : 33 article(s) lu(s), 5 retenu(s), 1 fichier(s) audio, 1 catégorie(s) sans article, 1 sans article retenu
 ```
 
 Pour utiliser le paquet comme bibliothèque sans cette sortie : `rssresume.console.enable(False)`.

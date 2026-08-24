@@ -16,6 +16,8 @@ flowchart TD
     D --> E
 
     E -->|score ≥ seuil, trié, plafonné| F[SummaryGenerator<br/>texte intégral des retenus]
+    E -->|aucun retenu| N[".no-article<br/>liste des scores obtenus"]
+    N --> T
     F --> G[AudioGenerator<br/>synthèse vocale]
     G --> T[tags score-NN + scoring-hash<br/>tag digested sur les retenus]
     T -->|catégorie suivante| B
@@ -67,8 +69,15 @@ article sans tag de scoring                      →  noté
 ```
 
 Les articles à noter partent par lots de 40 en un appel chacun. Le module vérifie que le modèle
-renvoie **autant de notes que d'articles envoyés** et qu'aucun identifiant n'a été inventé ; sinon
-l'exécution s'arrête plutôt que de digérer une sélection silencieusement tronquée.
+renvoie **autant de notes que d'articles envoyés** ; sinon l'exécution s'arrête plutôt que de
+digérer une sélection silencieusement tronquée.
+
+**Le modèle ne voit jamais les identifiants FreshRSS.** Chaque article part sous un numéro local
+de 1 à N, et les notes sont réalignées à l'arrivée. Un identifiant comme
+`tag:google.com,2005:reader/item/000659ce0338ac4f` revenait altéré assez souvent pour faire
+échouer tout le lot. Si un numéro est malgré tout illisible ou dupliqué, la note est rattachée à
+la première place libre — l'ordre de réponse est imposé par le prompt — et un avertissement est
+tracé dans les logs.
 
 Sans API configurée, cette étape est sautée : tous les articles passent à l'étape 4.
 
@@ -79,6 +88,22 @@ plafonnés à `RSSRESUME_MAX_DIGEST_ITEMS` (défaut 12).
 
 C'est cette sélection — et elle seule — qui alimente le résumé **et** qui reçoit le tag `digested`.
 Les deux ne peuvent pas diverger : un test le verrouille.
+
+**Sélection vide.** Si aucun article n'atteint le seuil, la catégorie s'arrête ici, comme une
+catégorie sans article : ni résumé ni synthèse vocale — l'audio n'aurait rien à dire. Le marqueur
+`<categorie>.no-article` est écrit, mais avec la liste des scores obtenus :
+
+```
+Aucun article retenu sur 3 (seuil 7).
+
+ 5/10 - Un nouveau format d'archive open source
+ 4/10 - Bilan trimestriel d'un fournisseur cloud américain
+ 1/10 - Test d'un casque audio sans fil
+```
+
+C'est ce qui permet de juger un seuil trop haut sans rouvrir FreshRSS. Les tags de scoring, eux,
+sont écrits normalement (étape 6) : sans cela un lot entièrement sous le seuil serait renoté à
+chaque passage.
 
 ### 5. Résumé et audio
 
