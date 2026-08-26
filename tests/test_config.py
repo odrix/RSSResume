@@ -1,3 +1,8 @@
+"""Ce qu'`AppConfig` lit encore : FreshRSS, les catégories, le seuil, le SMTP.
+
+Tout ce qui concerne les fournisseurs de LLM est passé dans `test_providers.py`.
+"""
+
 import os
 import pathlib
 import unittest
@@ -14,24 +19,17 @@ BASE_ENV = {
 
 
 class AppConfigTests(unittest.TestCase):
-    @mock.patch.dict(os.environ, {**BASE_ENV, "OPENAI_API_KEY": "token", "RSSRESUME_OUTPUT_DIR": "   "}, clear=True)
-    def test_from_env_defaults_output_dir_and_openai_base_url(self):
-        config = AppConfig.from_env()
-
-        self.assertEqual(pathlib.Path("output"), config.output_dir)
-        self.assertEqual("https://api.openai.com/v1", config.llm_base_url)
-        self.assertTrue(config.uses_llm)
-
-    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
-    def test_from_env_without_api_key_disables_llm(self):
-        config = AppConfig.from_env()
-
-        self.assertIsNone(config.llm_base_url)
-        self.assertFalse(config.uses_llm)
+    @mock.patch.dict(os.environ, {**BASE_ENV, "RSSRESUME_OUTPUT_DIR": "   "}, clear=True)
+    def test_from_env_defaults_the_output_dir(self):
+        self.assertEqual(pathlib.Path("output"), AppConfig.from_env().output_dir)
 
     @mock.patch.dict(
         os.environ,
-        {**BASE_ENV, "RSSRESUME_CATEGORIES": " Tech , News ", "RSSRESUME_EXCLUDED_CATEGORIES": "Non classé"},
+        {
+            **BASE_ENV,
+            "RSSRESUME_CATEGORIES": " Tech , News ",
+            "RSSRESUME_EXCLUDED_CATEGORIES": "Non classé",
+        },
         clear=True,
     )
     def test_from_env_parses_category_lists(self):
@@ -47,21 +45,16 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertIn("FRESHRSS_BASE_URL", str(raised.exception))
 
-
     @mock.patch.dict(
         os.environ,
-        {**BASE_ENV, "OPENAI_TTS_INSTRUCTIONS": '"""Voix posée.\\nDébit modéré."""'},
+        {**BASE_ENV, "RSSRESUME_SCORE_THRESHOLD": "5", "RSSRESUME_MAX_DIGEST_ITEMS": "3"},
         clear=True,
     )
-    def test_from_env_unquotes_and_unescapes_the_tts_instructions(self):
-        """Le chargeur .env documenté laisse les guillemets et écrit les sauts de ligne `\\n`."""
-        self.assertEqual(
-            "Voix posée.\nDébit modéré.", AppConfig.from_env().tts_instructions
-        )
+    def test_from_env_reads_the_selection_settings(self):
+        config = AppConfig.from_env()
 
-    @mock.patch.dict(os.environ, {**BASE_ENV, "OPENAI_TTS_INSTRUCTIONS": "   "}, clear=True)
-    def test_from_env_treats_blank_tts_instructions_as_absent(self):
-        self.assertIsNone(AppConfig.from_env().tts_instructions)
+        self.assertEqual(5, config.score_threshold)
+        self.assertEqual(3, config.max_digest_items)
 
     @mock.patch.dict(os.environ, BASE_ENV, clear=True)
     def test_from_env_falls_back_to_the_default_profile(self):

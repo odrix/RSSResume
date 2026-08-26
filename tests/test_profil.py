@@ -6,7 +6,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume.processing import scoring_prompt_digest, scoring_system, summary_system
+from rssresume.llm.prompts import article_system, scoring_system
+from support import empreinte
 from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL, ENV_PROFIL_FILE, load_profil
 
 AUTRE_PROFIL = "Vigneronne en Anjou, bio depuis 2019. Veille : météo, phytosanitaire, export."
@@ -66,7 +67,7 @@ class InjectedProfileTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_both_prompts_carry_the_injected_profile(self):
         self.assertIn(AUTRE_PROFIL, scoring_system(AUTRE_PROFIL))
-        self.assertIn(AUTRE_PROFIL, summary_system(AUTRE_PROFIL))
+        self.assertIn(AUTRE_PROFIL, article_system(AUTRE_PROFIL))
         self.assertNotIn(DEFAULT_PROFIL, scoring_system(AUTRE_PROFIL))
 
     @mock.patch.dict(os.environ, {}, clear=True)
@@ -83,9 +84,9 @@ class InjectedProfileTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_changing_the_profile_invalidates_the_scoring_cache(self):
         """Sinon des scores calculés contre l'ancien profil survivraient au changement."""
-        self.assertNotEqual(scoring_prompt_digest(), scoring_prompt_digest(AUTRE_PROFIL))
+        self.assertNotEqual(empreinte(), empreinte(AUTRE_PROFIL))
         # Même profil, même empreinte : relancer la journée ne repaie rien.
-        self.assertEqual(scoring_prompt_digest(AUTRE_PROFIL), scoring_prompt_digest(AUTRE_PROFIL))
+        self.assertEqual(empreinte(AUTRE_PROFIL), empreinte(AUTRE_PROFIL))
 
 
 if __name__ == "__main__":

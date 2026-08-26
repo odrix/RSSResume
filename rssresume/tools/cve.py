@@ -17,9 +17,9 @@ import re
 import urllib.error
 import urllib.request
 
-from rssresume import console
 from rssresume.models import Article
-from rssresume.text import strip_html_document
+from rssresume.tools import console
+from rssresume.tools.text import strip_html_document
 
 CVE_PATTERN = re.compile(r"CVE[-\s]\d{4}[-\s]\d{4,7}", re.IGNORECASE)
 

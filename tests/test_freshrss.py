@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume.freshrss import (
+from rssresume.external.freshrss import (
     DIGEST_TAG,
     EDIT_TAG_BATCH_SIZE,
     LABEL_STREAM_PREFIX,

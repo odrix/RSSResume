@@ -1,13 +1,24 @@
 """Doublures et fabriques partagées par les tests."""
 
 import pathlib
+from unittest import mock
 
-from rssresume import console
+from rssresume.llm import processing
+from rssresume.tools import console
 from rssresume.config import AppConfig
 from rssresume.profil import DEFAULT_PROFIL
 
 # Les tests n'affichent pas le suivi d'exécution.
 console.enable(False)
+
+#: Modèle de notation des doublures. Fixé ici et non lu dans `providers.json` : les
+#: tests vérifient la mécanique du cache d'empreintes, pas le modèle du jour.
+SCORING_MODEL = "modele-de-test"
+
+
+def empreinte(profil=None):
+    """L'empreinte que `FakeScorer` produit, pour la comparer dans les tests."""
+    return processing.scoring_fingerprint(profil, SCORING_MODEL)
 
 
 class FakeFreshRSSClient:
@@ -42,7 +53,26 @@ class FakeFreshRSSClient:
         self.cleared.extend(article.item_id for article in articles)
 
 
+class FakeScorer:
+    """Un noteur qui ne parle à personne : il rend ce qu'on lui a dit de rendre.
+
+    Même contrat qu'un `LLMProvider` côté notation, ce qui suffit à `DigestService`.
+    """
+
+    def __init__(self, notes=None, side_effect=None):
+        # `score_articles` est un Mock : les tests l'interrogent comme n'importe quel
+        # appel simulé (`assert_called_once`, `call_args`).
+        self.score_articles = mock.Mock(
+            return_value=[] if notes is None else notes, side_effect=side_effect
+        )
+
+    def scoring_fingerprint(self, profil=None):
+        return empreinte(profil)
+
+
 class FakeAudioGenerator:
+    extension = ".wav"
+
     def synthesize(self, text, output_path):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(text, encoding="utf-8")
@@ -70,16 +100,10 @@ def make_config(output_dir):
         excluded_categories=[],
         summary_language="fr",
         # Le profil par défaut, pour que l'empreinte de scoring des tests soit celle
-        # que `scoring_prompt_digest()` calcule sans argument.
+        # que `empreinte()` calcule sans argument.
         profil=DEFAULT_PROFIL,
         score_threshold=7,
         max_digest_items=12,
-        summary_model=None,
-        tts_model=None,
-        tts_voice=None,
-        tts_instructions=None,
-        llm_base_url=None,
-        llm_api_key=None,
         smtp_host="smtp.example.com",
         smtp_port=587,
         smtp_username="smtp-user",

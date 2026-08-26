@@ -5,18 +5,20 @@ from __future__ import annotations
 import datetime as dt
 import pathlib
 
-from rssresume import console, processing, runlog
-from rssresume.audio import audio_extension
+from rssresume import runlog
 from rssresume.config import AppConfig
-from rssresume.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
+from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
+from rssresume.llm import providers
 from rssresume.models import Article, CategoryDigest, Note
 from rssresume.protocols import (
     AudioGeneratorProtocol,
     EmailSenderProtocol,
     FreshRSSClientProtocol,
+    ScorerProtocol,
     SummaryGeneratorProtocol,
 )
-from rssresume.text import no_article_message, no_selection_message, slugify
+from rssresume.tools import console
+from rssresume.tools.text import no_article_message, no_selection_message, slugify
 
 NO_ARTICLE_SUFFIX = ".no-article"
 BODY_SEPARATOR = "\n\n"
@@ -34,12 +36,16 @@ class DigestService:
         summary_generator: SummaryGeneratorProtocol,
         audio_generator: AudioGeneratorProtocol,
         email_sender: EmailSenderProtocol,
+        scorer: ScorerProtocol | None = None,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
         self._summary_generator = summary_generator
         self._audio_generator = audio_generator
         self._email_sender = email_sender
+        #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
+        #: dans le digest, sans note et sans seuil.
+        self._scorer = scorer
 
     def run(
         self,
@@ -109,7 +115,7 @@ class DigestService:
         """Construit la catégorie sous son journal : scores, coûts et suivi sont écrits ensuite.
 
         Le journal est ouvert ici et non dans `run` : il est indexé par catégorie, et
-        c'est ce qui permet aux appels au fournisseur — partis du fond de `llm.py` — de
+        c'est ce qui permet aux appels au fournisseur — partis du fond d'un `LLMProvider` — de
         se ranger sous la bonne, sans que rien n'ait à leur transmettre la catégorie.
         """
         slug = slugify(category)
@@ -118,19 +124,23 @@ class DigestService:
             journal.set_digest(digest)
             return digest
 
+    def _scoring_fingerprint(self) -> str | None:
+        """L'empreinte du noteur actif, `None` quand il n'y en a pas."""
+        return self._scorer.scoring_fingerprint(self._config.profil) if self._scorer else None
+
     def _parametres(self) -> dict:
         """Les réglages qui expliquent le contenu du journal, relus sans la config."""
         return {
             "seuil": self._config.score_threshold,
             "plafond": self._config.max_digest_items,
             "langue": self._config.summary_language,
-            "ia": self._config.uses_llm,
-            "modele_resume": self._config.summary_model,
-            "modele_tts": self._config.tts_model,
-            "voix_tts": self._config.tts_voice,
+            # Qui fait quoi : fournisseur et modèle de chaque action, tels qu'ils ont été
+            # lus au lancement. Une action dont `actif` est faux est retombée sur le
+            # local — extractif pour le résumé, espeak pour la voix.
+            "fournisseurs": providers.describe(),
             # L'empreinte du prompt de scoring : deux journaux dont elle diffère n'ont
             # pas noté leurs articles contre le même profil, et ne se comparent pas.
-            "empreinte_scoring": processing.scoring_prompt_digest(self._config.profil),
+            "empreinte_scoring": self._scoring_fingerprint(),
         }
 
     def _build_category(
@@ -184,7 +194,7 @@ class DigestService:
         summary_text = self._summary_generator.summarize(category, selected, notes)
         audio_path = self._audio_generator.synthesize(
             summary_text,
-            day_dir / f"{slug}{audio_extension(self._config)}",
+            day_dir / f"{slug}{self._audio_generator.extension}",
         )
         console.detail(f"audio écrit : {audio_path.name} ({audio_path.stat().st_size} octets)")
 
@@ -244,10 +254,10 @@ class DigestService:
         Renvoie (toutes les notes, celles calculées maintenant, les articles à renettoyer).
         Sans API configurée, aucune note : tous les articles entrent dans le digest.
         """
-        if not self._config.uses_llm:
+        if self._scorer is None:
             return {}, {}, []
 
-        digest = processing.scoring_prompt_digest(self._config.profil)
+        digest = self._scoring_fingerprint()
         a_noter: list[Article] = []
         stale: list[str] = []
         notes: dict[str, Note] = {}
@@ -275,9 +285,8 @@ class DigestService:
         if not a_noter:
             return notes, {}, stale
 
-        calculees = processing.score_articles(
+        calculees = self._scorer.score_articles(
             [self._to_payload(article) for article in a_noter],
-            credentials=(self._config.llm_base_url, self._config.llm_api_key),
             profil=self._config.profil,
         )
         new_notes = {
@@ -350,9 +359,7 @@ class DigestService:
         if a_nettoyer:
             self._freshrss_client.clear_scoring_tags(a_nettoyer)
         if new_notes:
-            self._freshrss_client.tag_notes(
-                new_notes, processing.scoring_prompt_digest(self._config.profil)
-            )
+            self._freshrss_client.tag_notes(new_notes, self._scoring_fingerprint())
         self._tag_digested(selected)
 
     def _mark_read(self, digests: list[CategoryDigest]) -> None:

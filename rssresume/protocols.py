@@ -29,6 +29,16 @@ class FreshRSSClientProtocol(Protocol):
         ...
 
 
+class ScorerProtocol(Protocol):
+    """Ce que `DigestService` attend d'un noteur : un `LLMProvider`, ou une doublure."""
+
+    def score_articles(self, articles: list[dict], profil: str | None = None) -> list[dict]:
+        ...
+
+    def scoring_fingerprint(self, profil: str | None = None) -> str:
+        ...
+
+
 class SummaryGeneratorProtocol(Protocol):
     def summarize(
         self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
@@ -37,6 +47,11 @@ class SummaryGeneratorProtocol(Protocol):
 
 
 class AudioGeneratorProtocol(Protocol):
+    #: Extension du fichier écrit, imposée par le moteur de synthèse.
+    @property
+    def extension(self) -> str:
+        ...
+
     def synthesize(self, text: str, output_path: pathlib.Path) -> pathlib.Path:
         ...
 

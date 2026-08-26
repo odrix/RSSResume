@@ -2,7 +2,7 @@ import tempfile
 import unittest
 
 from rssresume.config import AppConfig
-from rssresume.mailer import EmailSender
+from rssresume.external.mailer import EmailSender
 from support import make_config
 
 

@@ -5,7 +5,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from rssresume import cve
+from rssresume.tools import cve
 from rssresume.models import Article
 
 

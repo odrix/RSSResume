@@ -11,10 +11,10 @@ le fixe, catégorie par catégorie, à côté de l'audio du jour :
 Une catégorie sans article du jour n'écrit aucun journal : elle ne lit rien, ne note
 rien et ne dépense rien, et son marqueur `.no-article` dit déjà tout ce qu'il y a à dire.
 
-Le journal actif est un état de module : les appels au fournisseur partent du fond
-de `llm.py`, qui n'a aucune raison de savoir quelle catégorie est en cours. Le
+Le journal actif est un état de module : les appels partent du fond d'un `LLMProvider`,
+qui n'a aucune raison de savoir quelle catégorie est en cours. Le
 pipeline est séquentiel — une catégorie à la fois — et ce module l'est donc aussi.
-Hors de tout `category_scope`, tout enregistrement est un no-op : `processing.py`
+Hors de tout `category_scope`, tout enregistrement est un no-op : `llm/processing.py`
 lancé seul et les tests n'écrivent rien.
 """
 
@@ -36,11 +36,11 @@ LOG_SUFFIX = ".log.json"
 #: Les trois postes de dépense demandés, dans l'ordre où ils sont engagés.
 TYPOLOGIES = ("scoring", "resume", "tts")
 
-#: Type d'appel (`llm.ChatProfile.label`) rangé sous son poste de dépense. Le résumé
+#: Action (au sens de `providers.ACTIONS`) rangée sous son poste de dépense. Le résumé
 #: par article et le digest de catégorie sont deux façons de résumer : même poste.
 TYPOLOGIE_PAR_LABEL = {
     "scoring": "scoring",
-    "article summary": "resume",
+    "article": "resume",
     "digest": "resume",
     "tts": "tts",
 }
@@ -52,7 +52,7 @@ class Call:
     """Un appel au fournisseur, avec ce qu'il a consommé et ce qu'il a coûté."""
 
     typologie: str
-    #: Type d'appel tel que `llm.py` le nomme : scoring, article summary, digest, tts.
+    #: L'action appelée : scoring, article, digest, tts.
     label: str
     model: str
     input_tokens: int = 0

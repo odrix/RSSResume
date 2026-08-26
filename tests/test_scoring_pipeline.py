@@ -7,10 +7,9 @@ import unittest
 from unittest import mock
 
 from rssresume.digest import DigestService
-from rssresume.freshrss import score_tag, scoring_tag, theme_tag
+from rssresume.external.freshrss import score_tag, scoring_tag, theme_tag
 from rssresume.models import Article, Note
-from rssresume.processing import scoring_prompt_digest
-from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
+from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, FakeScorer, empreinte, make_config
 
 DAY = dt.date(2026, 8, 23)
 
@@ -37,22 +36,19 @@ class PipelineHarness:
             config = dataclasses.replace(
                 make_config(tmpdir),
                 categories=["Tech"],
-                llm_base_url="https://api.example/v1",
-                llm_api_key="key",
-                summary_model="gpt-4o-mini",
                 **(config_overrides or {}),
             )
             client = FakeFreshRSSClient({"Tech": articles})
-            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes) as scorer:
-                service = DigestService(
-                    config=config,
-                    freshrss_client=client,
-                    summary_generator=mock.Mock(summarize=mock.Mock(return_value="résumé")),
-                    audio_generator=FakeAudioGenerator(),
-                    email_sender=FakeEmailSender(),
-                )
-                digests = service.run(DAY, send_email=False, **kwargs)
-            return client, scorer, digests
+            scorer = FakeScorer(notes)
+            digests = DigestService(
+                config=config,
+                freshrss_client=client,
+                scorer=scorer,
+                summary_generator=mock.Mock(summarize=mock.Mock(return_value="résumé")),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False, **kwargs)
+            return client, scorer.score_articles, digests
 
     @staticmethod
     def note(item_id, score, thematique="cyber", angle="a"):
@@ -77,10 +73,10 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
         client, _, _ = self._run(articles, notes)
 
         self.assertEqual({"item-1": 9, "item-2": 3}, client.scored)
-        self.assertEqual(scoring_prompt_digest(), client.scoring_digest)
+        self.assertEqual(empreinte(), client.scoring_digest)
 
     def test_already_scored_articles_are_not_rescored(self):
-        courant = scoring_prompt_digest()
+        courant = empreinte()
         articles = [
             make_article("item-1", tags=(scoring_tag(courant), score_tag(9), theme_tag("cyber"))),
             make_article("item-2", tags=(scoring_tag(courant), score_tag(2), theme_tag("marche"))),
@@ -98,7 +94,7 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
             make_article("item-1", tags=(scoring_tag("0123456789ab"), score_tag(2))),
             make_article(
                 "item-2",
-                tags=(scoring_tag(scoring_prompt_digest()), score_tag(8), theme_tag("cyber")),
+                tags=(scoring_tag(empreinte()), score_tag(8), theme_tag("cyber")),
             ),
         ]
 
@@ -182,7 +178,7 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
 
     def test_a_score_without_its_thematique_is_not_a_usable_cache(self):
         """Une note partielle rangerait l'article dans le mauvais groupe : on la renote."""
-        courant = scoring_prompt_digest()
+        courant = empreinte()
         articles = [make_article("item-1", tags=(scoring_tag(courant), score_tag(9)))]
 
         client, scorer, _ = self._run(articles, [self.note("item-1", 9, "cyber")])
@@ -204,18 +200,16 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir), categories=["Tech"],
-                llm_base_url="https://api.example/v1", llm_api_key="key", summary_model="m",
-            )
+                make_config(tmpdir), categories=["Tech"])
             generator = mock.Mock(summarize=mock.Mock(return_value="résumé"))
-            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
-                DigestService(
-                    config=config,
-                    freshrss_client=FakeFreshRSSClient({"Tech": articles}),
-                    summary_generator=generator,
-                    audio_generator=FakeAudioGenerator(),
-                    email_sender=FakeEmailSender(),
-                ).run(DAY, send_email=False)
+            DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                scorer=FakeScorer(notes),
+                summary_generator=generator,
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False)
 
         recus = generator.summarize.call_args.args[1]
         self.assertEqual(["item-1"], [a.item_id for a in recus])
@@ -252,7 +246,7 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
 
         # C'est l'intérêt du découpage : le scoring n'est pas repayé au prochain essai.
         self.assertEqual({"item-1": 9}, client.scored)
-        self.assertEqual(scoring_prompt_digest(), client.scoring_digest)
+        self.assertEqual(empreinte(), client.scoring_digest)
         self.assertEqual(["item-1"], client.digested)
         self.assertEqual([], client.marked_as_read)
 
@@ -273,22 +267,20 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir), categories=["Tech"],
-                llm_base_url="https://api.example/v1", llm_api_key="key", summary_model="m",
-            )
+                make_config(tmpdir), categories=["Tech"])
             client = FakeFreshRSSClient({"Tech": articles})
             sender = FakeEmailSender()
             sender.send = mock.Mock(side_effect=RuntimeError("SMTP down"))
-            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
-                service = DigestService(
-                    config=config,
-                    freshrss_client=client,
-                    summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
-                    audio_generator=FakeAudioGenerator(),
-                    email_sender=sender,
-                )
-                with self.assertRaises(RuntimeError):
-                    service.run(DAY)
+            service = DigestService(
+                config=config,
+                freshrss_client=client,
+                scorer=FakeScorer(notes),
+                summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=sender,
+            )
+            with self.assertRaises(RuntimeError):
+                service.run(DAY)
 
         # Scores et tag digest conserves : le prochain passage ne repaie pas le scoring.
         self.assertEqual({"item-1": 9, "item-2": 2}, client.scored)
@@ -303,27 +295,23 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir), categories=["Tech", "News"],
-                llm_base_url="https://api.example/v1", llm_api_key="key", summary_model="m",
+                make_config(tmpdir), categories=["Tech", "News"]
             )
             client = FakeFreshRSSClient({"Tech": tech, "News": news})
-            appels = [[self.note("item-1", 9)], RuntimeError("API down")]
+            # La deuxième catégorie casse : la première ne doit pas perdre ses scores.
+            scorer = FakeScorer(
+                side_effect=[[self.note("item-1", 9)], RuntimeError("API down")]
+            )
 
-            def scorer(payload, credentials=None, profil=None):
-                resultat = appels.pop(0)
-                if isinstance(resultat, Exception):
-                    raise resultat
-                return resultat
-
-            with mock.patch("rssresume.digest.processing.score_articles", side_effect=scorer):
-                with self.assertRaises(RuntimeError):
-                    DigestService(
-                        config=config,
-                        freshrss_client=client,
-                        summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
-                        audio_generator=FakeAudioGenerator(),
-                        email_sender=FakeEmailSender(),
-                    ).run(DAY, send_email=False)
+            with self.assertRaises(RuntimeError):
+                DigestService(
+                    config=config,
+                    freshrss_client=client,
+                    scorer=scorer,
+                    summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
+                    audio_generator=FakeAudioGenerator(),
+                    email_sender=FakeEmailSender(),
+                ).run(DAY, send_email=False)
 
         self.assertEqual({"item-1": 9}, client.scored)
         self.assertEqual(["item-1"], client.digested)
@@ -345,22 +333,18 @@ class NoSelectionMarkerTests(unittest.TestCase):
         """Renvoie (digest, contenu du marqueur, générateurs) — lus avant le nettoyage du tmpdir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir),
-                categories=["Tech"],
-                llm_base_url="https://api.example/v1",
-                llm_api_key="key",
-                summary_model="gpt-4o-mini",
+                make_config(tmpdir), categories=["Tech"]
             )
             summary_generator = mock.Mock()
             audio_generator = mock.Mock()
-            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
-                digests = DigestService(
-                    config=config,
-                    freshrss_client=FakeFreshRSSClient({"Tech": articles}),
-                    summary_generator=summary_generator,
-                    audio_generator=audio_generator,
-                    email_sender=FakeEmailSender(),
-                ).run(DAY, send_email=False)
+            digests = DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                scorer=FakeScorer(notes),
+                summary_generator=summary_generator,
+                audio_generator=audio_generator,
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False)
             marker = digests[0].marker_path
             return digests[0], marker.read_text(encoding="utf-8"), summary_generator, audio_generator
 
@@ -394,24 +378,20 @@ class NoSelectionMarkerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir),
-                categories=["Tech"],
-                llm_base_url="https://api.example/v1",
-                llm_api_key="key",
-                summary_model="gpt-4o-mini",
+                make_config(tmpdir), categories=["Tech"]
             )
             client = FakeFreshRSSClient({"Tech": articles})
-            with mock.patch("rssresume.digest.processing.score_articles", return_value=notes):
-                DigestService(
-                    config=config,
-                    freshrss_client=client,
-                    summary_generator=mock.Mock(),
-                    audio_generator=mock.Mock(),
-                    email_sender=FakeEmailSender(),
-                ).run(DAY, send_email=False)
+            DigestService(
+                config=config,
+                freshrss_client=client,
+                scorer=FakeScorer(notes),
+                summary_generator=mock.Mock(),
+                audio_generator=mock.Mock(),
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False)
 
         self.assertEqual({"item-1": 2}, client.scored)
-        self.assertEqual(scoring_prompt_digest(), client.scoring_digest)
+        self.assertEqual(empreinte(), client.scoring_digest)
         self.assertEqual([], client.digested)
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 

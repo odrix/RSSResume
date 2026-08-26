@@ -1,19 +1,24 @@
-"""Tarifs des appels au fournisseur, et calcul du coût d'un appel.
+"""Tarifs des appels aux fournisseurs, et calcul du coût d'un appel.
 
 Un appel facturé n'est jamais renvoyé avec son prix : le fournisseur rend des
 compteurs de tokens, la conversion en euros ou en dollars est à notre charge.
-Ce module est donc une table de prix, forcément datée, et une multiplication.
+Ce module est donc une multiplication, et un point de lecture pour une table de
+prix qu'il ne détient pas : elle vit dans `providers.json`, sous chaque
+fournisseur, à côté des modèles qu'elle tarife. Ajouter un fournisseur, c'est
+donc aussi lui donner ses prix, au même endroit et sans toucher au code.
 
 Deux formes de tarif, unifiées sous la même clé de modèle :
 
 - ``{"input": x, "output": y}`` — dollars par million de tokens. Un tarif sans
   ``output`` (les modèles de synthèse vocale récents) ne facture que l'entrée.
 - ``{"characters": z}`` — dollars par million de caractères, la facturation
-  historique de la synthèse vocale.
+  au caractère de la synthèse vocale.
 
 Un modèle absent de la table ne produit pas un coût faux : il produit ``None``,
 et le journal le signale comme non tarifé. La table se complète sans toucher au
-code par ``RSSRESUME_PRICES``, un objet JSON du même format fusionné par-dessus.
+paquet par ``RSSRESUME_PROVIDERS_FILE`` (le bloc ``prices`` d'un fournisseur) ou,
+pour un tarif isolé, par ``RSSRESUME_PRICES``, un objet JSON du même format
+fusionné par-dessus tous les fournisseurs.
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ import json
 import os
 import re
 
-#: Devise des tarifs ci-dessous, celle des grilles publiées par les fournisseurs.
+from rssresume.llm import providers
+
+#: Devise des tarifs, celle des grilles publiées par les fournisseurs.
 CURRENCY = "USD"
 
 #: Les tarifs sont exprimés par million d'unités : c'est la forme publiée, et la
@@ -35,29 +42,6 @@ PER = 1_000_000
 #: journal le dit.
 CHARS_PER_TOKEN = 4
 
-#: Grille au 2026-05, en dollars par million d'unités. À revérifier : les prix
-#: baissent, et un tarif périmé ici se lit comme un coût réel dans les journaux.
-PRICES: dict[str, dict[str, float]] = {
-    # Complétion — dollars par million de tokens.
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4.1": {"input": 2.00, "output": 8.00},
-    "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
-    "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
-    "gpt-5": {"input": 1.25, "output": 10.00},
-    "gpt-5-mini": {"input": 0.25, "output": 2.00},
-    "gpt-5-nano": {"input": 0.05, "output": 0.40},
-    "o1": {"input": 15.00, "output": 60.00},
-    "o1-mini": {"input": 1.10, "output": 4.40},
-    "o3": {"input": 2.00, "output": 8.00},
-    "o3-mini": {"input": 1.10, "output": 4.40},
-    "o4-mini": {"input": 1.10, "output": 4.40},
-    # Synthèse vocale — au caractère pour les modèles historiques, au token
-    # d'entrée pour les suivants.
-    "tts-1": {"characters": 15.00},
-    "tts-1-hd": {"characters": 30.00},
-    "gpt-4o-mini-tts": {"input": 0.60},
-}
 
 #: Variable d'environnement qui complète ou corrige la table, au même format JSON.
 PRICES_ENV = "RSSRESUME_PRICES"
@@ -91,6 +75,16 @@ def _overrides() -> dict[str, dict[str, float]]:
     }
 
 
+def prices() -> dict[str, dict[str, float]]:
+    """Grille de tous les fournisseurs déclarés, `RSSRESUME_PRICES` par-dessus.
+
+    Relue à chaque appel : `RSSRESUME_PROVIDERS_FILE` comme `RSSRESUME_PRICES`
+    peuvent nommer un modèle que la grille livrée ignore, et le journal d'une
+    exécution doit refléter l'environnement de cette exécution.
+    """
+    return {**providers.all_prices(), **_overrides()}
+
+
 def tarif(model: str) -> dict[str, float] | None:
     """Tarif d'un modèle, `None` s'il est inconnu.
 
@@ -99,12 +93,13 @@ def tarif(model: str) -> dict[str, float] | None:
     changent pas le prix. Un suffixe qui n'est pas une date n'est pas rattaché,
     même s'il commence par un modèle connu : `gpt-5.6-luna` commence par `gpt-5`
     sans être `gpt-5`, et le prix rendu serait faux sans que rien ne le signale.
-    Un modèle non tarifé se déclare dans `RSSRESUME_PRICES`.
+    Un modèle non tarifé se déclare dans le bloc `prices` de son fournisseur,
+    ou dans `RSSRESUME_PRICES`.
     """
     name = (model or "").strip().lower()
     if not name:
         return None
-    table = {**PRICES, **_overrides()}
+    table = prices()
     if name in table:
         return table[name]
     candidats = [key for key in table if SNAPSHOT_SUFFIX.match(name[len(key) :])]

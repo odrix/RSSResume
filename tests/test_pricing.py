@@ -30,6 +30,15 @@ class TarifTests(unittest.TestCase):
         for modele in ("gpt-5.6-luna", "gpt-5-turbo-inconnu", "gpt-4o-maison"):
             self.assertIsNone(pricing.tarif(modele), modele)
 
+    def test_every_provider_brings_its_own_grid(self):
+        """La grille suit `providers.json` : ajouter un fournisseur, c'est ajouter ses prix."""
+        self.assertEqual({"input": 1.50, "output": 7.50}, pricing.tarif("mistral-medium-latest"))
+        self.assertEqual({"characters": 16.00}, pricing.tarif("voxtral-mini-tts-2603"))
+
+    def test_the_voxtral_voice_is_billed_per_character(self):
+        """Seize dollars le million de caractères, soit 0,016 $ les mille."""
+        self.assertAlmostEqual(0.016, pricing.cost("voxtral-mini-tts-2603", characters=1000))
+
     def test_an_unknown_model_has_no_tarif(self):
         self.assertIsNone(pricing.tarif("modele-jamais-vu"))
         self.assertIsNone(pricing.tarif(""))

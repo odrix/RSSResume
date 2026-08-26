@@ -8,11 +8,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import llm, runlog
+from rssresume import runlog
 from rssresume.audio import AudioGenerator
 from rssresume.digest import DigestService
+from rssresume.llm.openai import OpenAIProvider
 from rssresume.models import Article, Note
-from support import FakeEmailSender, FakeFreshRSSClient, make_config
+from rssresume.llm.providers import Settings, Voice
+from support import FakeEmailSender, FakeFreshRSSClient, FakeScorer, make_config
 
 DAY = dt.date(2026, 8, 26)
 
@@ -225,26 +227,31 @@ class PipelineTests(unittest.TestCase):
     def _run(self, articles_by_category, **overrides):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
-                make_config(tmpdir),
-                categories=list(articles_by_category),
-                llm_base_url="https://api.example/v1",
-                llm_api_key="key",
-                summary_model="gpt-4o-mini",
-                tts_model="tts-1",
-                tts_voice="alloy",
-                **overrides,
+                make_config(tmpdir), categories=list(articles_by_category), **overrides
+            )
+            # Un vrai fournisseur pour la synthèse — c'est lui qui tient la comptabilité
+            # du TTS ; seul son POST est coupé. Le noteur et le résumeur sont simulés,
+            # et facturent à la main ce que le vrai facturerait.
+            voix = OpenAIProvider(
+                Settings(
+                    name="openai",
+                    label="OpenAI",
+                    base_url="https://api.example/v1",
+                    api_key="key",
+                    calls={},
+                    voice=Voice(model="tts-1", voice="alloy"),
+                    prices={},
+                )
             )
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient(articles_by_category),
+                scorer=FakeScorer(side_effect=self._fake_scoring),
                 summary_generator=mock.Mock(summarize=self._fake_summary),
-                audio_generator=AudioGenerator(config),
+                audio_generator=AudioGenerator(voix),
                 email_sender=FakeEmailSender(),
             )
-            with mock.patch.object(llm, "post", return_value=b"audio"), mock.patch(
-                "rssresume.digest.processing.score_articles",
-                side_effect=self._fake_scoring,
-            ):
+            with mock.patch.object(OpenAIProvider, "_post", return_value=b"audio"):
                 service.run(DAY, send_email=False, write_tags=False, mark_read=False)
             day_dir = pathlib.Path(tmpdir) / DAY.isoformat()
             return {
@@ -253,11 +260,11 @@ class PipelineTests(unittest.TestCase):
             }
 
     @staticmethod
-    def _fake_scoring(payloads, credentials=None, profil=None):
+    def _fake_scoring(payloads, profil=None):
         """Note tout à 9, et facture un appel de scoring comme le vrai le ferait.
 
-        Le fournisseur est simulé : sa comptabilité l'est donc aussi, à l'identique
-        de ce que `llm.chat` enregistre — un appel par lot d'articles.
+        Le noteur est simulé : sa comptabilité l'est donc aussi, à l'identique de ce
+        qu'un `LLMProvider` enregistre — un appel par lot d'articles.
         """
         runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
         return [
@@ -328,7 +335,12 @@ class PipelineTests(unittest.TestCase):
 
         parametres = journaux["tech.log.json"]["parametres"]
         self.assertEqual(7, parametres["seuil"])
-        self.assertEqual("gpt-4o-mini", parametres["modele_resume"])
+        # Qui fait quoi : le journal fixe le fournisseur et le modèle de chaque action.
+        self.assertEqual(
+            set(("scoring", "article", "digest", "tts")), set(parametres["fournisseurs"])
+        )
+        self.assertTrue(parametres["fournisseurs"]["digest"]["modele"])
+        self.assertTrue(parametres["fournisseurs"]["tts"]["voix"])
         self.assertTrue(parametres["empreinte_scoring"])
 
 
