@@ -8,8 +8,8 @@ import pathlib
 import smtplib
 from typing import Iterable
 
-from rssresume import console
 from rssresume.config import AppConfig
+from rssresume.tools import console
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
 

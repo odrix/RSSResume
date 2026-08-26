@@ -34,7 +34,7 @@ class MarkAsReadTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=client,
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
             )
@@ -82,7 +82,7 @@ class DigestServiceTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": [make_article()], "News": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=email_sender,
             )
@@ -103,7 +103,7 @@ class DigestServiceTests(unittest.TestCase):
             DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": [make_article()], "News": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=email_sender,
             ).run(DAY)
@@ -121,7 +121,7 @@ class DigestServiceTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": [make_article()], "News": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
             )
@@ -138,7 +138,7 @@ class DigestServiceTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": [], "News": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
             )
@@ -176,7 +176,7 @@ class DigestServiceTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Culture": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=email_sender,
             )
@@ -193,7 +193,7 @@ class DigestServiceTests(unittest.TestCase):
             service = DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": [], "Non classé": []}),
-                summary_generator=SummaryGenerator(config),
+                summary_generator=SummaryGenerator(None),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
             )

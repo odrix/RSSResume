@@ -5,21 +5,34 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 
-from rssresume import console
+from rssresume import llm
 from rssresume.audio import AudioGenerator
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
-from rssresume.freshrss import FreshRSSClient
-from rssresume.mailer import EmailSender
+from rssresume.external.freshrss import FreshRSSClient
+from rssresume.llm import providers
+from rssresume.external.mailer import EmailSender
 from rssresume.summaries import SummaryGenerator
+from rssresume.tools import console
 
 
 def build_service(config: AppConfig) -> DigestService:
+    """Assemble le service, un fournisseur par action.
+
+    C'est le seul endroit où les fournisseurs sont choisis : trois actions, trois
+    résolutions indépendantes, et `None` là où la clé manque. Le reste du code ne voit
+    que des collaborateurs qui savent faire leur travail, ou qui n'existent pas.
+    """
     return DigestService(
         config=config,
         freshrss_client=FreshRSSClient(config),
-        summary_generator=SummaryGenerator(config),
-        audio_generator=AudioGenerator(config),
+        scorer=llm.for_action(providers.SCORING),
+        summary_generator=SummaryGenerator(
+            llm.for_action(providers.DIGEST),
+            language=config.summary_language,
+            profil=config.profil,
+        ),
+        audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
         email_sender=EmailSender(config),
     )
 

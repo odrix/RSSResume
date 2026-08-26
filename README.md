@@ -11,7 +11,7 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 5. pour les avis de vulnérabilité trop courts, lecture de la page de l'avis pour en avoir le détail
 6. résumé texte de la sélection, en prose continue, sans lien ni liste (le texte part en audio),
    ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
-7. synthèse audio par catégorie (API OpenAI-compatible si configurée, sinon `espeak` en local)
+7. synthèse audio par catégorie (fournisseur configuré — OpenAI ou Mistral —, sinon `espeak` en local)
 8. écriture des tags de la catégorie : `score-NN`, `theme-<thematique>`, `scoring-<hash>`,
    `digested` sur les retenus
 9. envoi d'un email avec les fichiers audio en pièces jointes et les liens des articles retenus
@@ -40,7 +40,7 @@ Un sous-répertoire par journée, au format `yyyy-MM-dd` :
 ```
 output/
 └── 2026-08-23/
-    ├── tech.mp3             # catégorie avec articles retenus (.wav sans API OpenAI)
+    ├── tech.mp3             # catégorie avec articles retenus (.wav sans fournisseur)
     ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
     ├── culture.no-article   # articles lus, aucun retenu : la liste des scores
     ├── culture.log.json     # les scores obtenus et le scoring déjà payé
@@ -100,7 +100,8 @@ sont produits en un seul appel pour toute la catégorie, quel qu'en soit le nomb
 retenus. `appels` monte donc à 2 pour le scoring à partir du 41ᵉ article, et reste à 1 partout
 ailleurs.
 
-Les prix viennent d'une grille statique ([pricing.py](rssresume/pricing.py)), **à revérifier** :
+Les prix viennent d'une grille statique ([llm/providers.json](rssresume/llm/providers.json), bloc `prices`
+de chaque fournisseur), **à revérifier** :
 un tarif périmé s'y lit comme un coût réel. Un modèle absent de la grille n'est pas facturé à zéro :
 son coût passe à `null`, son nom est listé dans `modeles_sans_tarif`, `tarification_complete` passe
 à `false`, et le total de son poste comme le total général passent à `null` eux aussi — une somme
@@ -135,20 +136,49 @@ Variables optionnelles :
 - `RSSRESUME_PROFILE_FILE=profil.txt` — le même, dans un fichier
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
 - `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
-- `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `pricing.py`
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-- `OPENAI_SUMMARY_MODEL=gpt-5.6-luna` — résumé audio d'une catégorie
-- `OPENAI_SCORING_MODEL=gpt-4o-mini` — notation des articles
-- `OPENAI_ARTICLE_MODEL=gpt-5.6-luna` — résumé par article (`summarize_top`, hors pipeline)
+- `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
 
-  Les modèles raisonnants (`gpt-5*`, série `o`) et les modèles classiques (`gpt-4o*`,
-  `gpt-4.1*`) n'acceptent pas les mêmes paramètres ; `llm.py` choisit le bon jeu d'après le
-  modèle effectif, donc les deux familles peuvent cohabiter dans la même exécution.
-- `OPENAI_TTS_MODEL`
-- `OPENAI_TTS_VOICE`
-- `OPENAI_TTS_INSTRUCTIONS` — consignes de diction (ton, débit, émotion), pour les modèles
-  qui les acceptent. Non envoyé si vide.
+### Fournisseurs de LLM
+
+Deux fournisseurs sont livrés, **OpenAI** et **Mistral**. Dans l'environnement, seulement
+deux choses : les clés d'API, et qui fait quoi.
+
+```bash
+OPENAI_API_KEY=sk-…
+MISTRAL_API_KEY=…
+
+RSSRESUME_PROVIDER=openai        # vaut pour toutes les actions (défaut : openai)
+RSSRESUME_TTS_PROVIDER=mistral   # sauf celle-ci
+```
+
+Les actions sont `SCORING` (notation), `ARTICLE` (résumé d'un article), `DIGEST` (résumé
+de catégorie) et `TTS` (synthèse vocale) ; chacune accepte un
+`RSSRESUME_<ACTION>_PROVIDER`. Chaque fournisseur n'utilise que **sa** clé : sans
+`MISTRAL_API_KEY`, une action confiée à Mistral retombe sur le local — résumé extractif,
+ou `espeak` pour la voix — plutôt que d'emprunter celle d'OpenAI.
+
+Tout le reste — endpoint, modèle et réglages par action, voix, format audio, tarifs —
+n'est pas secret et vit dans [llm/providers.json](rssresume/llm/providers.json) :
+
+```json
+"mistral": {
+  "base_url": "https://api.mistral.ai/v1",
+  "actions": {
+    "scoring": {"model": "mistral-small-latest", "temperature": 0.1, "max_tokens": 4096},
+    "digest":  {"model": "mistral-medium-latest", "temperature": 0.4}
+  },
+  "tts": {"model": "voxtral-mini-tts-2603", "voice": "fr_marie_curious", "format": "mp3"},
+  "prices": {"voxtral-mini-tts-2603": {"characters": 16.00}}
+}
+```
+
+- `RSSRESUME_PROVIDERS_FILE=providers.json` — un fichier fusionné par-dessus, clé à clé :
+  on n'y redéclare que ce que l'on change.
+
+Les consignes de diction d'OpenAI (`instructions` du bloc `tts`) y ont leur place : le
+rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas — son
+`/v1/audio/speech` n'a pas de champ pour elles, tout se joue dans le choix de la voix.
+
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -228,7 +258,7 @@ concernés.
 - sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées.
 - `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse).
 - tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
-  `python -m rssresume.processing` (nécessite `OPENAI_API_KEY`).
+  `python -m rssresume.llm.processing` (nécessite la clé du fournisseur actif, `OPENAI_API_KEY` par défaut).
 
 ## Organisation du code
 
@@ -236,22 +266,31 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 
 | Module | Rôle |
 | --- | --- |
+| `cli.py` | arguments, assemblage des composants, `main()` |
 | `config.py` | configuration lue depuis l'environnement |
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |
-| `freshrss.py` | client de l'API Google Reader de FreshRSS (lecture, tags, marquage comme lu) |
-| `llm.py` | adaptateur vers une API compatible OpenAI : requêtes, réglages par type d'appel |
 | `profil.py` | profil de pertinence : le défaut, et son injection depuis l'extérieur |
-| `processing.py` | notation des articles selon le profil de pertinence |
-| `cve.py` | lecture de la page d'un avis de vulnérabilité, quand le flux n'en dit rien |
-| `summaries.py` | génération des résumés textuels |
-| `audio.py` | synthèse vocale (OpenAI ou `espeak`) |
-| `mailer.py` | construction et envoi de l'email |
 | `digest.py` | orchestration du digest quotidien |
-| `cli.py` | arguments, assemblage des composants, `main()` |
-| `console.py` | suivi d'exécution affiché dans la console |
-| `pricing.py` | grille de tarifs des modèles et calcul du coût d'un appel |
+| `summaries.py` | résumé d'une catégorie : celui du fournisseur, ou le repli extractif |
+| `audio.py` | synthèse vocale (fournisseur configuré, ou `espeak`) |
+| `pricing.py` | lecture de la grille de tarifs et calcul du coût d'un appel |
 | `runlog.py` | journal `<categorie>.log.json` : articles, scores et coûts par catégorie |
+| **`external/`** | **les systèmes que l'on ne contrôle pas** |
+| `external/freshrss.py` | client de l'API Google Reader de FreshRSS (lecture, tags, marquage comme lu) |
+| `external/mailer.py` | construction et envoi de l'email |
+| **`llm/`** | **tout ce qui parle à un modèle** |
+| `llm/providers.json` | réglages non secrets de chaque fournisseur : endpoint, modèles, voix, tarifs |
+| `llm/providers.py` | lecture de ces réglages, et choix du fournisseur par action |
+| `llm/prompts.py` | les prompts, indépendants de tout fournisseur |
+| `llm/base.py` | `LLMProvider` : les quatre opérations, le transport, et la fabrique |
+| `llm/openai.py` | `OpenAIProvider` : ce que le dialecte OpenAI change |
+| `llm/mistral.py` | `MistralProvider` : idem, dont la synthèse `voice_id` / base64 |
+| `llm/processing.py` | relecture des réponses du noteur, et démonstration autonome |
+| **`tools/`** | **ce qui ne parle ni de veille, ni de FreshRSS, ni de modèles** |
+| `tools/console.py` | suivi d'exécution affiché dans la console |
+| `tools/text.py` | nettoyage de HTML, slugs, et quelques phrases toutes faites |
+| `tools/cve.py` | lecture de la page d'un avis de vulnérabilité, quand le flux n'en dit rien |
 
 Les tests suivent le même découpage (`tests/test_<module>.py`, doublures partagées dans `tests/support.py`).
 
@@ -268,7 +307,7 @@ FreshRSS : 3 catégorie(s) découverte(s)
   scoring : 18 score(s) relu(s) des tags, 6 à calculer
   sélection : 5 article(s) retenu(s) sur 24 (seuil 7)
   résumé via l'API gpt-4o-mini (5 article(s))
-  synthèse vocale via l'API gpt-4o-mini-tts (voix alloy)
+  synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : notation de 6 article(s) sur 4 valeur(s) de score et 3 thématique(s)
 FreshRSS : tag 'digested' sur 5 article(s)

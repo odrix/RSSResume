@@ -1,14 +1,12 @@
-import dataclasses
 import datetime as dt
-import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import cve
+from rssresume.llm import prompts
+from rssresume.tools import cve
 from rssresume.models import Article, Note
 from rssresume.profil import DEFAULT_PROFIL
 from rssresume.summaries import SummaryGenerator
-from support import make_config
 
 
 def make_article(title="Titre", content="Contenu test pour le résumé.", url="https://example.com/a"):
@@ -23,20 +21,19 @@ def make_article(title="Titre", content="Contenu test pour le résumé.", url="h
     )
 
 
-def make_llm_config(tmpdir, profil=None):
-    return dataclasses.replace(
-        make_config(tmpdir),
-        llm_base_url="https://api.example/v1",
-        llm_api_key="key",
-        summary_model="gpt-4o-mini",
-        **({"profil": profil} if profil else {}),
+def make_generator(profil=None):
+    """Le générateur avec un fournisseur simulé : seul `write_digest` est observé."""
+    return SummaryGenerator(
+        mock.Mock(name="openai", write_digest=mock.Mock(return_value="résumé")),
+        language="fr",
+        profil=profil or DEFAULT_PROFIL,
     )
 
 
 class SummaryGeneratorTests(unittest.TestCase):
     def test_fallback_summary_is_audio_friendly(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            summary = SummaryGenerator(make_config(tmpdir)).summarize("Tech", [make_article()])
+        summary = SummaryGenerator(None).summarize("Tech", [make_article()])
+        if True:
 
             self.assertIn("Résumé du jour pour la catégorie Tech", summary)
             self.assertTrue(summary.endswith("Bonne journée."))
@@ -45,25 +42,26 @@ class SummaryGeneratorTests(unittest.TestCase):
             self.assertNotIn("- ", summary)
 
     def test_summary_without_article_needs_no_backend(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            summary = SummaryGenerator(make_config(tmpdir)).summarize("Tech", [])
+        summary = SummaryGenerator(None).summarize("Tech", [])
 
-            self.assertEqual("Aucun nouvel article aujourd'hui dans la catégorie Tech.", summary)
+        self.assertEqual("Aucun nouvel article aujourd'hui dans la catégorie Tech.", summary)
 
 
 class PromptTests(unittest.TestCase):
-    def _call(self, articles, notes=None, profil=None):
-        """Renvoie l'appel au fournisseur : (…, system, user, …)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch("rssresume.summaries.llm.chat", return_value="résumé") as chat:
-                SummaryGenerator(make_llm_config(tmpdir, profil)).summarize("Tech", articles, notes)
-        return chat.call_args.args
+    @staticmethod
+    def _payload(articles, notes=None, profil=None):
+        """Les articles tels qu'ils arrivent au fournisseur : (catégorie, articles, langue, profil)."""
+        generator = make_generator(profil)
+        generator.summarize("Tech", articles, notes)
+        return generator._provider.write_digest.call_args.args
 
     def _prompt(self, articles, notes=None):
-        return self._call(articles, notes)[4]
+        """Le prompt utilisateur, assemblé par `prompts.digest_user`."""
+        category, payload, language, _ = self._payload(articles, notes)
+        return prompts.digest_user(category, payload, language)
 
     def _system(self, articles, profil=None):
-        return self._call(articles, profil=profil)[3]
+        return prompts.digest_system(self._payload(articles, profil=profil)[3])
 
     def test_system_prompt_carries_the_relevance_profile(self):
         """Sans le profil, le résumeur écrivait bien pour l'oreille mais pour personne."""

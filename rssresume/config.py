@@ -1,4 +1,9 @@
-"""Configuration de l'application, lue depuis l'environnement."""
+"""Configuration de l'application, lue depuis l'environnement.
+
+Ce qui concerne les fournisseurs de LLM n'est plus ici : leurs réglages vivent dans
+`llm/providers.json`, leur choix et leurs clés dans `llm/providers.py`. Il ne reste donc que
+ce qui est propre à cette installation — FreshRSS, les catégories, le seuil, le SMTP.
+"""
 
 from __future__ import annotations
 
@@ -8,37 +13,10 @@ import pathlib
 
 from rssresume.profil import load_profil
 
-DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.getenv(name, default)
-    if value is None:
-        return None
-    value = value.strip()
-    return value or None
-
-
-#: Guillemets qu'un fichier .env peut laisser autour d'une valeur, du plus long au plus court.
-_QUOTES = ('"""', "'''", '"', "'")
-
-
-def _env_text(name: str) -> str | None:
-    """Variable de texte libre, éventuellement multi-ligne, telle qu'un fichier .env la livre.
-
-    Le chargeur documenté dans le README ne fait que couper sur le premier `=` : les
-    guillemets qui encadrent la valeur arrivent tels quels, et un saut de ligne y est
-    écrit `\\n`. On retire les uns et on rétablit les autres — sans quoi le modèle de
-    synthèse lirait ces caractères comme du texte à dire.
-    """
-    value = _env(name)
-    if not value:
-        return None
-    for quote in _QUOTES:
-        if len(value) > 2 * len(quote) and value.startswith(quote) and value.endswith(quote):
-            value = value[len(quote) : -len(quote)]
-            break
-    return value.replace("\\n", "\n").strip() or None
+    return (value or "").strip() or None
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -64,14 +42,6 @@ class AppConfig:
     score_threshold: int
     #: Nombre maximum d'articles retenus par catégorie.
     max_digest_items: int
-    summary_model: str | None
-    tts_model: str | None
-    tts_voice: str | None
-    #: Consignes de diction passées au modèle de synthèse (ton, débit, émotion).
-    #: Seuls les modèles qui les acceptent les reçoivent ; vide, le paramètre n'est pas envoyé.
-    tts_instructions: str | None
-    llm_base_url: str | None
-    llm_api_key: str | None
     smtp_host: str | None
     smtp_port: int
     smtp_username: str | None
@@ -81,17 +51,11 @@ class AppConfig:
     smtp_use_tls: bool
     smtp_use_ssl: bool
 
-    @property
-    def uses_llm(self) -> bool:
-        """Vrai si une API compatible OpenAI est utilisable (résumé et synthèse vocale)."""
-        return bool(self.llm_api_key and self.llm_base_url)
-
     @classmethod
     def from_env(cls) -> "AppConfig":
         base_url = _env("FRESHRSS_BASE_URL")
         username = _env("FRESHRSS_USERNAME")
         api_password = _env("FRESHRSS_API_PASSWORD")
-        openai_api_key = _env("OPENAI_API_KEY")
         missing = [
             name
             for name, value in (
@@ -115,12 +79,6 @@ class AppConfig:
             profil=load_profil(),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
-            summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-5.6-luna"),
-            tts_model=_env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
-            tts_voice=_env("OPENAI_TTS_VOICE", "alloy"),
-            tts_instructions=_env_text("OPENAI_TTS_INSTRUCTIONS"),
-            llm_base_url=_env("OPENAI_BASE_URL") or (DEFAULT_OPENAI_BASE_URL if openai_api_key else None),
-            llm_api_key=openai_api_key,
             smtp_host=_env("SMTP_HOST"),
             smtp_port=int(_env("SMTP_PORT", "587") or "587"),
             smtp_username=_env("SMTP_USERNAME"),

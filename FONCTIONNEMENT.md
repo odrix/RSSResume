@@ -193,7 +193,7 @@ style : les règles de prose, de fusion et de longueur diluaient exactement ce q
 Un avis de vulnérabilité arrive souvent réduit à son titre :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
 touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. Avant le résumé, la page de
-l'avis est donc lue (`cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en
+l'avis est donc lue (`tools/cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en
 deux phrases le produit et les versions concernés, ce que la faille permet, si elle est exploitée et
 ce qu'il y a à faire.
 
@@ -203,8 +203,10 @@ extrait est plafonné à 6000 caractères (au-delà, on paierait des tokens pour
 de page) et les blocs `<script>`/`<style>` sont retirés avant les balises. Une page injoignable
 n'est pas bloquante : l'article repart tel quel, le digest du jour se fait quand même.
 
-Le texte produit part ensuite en synthèse vocale (API OpenAI-compatible, sinon `espeak` en local).
-`OPENAI_TTS_INSTRUCTIONS` permet de diriger la diction — ton, débit, émotion, prononciation.
+Le texte produit part ensuite en synthèse vocale (fournisseur configuré — OpenAI ou Mistral —,
+sinon `espeak` en local). Chez OpenAI, les `instructions` du bloc `tts` de `providers.json`
+dirigent la diction — ton, débit, émotion, prononciation ; chez Mistral, tout se joue dans
+le choix de la voix.
 Ces consignes ne sont **pas** envoyées quand la variable est vide : les modèles de synthèse plus
 anciens, `tts-1` en tête, rejettent les paramètres qu'ils ne connaissent pas.
 
@@ -287,29 +289,29 @@ lu, rien noté, rien dépensé, et le journal ne dirait que des zéros là où s
 
 ### Comment le coût est rattaché à une catégorie
 
-Les appels partent du fond de `llm.py`, qui n'a aucune raison de savoir quelle catégorie est en
+Les appels partent du fond d'un `LLMProvider`, qui n'a aucune raison de savoir quelle catégorie est en
 cours — et lui faire passer la catégorie polluerait la signature de toute la chaîne. `digest.py`
-ouvre donc un `runlog.category_scope` autour de la construction de chaque catégorie, et `llm.py`
+ouvre donc un `runlog.category_scope` autour de la construction de chaque catégorie, et `LLMProvider`
 y dépose ce qu'il apprend : le bloc `usage` d'une complétion, le texte envoyé pour une synthèse.
 Le pipeline est séquentiel — une catégorie à la fois —, ce qui rend cet état de module suffisant.
-Hors de tout scope (par exemple `python -m rssresume.processing`), l'enregistrement est un no-op.
+Hors de tout scope (par exemple `python -m rssresume.llm.processing`), l'enregistrement est un no-op.
 
 ### Les trois postes de dépense
 
-`llm.ChatProfile.label` nomme déjà chaque type d'appel ; le journal les range sous trois postes :
+Les quatre actions d'un `LLMProvider` se rangent sous trois postes :
 
-| Poste | Types d'appel | Facturé sur | Nombre d'appels |
+| Poste | Actions | Facturé sur | Nombre d'appels |
 | --- | --- | --- | --- |
 | `scoring` | `scoring` | tokens d'entrée + de sortie | un par lot de 40 articles **à noter** |
-| `resume` | `digest`, `article summary` | tokens d'entrée + de sortie | un seul pour toute la catégorie |
+| `resume` | `digest`, `article` | tokens d'entrée + de sortie | un seul pour toute la catégorie |
 | `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un seul pour toute la catégorie |
 
 **Un appel par poste n'est donc pas une remontée partielle** : c'est le fonctionnement nominal.
-Le scoring envoie ses articles par lots de 40 (`processing.SCORING_BATCH_SIZE`), et n'y met que
+Le scoring envoie ses articles par lots de 40 (`llm.prompts.SCORING_BATCH_SIZE`), et n'y met que
 ceux dont la note n'a pas été relue des tags — une catégorie de 19 articles tient en un appel, une
 catégorie de 19 articles tous déjà notés n'en fait aucun. Le digest et la synthèse vocale, eux,
 voient toute la sélection d'un coup : un appel chacun, quel que soit le nombre d'articles retenus.
-`article summary` n'apparaît que pour un appel direct à `summarize_top`, hors pipeline quotidien.
+`article` n'apparaît que pour un appel direct à `summarize_article`, hors pipeline quotidien.
 
 `tokens_raisonnement` est isolé bien qu'inclus dans les tokens de sortie : sur un modèle raisonnant,
 c'est lui, et non la longueur du texte rendu, qui explique la facture du digest.
@@ -317,6 +319,7 @@ c'est lui, et non la longueur du texte rendu, qui explique la facture du digest.
 ### Les prix, et ce qu'ils valent
 
 La conversion tokens → dollars vient d'une grille statique dans
+[llm/providers.json](rssresume/llm/providers.json), bloc `prices` de chaque fournisseur, lue par
 [pricing.py](rssresume/pricing.py) — donc datée, donc à revérifier : un tarif périmé s'y lit comme
 un coût réel. Deux formes de tarif cohabitent, jamais mélangées : `{"input", "output"}` en dollars
 par million de tokens, `{"characters"}` en dollars par million de caractères.
@@ -417,51 +420,104 @@ immédiatement, au résumé. Le mettre en label ferait une phrase entière dans 
 
 ## Les appels à l'IA
 
-Tout ce qui est propre au fournisseur est regroupé dans [llm.py](rssresume/llm.py) : forme des
-requêtes, extraction des réponses, et les réglages par type d'appel.
+Un **fournisseur est un objet**. Il reçoit ses réglages au constructeur et sait faire
+quatre choses :
 
-| Type d'appel | Modèle par défaut | Réglage | Pourquoi ce réglage |
-| --- | --- | --- | --- |
-| `SCORING` | `gpt-4o-mini` | température 0.1 | une note doit être reproductible, sinon le seuil devient un tirage au sort |
-| `DIGEST` | `gpt-5.6-luna` | effort `medium` | ce prompt empile beaucoup de contraintes à tenir ensemble |
-| `ARTICLE_SUMMARY` | `gpt-5.6-luna` | effort `low` | factuel avant tout — la dérive coûte cher sur une CVE |
-| synthèse vocale | `gpt-4o-mini-tts` | — | consignes de diction via `OPENAI_TTS_INSTRUCTIONS` |
+```python
+provider.score_articles(articles, profil)      # -> [{id, score, thematique, angle}]
+provider.summarize_article(article, profil)    # -> str
+provider.write_digest(category, articles, …)   # -> str
+provider.speak(text)                           # -> bytes
+```
 
-**Deux familles de modèles, deux jeux de paramètres.** Un modèle classique (`gpt-4o*`, `gpt-4.1*`)
-prend `temperature` et `max_tokens`. Un modèle raisonnant (`gpt-5*`, série `o`) les **rejette en
-400** et prend `reasoning_effort` et `max_completion_tokens`. `llm.chat` choisit d'après le modèle
-**effectif** — celui de la configuration, pas celui du profil — ce qui permet aux deux familles de
-cohabiter : la notation reste classique pendant que le digest raisonne.
+C'est tout ce que le reste du projet appelle : jamais un endpoint, jamais un payload.
+`DigestService` reçoit ces objets en collaborateurs, comme il reçoit déjà son client
+FreshRSS et son expéditeur d'email — et `None` là où la clé manque, ce qui fait
+retomber le résumé sur l'extractif local et la voix sur `espeak`.
 
-Deux pièges que cela évite :
+### Où vit quoi
 
-- **Le plafond de sortie n'a pas le même sens.** Chez un modèle raisonnant, il inclut les tokens
-  de raisonnement, absents de la réponse : réutiliser les 512 tokens du résumé d'article ferait
-  tronquer avant le premier mot écrit. D'où un `reasoning_max_tokens` distinct, plus large.
-- **L'effort se paie en sortie.** `none` sur la notation, `low` sur le résumé d'article : le
-  raisonnement n'y apporte rien et serait facturé au tarif de sortie.
+| | |
+| --- | --- |
+| [llm/providers.json](rssresume/llm/providers.json) | les **valeurs** : endpoint, modèle et réglages par action, voix, format, tarifs. Aucun code, aucun secret. |
+| [llm/providers.py](rssresume/llm/providers.py) | la **lecture** de ces valeurs, et le choix du fournisseur par action. Rend un `Settings`, un objet de valeurs sans comportement. |
+| [llm/prompts.py](rssresume/llm/prompts.py) | les **prompts**. Le même texte part chez tous les fournisseurs. |
+| [llm/base.py](rssresume/llm/base.py) | `LLMProvider` : les quatre opérations, le transport, la comptabilité — tout ce qui ne dépend pas du fournisseur. Et la fabrique. |
+| [llm/openai.py](rssresume/llm/openai.py) · [llm/mistral.py](rssresume/llm/mistral.py) | ce qui diffère **vraiment** : quatre méthodes courtes chacune. |
 
-Le modèle de notation, lui, entre dans l'empreinte du prompt de scoring : en changer renote tout
-l'historique. C'est une raison de plus de le laisser où il est tant qu'il fait le travail.
+Une sous-classe ne redéfinit que `chat_payload`, `read_chat`, `speech_payload` et
+`read_speech`. Découper le lot de notation, assembler les prompts, réaligner les notes,
+enregistrer le coût : tout cela est écrit une fois, dans la classe de base. Un troisième
+fournisseur, c'est un fichier de plus et un bloc dans `providers.json`.
 
-Les modules métier n'échangent que du texte et des octets avec `llm.py` : basculer sur un autre
-fournisseur ne demande de réécrire que ce module.
+Dans l'environnement il ne reste que les secrets et l'aiguillage :
+`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `RSSRESUME_PROVIDER`, `RSSRESUME_<ACTION>_PROVIDER`.
+Chaque action résout **sa** clé : sans `MISTRAL_API_KEY`, une action confiée à Mistral
+retombe sur le local plutôt que d'emprunter celle d'OpenAI — un 401 au mieux, une clé
+promenée au pire.
+
+### Les réglages livrés
+
+| Action | OpenAI | Mistral |
+| --- | --- | --- |
+| `scoring` | `gpt-4o-mini`, température 0.1 | `mistral-small-latest`, température 0.1 |
+| `article` | `gpt-5.6-luna`, effort `low` | `mistral-medium-latest`, température 0.3 |
+| `digest` | `gpt-5.6-luna`, effort `medium` | `mistral-medium-latest`, température 0.4 |
+| `tts` | `gpt-4o-mini-tts`, voix `alloy` | `voxtral-mini-tts-2603`, voix `fr_marie_curious` |
+
+Une note doit être reproductible, sinon le seuil devient un tirage au sort : d'où une
+température basse et un modèle classique côté notation. Le digest, lui, empile beaucoup
+de contraintes à tenir ensemble, ce qui justifie l'effort `medium` là où il existe.
+
+### Ce que les deux dialectes ne partagent pas
+
+**Deux familles de modèles chez OpenAI, deux jeux de paramètres.** Un modèle classique
+(`gpt-4o*`, `gpt-4.1*`) prend `temperature` et `max_tokens`. Un modèle raisonnant
+(`gpt-5*`, série `o`) les **rejette en 400** et prend `reasoning_effort` et
+`max_completion_tokens`. `OpenAIProvider.chat_payload` tranche d'après le modèle, ce qui
+laisse les deux familles cohabiter : la notation reste classique pendant que le digest
+raisonne. Deux pièges que cela évite :
+
+- **Le plafond de sortie n'a pas le même sens.** Chez un modèle raisonnant, il inclut les
+  tokens de raisonnement, absents de la réponse : 512 tokens feraient tronquer avant le
+  premier mot écrit. D'où les 4096 du bloc `article` dans `providers.json`.
+- **L'effort se paie en sortie.** `low` sur le résumé d'article : le raisonnement n'y
+  apporte rien et serait facturé au tarif de sortie.
+
+**Mistral ne connaît ni l'un ni l'autre.** `reasoning_effort` et `max_completion_tokens`
+y font un 400 : `MistralProvider` ne les envoie jamais et ignore `effort`, volontairement.
+Il rattrape en revanche `model_length` en plus de `length` comme cause de troncature.
+
+**Et sa synthèse vocale n'est pas compatible du tout.** Le champ s'appelle `voice_id` et
+non `voice`, le format `response_format` et non `format`, il n'existe pas de champ de
+consignes de diction, et la réponse est un objet JSON dont l'audio est encodé en base64
+plutôt que le fichier lui-même. `speak()` rend des octets dans les deux cas : c'est
+l'adaptateur qui déballe. C'est cet écart-là, plus que les complétions, qui justifie
+d'avoir séparé les dialectes.
+
+La voix étant le seul réglage de diction chez Mistral, tout ce qui relevait des
+`instructions` d'OpenAI — rythme, pauses, prononciation des sigles — repose alors sur le
+texte du résumé, donc sur les prompts de `llm/prompts.py`, qui écrivent déjà pour l'oreille.
+
+Le modèle de notation entre dans l'empreinte du prompt de scoring : en changer renote
+tout l'historique. Changer de fournisseur pour la notation en change donc aussi le
+modèle, et déclenche la même renotation — c'est voulu, deux modèles ne notent pas pareil.
 
 ## Ce qui n'est pas branché
 
-`processing.summarize_top()` produit un résumé de 3 à 4 phrases **par article**, sur le texte
-intégral. Il n'est appelé par aucune étape du pipeline : le digest quotidien passe par
+`LLMProvider.summarize_article()` produit un résumé de 3 à 4 phrases **par article**, sur le
+texte intégral. Il n'est appelé par aucune étape du pipeline : le digest quotidien passe par
 `SummaryGenerator`, qui produit un texte unique par catégorie destiné à l'audio.
 
-`summarize_top` reste utilisable seul, et c'est le seul consommateur de `ARTICLE_SUMMARY` et de
-`OPENAI_ARTICLE_MODEL` :
+C'est le seul consommateur de l'action `article`, et donc de `RSSRESUME_ARTICLE_PROVIDER`.
+La démonstration autonome de `llm/processing.py` l'exerce de bout en bout :
 
 ```bash
-python -m rssresume.processing   # démonstration sur trois articles en dur, nécessite OPENAI_API_KEY
+python -m rssresume.llm.processing   # démonstration sur trois articles en dur, nécessite la clé du fournisseur actif
 ```
 
-Il serait la brique naturelle d'un email détaillé listant chaque article retenu avec son résumé,
-en complément de l'audio. Ce n'est pas fait aujourd'hui.
+Elle serait la brique naturelle d'un email détaillé listant chaque article retenu avec son
+résumé, en complément de l'audio. Ce n'est pas fait aujourd'hui.
 
 ## Trace d'exécution
 
@@ -476,7 +532,7 @@ FreshRSS : authentifié en tant que mon-utilisateur
   scoring : 2 score(s) relu(s) des tags, 2 à calculer, dont 1 à renoter (prompt modifié)
   sélection : 2 article(s) retenu(s) sur 4 (seuil 7)
   résumé via l'API gpt-4o-mini (2 article(s))
-  synthèse vocale via l'API gpt-4o-mini-tts (voix alloy)
+  synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : nettoyage de 2 tag(s) de scoring obsolète(s)
 FreshRSS : notation de 2 article(s) sur 2 valeur(s) de score et 1 thématique(s)
@@ -498,17 +554,22 @@ une synthèse.
 ```mermaid
 flowchart LR
     CLI[cli.py] --> DIG[digest.py<br/>orchestration]
-    DIG --> FR[freshrss.py]
-    DIG --> PR[processing.py<br/>scoring]
+    DIG --> FR[external/freshrss.py]
     DIG --> SU[summaries.py]
     DIG --> AU[audio.py]
-    DIG --> MA[mailer.py]
+    DIG --> MA[external/mailer.py]
     DIG --> RL[runlog.py<br/>journal .log.json]
-    PR --> LLM[llm.py<br/>adaptateur fournisseur]
-    SU --> LLM
-    AU --> LLM
-    LLM -->|usage, caractères| RL
-    RL --> PRI[pricing.py<br/>grille de tarifs]
+    DIG --> SC[LLMProvider<br/>scorer]
+    SU --> LLMP[LLMProvider<br/>digest]
+    AU --> TTS[LLMProvider<br/>voix]
+    SC & LLMP & TTS --> BASE[llm/base.py<br/>opérations + transport]
+    BASE --> OAI[llm/openai.py]
+    BASE --> MIS[llm/mistral.py]
+    BASE --> PRO[llm/prompts.py]
+    BASE -->|usage, caractères| RL
+    CFG[llm/providers.py<br/>+ providers.json] -.->|Settings injectés| BASE
+    RL --> PRI[pricing.py]
+    CFG -.->|prix| PRI
 ```
 
 `digest.py` ne connaît ses collaborateurs qu'à travers les contrats de

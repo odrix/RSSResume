@@ -9,10 +9,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from rssresume import console
 from rssresume.config import AppConfig
 from rssresume.models import Article, Note
-from rssresume.text import strip_html
+from rssresume.tools import console
+from rssresume.tools.text import strip_html
 
 API_ROOT = "/api/greader.php"
 LABEL_STREAM_PREFIX = "user/-/label/"
