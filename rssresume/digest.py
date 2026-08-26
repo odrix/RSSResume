@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import pathlib
 
-from rssresume import console, processing
+from rssresume import console, processing, runlog
 from rssresume.audio import audio_extension
 from rssresume.config import AppConfig
 from rssresume.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
@@ -106,8 +106,43 @@ class DigestService:
         day_dir: pathlib.Path,
         write_tags: bool = True,
     ) -> CategoryDigest:
-        articles = self._freshrss_client.fetch_daily_articles(category, day)
+        """Construit la catégorie sous son journal : scores, coûts et suivi sont écrits ensuite.
+
+        Le journal est ouvert ici et non dans `run` : il est indexé par catégorie, et
+        c'est ce qui permet aux appels au fournisseur — partis du fond de `llm.py` — de
+        se ranger sous la bonne, sans que rien n'ait à leur transmettre la catégorie.
+        """
         slug = slugify(category)
+        with runlog.category_scope(category, slug, day, day_dir, self._parametres()) as journal:
+            digest = self._build_category(category, day, day_dir, slug, write_tags, journal)
+            journal.set_digest(digest)
+            return digest
+
+    def _parametres(self) -> dict:
+        """Les réglages qui expliquent le contenu du journal, relus sans la config."""
+        return {
+            "seuil": self._config.score_threshold,
+            "plafond": self._config.max_digest_items,
+            "langue": self._config.summary_language,
+            "ia": self._config.uses_llm,
+            "modele_resume": self._config.summary_model,
+            "modele_tts": self._config.tts_model,
+            "voix_tts": self._config.tts_voice,
+            # L'empreinte du prompt de scoring : deux journaux dont elle diffère n'ont
+            # pas noté leurs articles contre le même profil, et ne se comparent pas.
+            "empreinte_scoring": processing.scoring_prompt_digest(self._config.profil),
+        }
+
+    def _build_category(
+        self,
+        category: str,
+        day: dt.date,
+        day_dir: pathlib.Path,
+        slug: str,
+        write_tags: bool,
+        journal: runlog.CategoryJournal,
+    ) -> CategoryDigest:
+        articles = self._freshrss_client.fetch_daily_articles(category, day)
         console.category(category, f"{len(articles)} article(s)")
 
         if not articles:
@@ -122,6 +157,9 @@ class DigestService:
             )
 
         notes, new_notes, stale = self._score(articles)
+        # Le journal veut toutes les notes, pas seulement celles calculées : c'est la
+        # seule vue où un score relu des tags et un score frais se lisent côte à côte.
+        journal.set_notes(notes, new_notes)
         selected = self._select(articles, notes)
 
         if not selected:

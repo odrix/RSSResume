@@ -115,7 +115,7 @@ class AppConfig:
             profil=load_profil(),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
-            summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-4o-mini"),
+            summary_model=_env("OPENAI_SUMMARY_MODEL", "gpt-5.6-luna"),
             tts_model=_env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             tts_voice=_env("OPENAI_TTS_VOICE", "alloy"),
             tts_instructions=_env_text("OPENAI_TTS_INSTRUCTIONS"),

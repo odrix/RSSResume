@@ -10,7 +10,7 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 4. sélection des articles au-dessus du seuil, puis regroupement par thématique pour l'écoute
 5. pour les avis de vulnérabilité trop courts, lecture de la page de l'avis pour en avoir le détail
 6. résumé texte de la sélection, en prose continue, sans lien ni liste (le texte part en audio),
-   chaque sujet attribué au nom de son flux entre parenthèses
+   ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
 7. synthèse audio par catégorie (API OpenAI-compatible si configurée, sinon `espeak` en local)
 8. écriture des tags de la catégorie : `score-NN`, `theme-<thematique>`, `scoring-<hash>`,
    `digested` sur les retenus
@@ -41,9 +41,14 @@ Un sous-répertoire par journée, au format `yyyy-MM-dd` :
 output/
 └── 2026-08-23/
     ├── tech.mp3             # catégorie avec articles retenus (.wav sans API OpenAI)
-    ├── news.no-article      # catégorie vide, fichier de taille nulle
-    └── culture.no-article   # articles lus, aucun retenu : la liste des scores
+    ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
+    ├── culture.no-article   # articles lus, aucun retenu : la liste des scores
+    ├── culture.log.json     # les scores obtenus et le scoring déjà payé
+    └── news.no-article      # catégorie vide : pas de journal, il ne dirait que des zéros
 ```
+
+Toute catégorie qui a lu au moins un article a son **journal** `<categorie>.log.json` — y
+compris sans sélection, et même après une erreur en cours de route.
 
 Le marqueur d'une catégorie dont rien n'a passé le seuil ressemble à ceci :
 
@@ -56,6 +61,61 @@ Aucun article retenu sur 3 (seuil 7).
 ```
 
 Seuls les fichiers audio sont joints à l'email.
+
+### Le journal d'une catégorie
+
+`<categorie>.log.json` fixe ce qu'une exécution finie ne conservait nulle part :
+
+| Bloc | Contenu |
+| --- | --- |
+| `articles` | tous les articles lus, les mieux notés en tête : score, thématique, angle, retenu ou non, et si la note a été calculée ou relue des tags |
+| `couts` | le coût des appels IA, détaillé **par typologie** — somme des scorings, somme des résumés, somme de la synthèse vocale — puis appel par appel |
+| `parametres`, `resultat` | seuil, plafond, modèles, empreinte de scoring ; statut, compteurs, fichier produit |
+
+```json
+{
+  "categorie": "Tech",
+  "date": "2026-08-23",
+  "parametres": { "seuil": 7, "plafond": 12, "modele_resume": "gpt-5.6-luna", "…": "…" },
+  "resultat": { "statut": "audio", "articles": 24, "retenus": 5, "audio": "tech.mp3", "…": "…" },
+  "couts": {
+    "devise": "USD",
+    "total": 0.014327,
+    "tarification_complete": true,
+    "modeles_sans_tarif": [],
+    "par_typologie": {
+      "scoring": { "appels": 1, "tokens_entree": 4820, "tokens_sortie": 611, "cout": 0.001089 },
+      "resume":  { "appels": 1, "tokens_entree": 39104, "tokens_sortie": 812, "cout": 0.013118 },
+      "tts":     { "appels": 1, "caracteres": 3187, "cout": 0.000120 }
+    },
+    "appels": [ "… le détail de chaque appel …" ]
+  },
+  "articles": [ "… un objet par article lu …" ]
+}
+```
+
+**Un appel par poste, ce n'est pas une remontée partielle.** Le scoring part par lots de 40
+articles : une catégorie de 19 articles tient en un appel. Le résumé et la synthèse vocale, eux,
+sont produits en un seul appel pour toute la catégorie, quel qu'en soit le nombre d'articles
+retenus. `appels` monte donc à 2 pour le scoring à partir du 41ᵉ article, et reste à 1 partout
+ailleurs.
+
+Les prix viennent d'une grille statique ([pricing.py](rssresume/pricing.py)), **à revérifier** :
+un tarif périmé s'y lit comme un coût réel. Un modèle absent de la grille n'est pas facturé à zéro :
+son coût passe à `null`, son nom est listé dans `modeles_sans_tarif`, `tarification_complete` passe
+à `false`, et le total de son poste comme le total général passent à `null` eux aussi — une somme
+partielle se lit exactement comme une somme complète. Un nom daté (`gpt-4o-mini-2024-07-18`) retombe
+sur sa famille, mais un simple préfixe commun ne suffit pas : `gpt-5.6-luna` n'est pas `gpt-5`, et
+n'est donc pas tarifé par défaut.
+`RSSRESUME_PRICES` complète ou corrige la grille sans toucher au code :
+
+```bash
+RSSRESUME_PRICES='{"gpt-5.6-luna": {"input": 1.25, "output": 10.00}}'
+```
+
+La synthèse vocale ne renvoie aucun compteur de tokens : son coût est exact quand le modèle est
+facturé au caractère (`tts-1`), estimé à partir du texte envoyé sinon (`gpt-4o-mini-tts`), et
+l'appel porte alors `"cout_estime": true`.
 
 ## Configuration
 
@@ -75,11 +135,16 @@ Variables optionnelles :
 - `RSSRESUME_PROFILE_FILE=profil.txt` — le même, dans un fichier
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
 - `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
+- `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `pricing.py`
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
-- `OPENAI_SUMMARY_MODEL=gpt-4o-mini` — résumé audio d'une catégorie
+- `OPENAI_SUMMARY_MODEL=gpt-5.6-luna` — résumé audio d'une catégorie
 - `OPENAI_SCORING_MODEL=gpt-4o-mini` — notation des articles
-- `OPENAI_ARTICLE_MODEL=gpt-4o` — résumé par article (`summarize_top`, hors pipeline)
+- `OPENAI_ARTICLE_MODEL=gpt-5.6-luna` — résumé par article (`summarize_top`, hors pipeline)
+
+  Les modèles raisonnants (`gpt-5*`, série `o`) et les modèles classiques (`gpt-4o*`,
+  `gpt-4.1*`) n'acceptent pas les mêmes paramètres ; `llm.py` choisit le bon jeu d'après le
+  modèle effectif, donc les deux familles peuvent cohabiter dans la même exécution.
 - `OPENAI_TTS_MODEL`
 - `OPENAI_TTS_VOICE`
 - `OPENAI_TTS_INSTRUCTIONS` — consignes de diction (ton, débit, émotion), pour les modèles
@@ -185,6 +250,8 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `digest.py` | orchestration du digest quotidien |
 | `cli.py` | arguments, assemblage des composants, `main()` |
 | `console.py` | suivi d'exécution affiché dans la console |
+| `pricing.py` | grille de tarifs des modèles et calcul du coût d'un appel |
+| `runlog.py` | journal `<categorie>.log.json` : articles, scores et coûts par catégorie |
 
 Les tests suivent le même découpage (`tests/test_<module>.py`, doublures partagées dans `tests/support.py`).
 

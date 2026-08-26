@@ -102,17 +102,46 @@ class PromptTests(unittest.TestCase):
 
         self.assertIn("UN SEUL sujet", prompt)
         self.assertIn("Ne produis jamais deux passages distincts pour le même fait", prompt)
-        # Fusionner ne veut pas dire taire les sources qui ont couvert le fait.
-        self.assertIn("les sources qui l'ont couvert", prompt)
+        # Fusionner garde ce que chaque dépêche apporte de plus, sans les nommer.
+        self.assertIn("ce que chaque article apporte de plus", prompt)
 
-    def test_prompt_attributes_subjects_to_the_feed_name_not_the_url(self):
-        """Le nom du flux est dans le contexte, l'URL non : elle serait inventée."""
+    def test_prompt_never_names_the_publishing_media(self):
+        """Le média n'est pas l'information : ni consigne de le citer, ni flux dans le contexte."""
         prompt = self._prompt([make_article(url="https://example.com/secret-path")])
 
-        self.assertIn("le nom du flux entre parenthèses", prompt)
-        self.assertIn("Jamais d'URL", prompt)
-        # Le nom du flux, lui, doit bien être fourni au modèle : c'est ce qu'il doit citer.
-        self.assertIn('"feed": "Feed"', prompt)
+        self.assertIn("Ne nomme jamais le média", prompt)
+        self.assertIn("ni sous la forme « selon X »", prompt)
+        # Le nom du flux ne part pas au modèle : ce qu'il n'a pas, il ne peut pas le dire.
+        self.assertNotIn('"feed"', prompt)
+        self.assertNotIn("Feed", prompt)
+
+    def test_an_organisation_acting_in_the_news_is_not_a_source(self):
+        """Taire les médias ne doit pas faire taire l'ANSSI quand c'est elle qui publie l'avis."""
+        prompt = self._prompt([make_article()])
+
+        self.assertIn("n'est pas une source", prompt)
+        self.assertIn("l'ANSSI qui publie un avis", prompt)
+
+    def test_prompt_asks_for_a_spoken_rhythm(self):
+        """Voix plate à l'écoute : c'est la phrase écrite qu'il faut rythmer, pas le TTS."""
+        prompt = self._prompt([make_article()])
+
+        self.assertIn("alterne des phrases courtes et des phrases longues", prompt)
+        self.assertIn("Pas de parenthèses", prompt)
+        self.assertIn("Varie les débuts de phrase", prompt)
+
+    def test_prompt_opens_and_closes_on_the_day_itself(self):
+        """Une phrase d'accueil et une de sortie, jugées sur la journée, pour un seul auditeur."""
+        prompt = self._prompt([make_article()])
+
+        self.assertIn("Ouvre par UNE seule phrase courte", prompt)
+        self.assertIn("elle n'est jamais la même d'un jour à l'autre", prompt)
+        self.assertIn("Termine par UNE seule phrase courte", prompt)
+        self.assertIn("qui découle des sujets du jour", prompt)
+        # Une seule personne écoute : ni « bonjour à tous », ni « nous ».
+        self.assertIn("Tu t'adresses à une seule personne", prompt)
+        # Les deux phrases ne doivent pas se recouvrir.
+        self.assertIn("ne doivent pas dire la même chose", prompt)
 
     def test_each_cve_stays_a_subject_of_its_own(self):
         """La règle de fusion écrasait les CVE entre elles : on y perdait produit et version."""
@@ -126,6 +155,11 @@ class PromptTests(unittest.TestCase):
             "si elle est déjà exploitée, et ce qu'il y a à faire",
             prompt,
         )
+        # Le nom commercial exact et les versions : c'est là-dessus que l'auditeur
+        # décide s'il est concerné, et c'est ce qui manquait à l'écoute.
+        self.assertIn("sous leur nom commercial exact", prompt)
+        self.assertIn("la plage touchée ET la version corrigée", prompt)
+        self.assertIn("quand l'avis ne donne pas les versions", prompt)
 
     def test_merging_applies_to_the_same_fact_not_the_same_topic(self):
         prompt = self._prompt([make_article()])

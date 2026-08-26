@@ -54,7 +54,24 @@ STYLE_INSTRUCTION = (
     "jamais de titre ni d'intertitre, aucun Markdown. "
     "Le texte est lu à voix haute : ne cite aucune URL, aucun nom de domaine, aucune adresse de "
     "site, et ne renvoie pas vers « le lien » ou « la source en description ». "
-    "Commence directement par le premier sujet, sans « voici le résumé du jour »."
+    "Tu t'adresses à une seule personne, celle du profil, qui écoute seule : dis « vous », "
+    "jamais « bonjour à tous » ni « chers auditeurs », et jamais « nous »."
+)
+
+#: Le texte part tel quel en synthèse vocale : ce qui se lit bien à l'œil — incises,
+#: parenthèses, longues chaînes de compléments — s'entend comme un débit plat. Le
+#: rythme se joue ici, dans la phrase, pas dans les consignes de diction.
+RHYTHM_INSTRUCTION = (
+    "Écris pour l'oreille, en cherchant le rythme : alterne des phrases courtes et des phrases "
+    "longues, et coupe toute phrase qui dépasse une trentaine de mots. Pas de parenthèses, pas "
+    "d'incises entre tirets, pas de propositions relatives empilées, pas de longues chaînes de "
+    "compléments de nom : une idée par phrase, le sujet et le verbe tôt, et l'information qui "
+    "compte en fin de phrase, là où la voix appuie. Utilise les mots de liaison de l'oral — "
+    "« du coup », « en clair », « à noter », « côté X » — plutôt que « par ailleurs » ou "
+    "« en outre ». Varie les débuts de phrase : deux phrases de suite qui commencent pareil "
+    "s'entendent immédiatement. Écris les nombres et les dates comme on les prononce — « quinze "
+    "pour cent », « le 3 mars », pas « 15 % » ni « 03/03 ». Les identifiants de vulnérabilité et "
+    "les numéros de version font exception : ils restent écrits tels quels, la diction s'en charge."
 )
 
 ANGLE_INSTRUCTION = (
@@ -70,19 +87,22 @@ ORDER_INSTRUCTION = (
     "une transition d'une poignée de mots."
 )
 
-SOURCE_INSTRUCTION = (
-    "Attribue chaque sujet à sa ou ses sources : donne le nom du flux entre parenthèses, repris "
-    "à l'identique du champ « feed » — « … (CERT-FR) », ou « … (CERT-FR, LeMagIT) » quand "
-    "plusieurs flux ont couvert le même fait. Jamais d'URL, jamais de nom de domaine, et jamais "
-    "un nom de flux absent des articles reçus : le champ « feed » est la seule source de vérité, "
-    "tout le reste serait inventé. La parenthèse ne s'entend pas à l'oral, elle est lue comme "
-    "une courte pause : la phrase doit rester correcte sans elle."
+#: L'auditeur ne veut pas savoir qui a publié : le média n'est pas l'information, et
+#: « … (CERT-FR, LeMagIT) » toutes les trois phrases hachait le texte à l'écoute. Les
+#: sources restent dans l'email, sous le résumé, où elles se lisent au lieu de s'entendre.
+NO_SOURCE_INSTRUCTION = (
+    "Ne nomme jamais le média, le flux, le site ni le journaliste qui a publié l'information : "
+    "ni entre parenthèses, ni en incise, ni sous la forme « selon X » ou « d'après X ». "
+    "L'auditeur veut le fait, pas qui l'a rapporté. "
+    "Une organisation nommée parce qu'elle EST l'acteur du fait — l'ANSSI qui publie un avis, "
+    "la CNIL qui sanctionne, un éditeur qui corrige son produit — n'est pas une source : "
+    "elle se dit normalement, c'est le sujet de la phrase."
 )
 
 MERGE_INSTRUCTION = (
     "Plusieurs articles peuvent couvrir le même événement depuis des sources différentes. "
-    "Traite-les comme UN SEUL sujet : le fait dit une seule fois, les sources qui l'ont couvert "
-    "nommées ensemble, et ce que chacune apporte de plus gardé au même endroit. Ne produis jamais "
+    "Traite-les comme UN SEUL sujet : le fait dit une seule fois, et ce que chaque article apporte "
+    "de plus gardé au même endroit. Ne produis jamais "
     "deux passages distincts pour le même fait, même quand les titres, les angles ou les "
     "formulations diffèrent. Les paliers de longueur ci-dessus se comptent en sujets après fusion, "
     "pas en articles reçus. "
@@ -98,19 +118,46 @@ CVE_INSTRUCTION = (
     "même phrase, même publiées le même jour, par la même source, sur le même produit. "
     "Pour chacune, dis simplement, dans cet ordre : l'identifiant, le produit et les versions "
     "touchés, ce que la faille permet, si elle est déjà exploitée, et ce qu'il y a à faire. "
+    "Nomme toujours l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit "
+    "dans l'avis, et jamais sous une catégorie — « FortiOS », pas « le pare-feu » ; « VMware "
+    "vCenter Server », pas « l'hyperviseur ». Donne les numéros de version en toutes lettres de "
+    "l'avis : la plage touchée ET la version corrigée, « les versions 7.4.0 à 7.4.4, corrigé en "
+    "7.4.5 ». C'est sur ces deux points — le nom exact et les versions — que l'auditeur décide "
+    "s'il est concerné : ils passent avant tout le reste, et une CVE sans eux ne sert à rien. "
+    "Quand l'avis nomme plusieurs produits ou plusieurs branches, cite-les tous. "
     "Une à deux phrases factuelles, sans mise en scène ni formule d'accroche, et ce quel que soit "
     "le nombre d'articles du jour — les paliers de longueur ci-dessus ne s'appliquent pas ici. "
     "Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y "
     "ces éléments plutôt que de paraphraser le titre. Ce qui n'y figure pas ne se dit pas : une "
-    "version ou une date inventée sur un avis de sécurité est pire que l'absence d'information."
+    "version ou une date inventée sur un avis de sécurité est pire que l'absence d'information — "
+    "quand l'avis ne donne pas les versions, dis-le en trois mots plutôt que de les deviner."
+)
+
+#: Une catégorie est un fichier audio à elle seule, écouté d'affilée : sans une phrase
+#: qui l'ouvre et une qui la ferme, l'auditeur tombe au milieu d'un sujet et repart au
+#: milieu d'un autre. Ces deux phrases sont jugées, pas récitées : elles disent ce que
+#: vaut la journée dans cette catégorie, ce qu'aucun gabarit ne peut faire à l'avance.
+OPENING_INSTRUCTION = (
+    "Ouvre par UNE seule phrase courte, adressée à la personne qui écoute, qui situe la journée "
+    "dans cette catégorie : combien il y a à dire, et ce qui en fait le poids — une urgence, une "
+    "gravité, une surprise, ou au contraire une journée calme. Cette phrase se juge sur les "
+    "articles que tu as sous les yeux, elle n'est jamais la même d'un jour à l'autre : "
+    "« Trois avis ce matin, dont un qui vous concerne directement. », « Journée creuse, un seul "
+    "sujet mais il compte. », « Beaucoup de bruit aujourd'hui, rien d'urgent. » "
+    "Pas de salutation, pas de « voici le résumé du jour », pas de « dans cette catégorie », pas "
+    "d'annonce du plan. Enchaîne ensuite directement sur le premier sujet."
 )
 
 CLOSING_INSTRUCTION = (
-    "Termine par une formule de fin très courte, du genre « Bonne journée. » ou « C'est terminé "
-    "pour aujourd'hui. ». Pas de conclusion passe-partout : ni rappel que la sécurité est un "
-    "enjeu, ni appel à la vigilance, ni résumé du résumé."
+    "Termine par UNE seule phrase courte, adressée à la même personne, qui découle des sujets du "
+    "jour et d'eux seuls : ce qu'il reste à faire, ce qui est à surveiller demain, ou le fait "
+    "qu'il n'y a rien à faire — « Le correctif Fortinet, c'est la seule chose à faire "
+    "aujourd'hui. », « Rien qui demande une action de votre part. », « À suivre demain, la "
+    "décision de la CNIL. » "
+    "Pas de conclusion passe-partout : ni rappel que la sécurité est un enjeu, ni appel à la "
+    "vigilance, ni « restez attentif », ni résumé du résumé, ni « bonne journée » seul. "
+    "Cette phrase et la phrase d'ouverture ne doivent pas dire la même chose."
 )
-
 
 class SummaryGenerator:
     def __init__(self, config: AppConfig):
@@ -154,11 +201,10 @@ class SummaryGenerator:
         """
         payload = {
             "title": article.title,
-            # Le nom du flux est ce que le résumé doit citer entre parenthèses.
-            "feed": article.feed_title,
-            # Aucune URL ici : le modèle n'a pas à en restituer, et une URL vue dans le
-            # contexte est une URL qu'il peut recopier de travers. Les liens de l'email
-            # viennent de `CategoryDigest.links`, pas du texte produit par le modèle.
+            # Ni URL ni nom de flux : ce qui n'est pas dans le contexte ne peut pas être
+            # prononcé. L'auditeur ne veut pas du média, et une URL vue dans le contexte
+            # est une URL que le modèle peut recopier de travers. Les liens et les sources
+            # de l'email viennent de `CategoryDigest.links`, pas du texte produit ici.
             "content": article.content_text,
         }
         if note:
@@ -174,6 +220,8 @@ class SummaryGenerator:
             f"en {self._config.summary_language}.\n\n"
             + STYLE_INSTRUCTION
             + "\n"
+            + RHYTHM_INSTRUCTION
+            + "\n"
             + self._depth_instruction(article_count)
             + "\n"
             + ANGLE_INSTRUCTION
@@ -182,9 +230,11 @@ class SummaryGenerator:
             + "\n"
             + MERGE_INSTRUCTION
             + "\n"
-            + SOURCE_INSTRUCTION
+            + NO_SOURCE_INSTRUCTION
             + "\n"
             + CVE_INSTRUCTION
+            + "\n"
+            + OPENING_INSTRUCTION
             + "\n"
             + CLOSING_INSTRUCTION
             + "\n\nArticles:\n"
@@ -211,8 +261,9 @@ class SummaryGenerator:
         ]
         for article in articles[:FALLBACK_ARTICLES]:
             excerpt = article.content_text[:FALLBACK_EXCERPT_LENGTH].rstrip()
-            lead = f"{article.title}, via {article.feed_title}"
-            sentences.append(f"{lead} : {excerpt}." if excerpt else f"{lead}.")
+            # Pas plus de nom de flux ici que dans la version IA : la règle vient de
+            # l'auditeur, pas du moteur, et les deux textes partent au même TTS.
+            sentences.append(f"{article.title} : {excerpt}." if excerpt else f"{article.title}.")
         if len(articles) > FALLBACK_ARTICLES:
             sentences.append(
                 f"{len(articles) - FALLBACK_ARTICLES} autre(s) article(s) complètent cette catégorie."

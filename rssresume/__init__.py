@@ -13,6 +13,8 @@ Découpage par thème technique :
 - `digest`     : orchestration
 - `cli`        : arguments, assemblage et point d'entrée
 - `console`    : suivi d'exécution affiché dans la console
+- `pricing`    : grille de tarifs des modèles et coût d'un appel
+- `runlog`     : journal `<categorie>.log.json` par catégorie et par jour
 """
 
 from rssresume.audio import AudioGenerator
