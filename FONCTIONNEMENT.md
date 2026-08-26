@@ -20,8 +20,9 @@ flowchart TD
     N --> T
     F --> G[AudioGenerator<br/>synthèse vocale]
     G --> T[tags score-NN + theme + scoring-hash<br/>tag digested sur les retenus]
-    T -->|catégorie suivante| B
-    T --> H[Email<br/>audio en pièces jointes]
+    T --> J["&lt;categorie&gt;.log.json<br/>articles + scores + coûts"]
+    J -->|catégorie suivante| B
+    J --> H[Email<br/>audio en pièces jointes]
     H --> L[marquage comme lu<br/>sur tous les articles]
 
     style D fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
@@ -136,18 +137,28 @@ sa thématique et de son `angle` — la phrase du scoring qui dit en quoi l'arti
 profil. C'est l'angle à prendre, pas une phrase à recopier, et il ne coûte rien : il est produit par
 l'appel de scoring, qui a déjà eu lieu.
 
-Le texte est écrit pour être **écouté**, pas lu, ce qui dicte quatre contraintes :
+Le texte est écrit pour être **écouté**, pas lu, ce qui dicte six contraintes :
 
 - **prose continue** : des phrases enchaînées avec des transitions, jamais de puces ni de
   « premièrement, deuxièmement » — une énumération à l'oral ne s'écoute pas ;
-- **aucun lien** : l'URL des articles n'est même pas mise dans le prompt. Ce qui n'entre pas dans
-  le contexte ne peut pas ressortir dans le texte lu à voix haute — et une URL vue par le modèle
-  est une URL qu'il peut recopier de travers. L'attribution passe donc par le **nom du flux**,
-  cité entre parenthèses : « … (CERT-FR) », ou « … (CERT-FR, LeMagIT) » pour un fait couvert par
-  plusieurs sources. Le champ `feed` est la seule source de vérité ; tout nom absent des articles
-  reçus serait inventé. Les liens, eux, partent dans l'email (étape 7) ;
-- **fin brève** : « Bonne journée. » et rien de plus. La conclusion passe-partout sur l'importance
-  de la sécurité est explicitement interdite — entendue tous les jours, elle n'apporte rien ;
+- **rythme** : alternance de phrases courtes et longues, phrases coupées au-delà d'une trentaine
+  de mots, ni parenthèses ni incises ni relatives empilées, débuts de phrase variés, information
+  qui compte en fin de phrase. C'est ici que se règle une voix plate, pas dans les consignes de
+  diction : le TTS ne peut rythmer que ce que la phrase lui donne à rythmer ;
+- **ni lien ni média** : ni l'URL ni le nom du flux n'entrent dans le prompt. Ce qui n'est pas
+  dans le contexte ne peut pas ressortir dans le texte lu à voix haute — et une URL vue par le
+  modèle est une URL qu'il peut recopier de travers. Qui a publié n'intéresse pas l'auditeur, et
+  « … (CERT-FR, LeMagIT) » toutes les trois phrases hachait le texte à l'écoute. Une organisation
+  qui *agit* dans le fait — l'ANSSI qui publie un avis, la CNIL qui sanctionne — reste nommée :
+  c'est le sujet de la phrase, pas une attribution. Les liens et les sources partent dans
+  l'email (étape 7), où ils se lisent au lieu de s'entendre ;
+- **une ouverture et une clôture jugées sur la journée** : une phrase courte en tête, qui dit
+  combien il y a à dire et ce qui en fait le poids — urgence, gravité, originalité, ou journée
+  creuse — et une phrase courte en fin, qui découle des sujets du jour : ce qu'il reste à faire,
+  ce qui est à suivre demain, ou qu'il n'y a rien à faire. Les deux s'adressent à **une seule
+  personne**, celle du profil. Aucun gabarit ne convient : ces deux phrases sont un jugement sur
+  la sélection du jour, elles changent tous les jours. La conclusion passe-partout sur
+  l'importance de la sécurité reste explicitement interdite, « bonne journée » seul aussi ;
 - **longueur proportionnée au volume**, sans quoi le même texte servirait pour 3 comme pour 30
   articles :
 
@@ -164,16 +175,20 @@ transition courte — sans annoncer de rubrique, ce qui reviendrait à réintrod
 **Fusion des doublons.** Un même événement est souvent couvert par plusieurs flux : trois dépêches
 sur le même incident produisaient trois passages, dont deux redites que l'auditeur subit sans pouvoir
 sauter. Le prompt impose donc de traiter ces articles comme **un seul sujet** — le fait dit une seule
-fois, les sources qui l'ont couvert nommées ensemble, ce que chacune apporte de plus gardé au même
-endroit — et les paliers de longueur ci-dessus se comptent en sujets après fusion, pas en articles
-reçus.
+fois et ce que chaque dépêche apporte de plus gardé au même endroit — et les paliers de longueur
+ci-dessus se comptent en sujets après fusion, pas en articles reçus.
 
 **Le cas des CVE.** Les vulnérabilités sortent du régime commun : **une CVE est un sujet à elle
 seule**, jamais fondue avec une autre — même jour, même source et même produit n'y changent rien —
 et les paliers de longueur ne s'y appliquent pas. Chacune se dit en une à deux phrases factuelles,
 dans un ordre fixe : identifiant, produit et versions, ce que la faille permet, exploitée ou non,
-ce qu'il y a à faire. C'est le seul endroit du digest où la précision passe avant le style : les
-règles de prose, de fusion et de longueur diluaient exactement ce qui rend un avis utile.
+ce qu'il y a à faire. Le **nom commercial exact** de l'éditeur et du produit — « FortiOS », pas
+« le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur » — et les **numéros de version**,
+plage touchée *et* version corrigée, passent avant tout le reste : c'est là-dessus, et seulement
+là-dessus, que l'auditeur décide s'il est concerné. Quand l'avis ne les donne pas, le prompt demande
+de le dire en trois mots plutôt que de les deviner — une version inventée sur un avis de sécurité
+est pire que l'absence d'information. C'est le seul endroit du digest où la précision passe avant le
+style : les règles de prose, de fusion et de longueur diluaient exactement ce qui rend un avis utile.
 
 Un avis de vulnérabilité arrive souvent réduit à son titre :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
@@ -192,6 +207,22 @@ Le texte produit part ensuite en synthèse vocale (API OpenAI-compatible, sinon 
 `OPENAI_TTS_INSTRUCTIONS` permet de diriger la diction — ton, débit, émotion, prononciation.
 Ces consignes ne sont **pas** envoyées quand la variable est vide : les modèles de synthèse plus
 anciens, `tts-1` en tête, rejettent les paramètres qu'ils ne connaissent pas.
+
+Ce qu'on y écrit compte plus qu'il n'y paraît. Une consigne du genre « ton neutre, débit régulier »
+donne exactement ce qu'elle demande : une voix plate, sans relief d'une phrase à l'autre. Ce qui
+fonctionne, dans l'ordre d'importance :
+
+1. **nommer la situation d'écoute** — une personne, en tête à tête, pas un journal télévisé : c'est
+   ce qui change le registre en entier ;
+2. **demander explicitement la variation d'intonation**, et interdire de réciter ;
+3. **dicter la prononciation** des sigles (A.N.S.S.I. lettre à lettre), des identifiants de CVE et
+   des numéros de version — sinon `CVE-2026-1234` est lu « tiret » compris et `7.4.5` avalé ;
+4. **placer les pauses** : au changement de sujet, autour d'un numéro de version, et de part et
+   d'autre des phrases d'ouverture et de fin.
+
+Le reste du rythme n'est pas réglable ici : il vient de la phrase écrite (voir plus haut). Un texte
+fait d'incises et de compléments empilés sera monotone quelle que soit la consigne de diction.
+L'exemple complet est dans [.env.example](.env.example).
 
 ### 6. Tags de la catégorie
 
@@ -234,6 +265,81 @@ sélection n'ajoute aucun bloc.
 **Après l'envoi uniquement**, et sur **tous** les articles récupérés, pas seulement les retenus. Un
 échec d'email les laisse non lus : le passage suivant les reprend, et le cache de scoring fait qu'il
 ne repaie rien.
+
+## Le journal d'une catégorie
+
+Écrit à la fermeture de chaque catégorie, **avant** l'email et le marquage comme lu, à côté de son
+audio : `output/<jour>/<categorie>.log.json`.
+
+Il fixe ce qu'une exécution finie ne conservait nulle part :
+
+| Bloc | Contenu | Ce qu'il permet |
+| --- | --- | --- |
+| `articles` | tous les articles lus, les mieux notés en tête : score, thématique, `angle`, `retenu`, `rang_digest`, et `origine_note` (`calculee`, `tags`, `aucune`) | juger un seuil, voir ce qui est passé juste à côté, retrouver l'angle qu'a vu le résumeur |
+| `couts` | le coût par typologie d'appel — `scoring`, `resume`, `tts` — puis appel par appel | savoir où part l'argent, avant de changer de modèle |
+| `parametres`, `resultat` | seuil, plafond, modèles, empreinte de scoring ; statut, compteurs, fichier produit | savoir contre quels réglages ce journal a été produit |
+
+**Quand il est écrit.** Toute catégorie qui a lu au moins un article a le sien : avec audio, sans
+sélection, et même après une erreur en cours de route (`"statut": "interrompu"`), qui est justement
+le cas où il sert le plus. Une catégorie **sans aucun article**, elle, n'en a pas : elle n'a rien
+lu, rien noté, rien dépensé, et le journal ne dirait que des zéros là où son marqueur
+`.no-article` dit déjà tout.
+
+### Comment le coût est rattaché à une catégorie
+
+Les appels partent du fond de `llm.py`, qui n'a aucune raison de savoir quelle catégorie est en
+cours — et lui faire passer la catégorie polluerait la signature de toute la chaîne. `digest.py`
+ouvre donc un `runlog.category_scope` autour de la construction de chaque catégorie, et `llm.py`
+y dépose ce qu'il apprend : le bloc `usage` d'une complétion, le texte envoyé pour une synthèse.
+Le pipeline est séquentiel — une catégorie à la fois —, ce qui rend cet état de module suffisant.
+Hors de tout scope (par exemple `python -m rssresume.processing`), l'enregistrement est un no-op.
+
+### Les trois postes de dépense
+
+`llm.ChatProfile.label` nomme déjà chaque type d'appel ; le journal les range sous trois postes :
+
+| Poste | Types d'appel | Facturé sur | Nombre d'appels |
+| --- | --- | --- | --- |
+| `scoring` | `scoring` | tokens d'entrée + de sortie | un par lot de 40 articles **à noter** |
+| `resume` | `digest`, `article summary` | tokens d'entrée + de sortie | un seul pour toute la catégorie |
+| `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un seul pour toute la catégorie |
+
+**Un appel par poste n'est donc pas une remontée partielle** : c'est le fonctionnement nominal.
+Le scoring envoie ses articles par lots de 40 (`processing.SCORING_BATCH_SIZE`), et n'y met que
+ceux dont la note n'a pas été relue des tags — une catégorie de 19 articles tient en un appel, une
+catégorie de 19 articles tous déjà notés n'en fait aucun. Le digest et la synthèse vocale, eux,
+voient toute la sélection d'un coup : un appel chacun, quel que soit le nombre d'articles retenus.
+`article summary` n'apparaît que pour un appel direct à `summarize_top`, hors pipeline quotidien.
+
+`tokens_raisonnement` est isolé bien qu'inclus dans les tokens de sortie : sur un modèle raisonnant,
+c'est lui, et non la longueur du texte rendu, qui explique la facture du digest.
+
+### Les prix, et ce qu'ils valent
+
+La conversion tokens → dollars vient d'une grille statique dans
+[pricing.py](rssresume/pricing.py) — donc datée, donc à revérifier : un tarif périmé s'y lit comme
+un coût réel. Deux formes de tarif cohabitent, jamais mélangées : `{"input", "output"}` en dollars
+par million de tokens, `{"characters"}` en dollars par million de caractères.
+
+Un nom de modèle suivi d'un **instantané daté** (`gpt-4o-mini-2024-07-18`, `-0613`) retombe sur sa
+famille : lister toutes les dates de publication serait intenable, et elles ne changent pas le prix.
+Un suffixe qui n'est pas une date, en revanche, n'est jamais rattaché, même quand le nom commence
+par un modèle connu : `gpt-5.6-luna` commence par `gpt-5` sans être `gpt-5`, et le facturer au tarif
+de `gpt-5` rendrait un coût faux **et vraisemblable**, que rien ne signalerait.
+
+Deux garde-fous :
+
+- **Un modèle inconnu ne coûte pas zéro.** Son coût est rendu à `null`, son nom apparaît dans
+  `modeles_sans_tarif`, et `tarification_complete` passe à `false`. Le total de son poste et le
+  total général passent à `null` avec lui : pas de somme partielle, parce qu'un total amputé se
+  lit exactement comme un total complet, et que c'est un chiffre que quelqu'un reportera un jour
+  dans un tableur. Un poste sans le moindre appel, lui, vaut bien `0.0` — rien dépensé et coût
+  inconnu ne se lisent pas pareil. `RSSRESUME_PRICES`, un objet JSON du même format, complète la
+  grille sans toucher au code ; un JSON cassé y est ignoré plutôt que de faire échouer la veille.
+- **Le coût de la synthèse vocale est parfois estimé.** L'API ne renvoie aucun compteur : le texte
+  envoyé est la seule assiette. Au caractère (`tts-1`), le compte est exact ; au token
+  (`gpt-4o-mini-tts`), il est déduit du texte à quatre caractères par token, et l'appel porte
+  `"cout_estime": true`.
 
 ## Le profil de pertinence
 
@@ -314,12 +420,29 @@ immédiatement, au résumé. Le mettre en label ferait une phrase entière dans 
 Tout ce qui est propre au fournisseur est regroupé dans [llm.py](rssresume/llm.py) : forme des
 requêtes, extraction des réponses, et les réglages par type d'appel.
 
-| Type d'appel | Modèle par défaut | Température | Pourquoi ce réglage |
+| Type d'appel | Modèle par défaut | Réglage | Pourquoi ce réglage |
 | --- | --- | --- | --- |
-| `SCORING` | `gpt-4o-mini` | 0.1 | une note doit être reproductible, sinon le seuil devient un tirage au sort |
-| `DIGEST` | `gpt-4o-mini` | 0.4 | un peu de liberté de formulation pour l'oral |
-| `ARTICLE_SUMMARY` | `gpt-4o` | 0.3 | factuel avant tout — la dérive coûte cher sur une CVE |
-| synthèse vocale | `gpt-4o-mini-tts` | — | — |
+| `SCORING` | `gpt-4o-mini` | température 0.1 | une note doit être reproductible, sinon le seuil devient un tirage au sort |
+| `DIGEST` | `gpt-5.6-luna` | effort `medium` | ce prompt empile beaucoup de contraintes à tenir ensemble |
+| `ARTICLE_SUMMARY` | `gpt-5.6-luna` | effort `low` | factuel avant tout — la dérive coûte cher sur une CVE |
+| synthèse vocale | `gpt-4o-mini-tts` | — | consignes de diction via `OPENAI_TTS_INSTRUCTIONS` |
+
+**Deux familles de modèles, deux jeux de paramètres.** Un modèle classique (`gpt-4o*`, `gpt-4.1*`)
+prend `temperature` et `max_tokens`. Un modèle raisonnant (`gpt-5*`, série `o`) les **rejette en
+400** et prend `reasoning_effort` et `max_completion_tokens`. `llm.chat` choisit d'après le modèle
+**effectif** — celui de la configuration, pas celui du profil — ce qui permet aux deux familles de
+cohabiter : la notation reste classique pendant que le digest raisonne.
+
+Deux pièges que cela évite :
+
+- **Le plafond de sortie n'a pas le même sens.** Chez un modèle raisonnant, il inclut les tokens
+  de raisonnement, absents de la réponse : réutiliser les 512 tokens du résumé d'article ferait
+  tronquer avant le premier mot écrit. D'où un `reasoning_max_tokens` distinct, plus large.
+- **L'effort se paie en sortie.** `none` sur la notation, `low` sur le résumé d'article : le
+  raisonnement n'y apporte rien et serait facturé au tarif de sortie.
+
+Le modèle de notation, lui, entre dans l'empreinte du prompt de scoring : en changer renote tout
+l'historique. C'est une raison de plus de le laisser où il est tant qu'il fait le travail.
 
 Les modules métier n'échangent que du texte et des octets avec `llm.py` : basculer sur un autre
 fournisseur ne demande de réécrire que ce module.
@@ -366,6 +489,10 @@ Terminé : 4 article(s) lu(s), 2 retenu(s), 1 fichier(s) audio, 0 catégorie(s) 
 Deux des quatre articles n'ont coûté aucun appel de scoring. Le marquage comme lu porte sur les
 quatre ; le tag `digested` seulement sur les deux retenus.
 
+En face, `output/2026-08-23/tech.log.json` garde ce que ces lignes ne disent pas : les scores des
+quatre articles, l'angle retenu pour chacun, et le coût des trois appels — un scoring, un digest,
+une synthèse.
+
 ## Découpage du code
 
 ```mermaid
@@ -376,9 +503,12 @@ flowchart LR
     DIG --> SU[summaries.py]
     DIG --> AU[audio.py]
     DIG --> MA[mailer.py]
+    DIG --> RL[runlog.py<br/>journal .log.json]
     PR --> LLM[llm.py<br/>adaptateur fournisseur]
     SU --> LLM
     AU --> LLM
+    LLM -->|usage, caractères| RL
+    RL --> PRI[pricing.py<br/>grille de tarifs]
 ```
 
 `digest.py` ne connaît ses collaborateurs qu'à travers les contrats de
