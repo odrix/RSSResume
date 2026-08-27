@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import email.message
+import email.utils
 import mimetypes
 import pathlib
 import smtplib
@@ -50,6 +51,13 @@ class EmailSender:
         message["Subject"] = subject
         message["From"] = self._config.smtp_from
         message["To"] = ", ".join(self._config.smtp_to)
+        # `EmailMessage` ne pose ni `Date` ni `Message-ID`, et `send_message` non plus :
+        # un message parti sans eux est un message que la RFC 5322 dit incomplet. Certains
+        # relais les ajoutent, d'autres non — et un message sans eux arrive chez les gros
+        # fournisseurs dans les indésirables, quand il n'est pas refusé. Deux en-têtes
+        # posés ici valent mieux qu'un digest silencieusement classé.
+        message["Date"] = email.utils.formatdate(localtime=True)
+        message["Message-ID"] = email.utils.make_msgid(domain=self._domaine_expediteur())
         message.set_content(body)
 
         for attachment in attachments:
@@ -62,6 +70,16 @@ class EmailSender:
                 filename=attachment.name,
             )
         return message
+
+    def _domaine_expediteur(self) -> str | None:
+        """Le domaine de l'expéditeur, pour que le `Message-ID` en porte la marque.
+
+        `None` si l'adresse est illisible : `make_msgid` retombe alors sur le nom de la
+        machine, ce qui reste un identifiant valide.
+        """
+        _, adresse = email.utils.parseaddr(self._config.smtp_from or "")
+        _, _, domaine = adresse.rpartition("@")
+        return domaine or None
 
     def _connect(self) -> smtplib.SMTP:
         if self._config.smtp_use_ssl:
