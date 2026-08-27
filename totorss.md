@@ -160,7 +160,7 @@ sécurité" du document.
 
 ## C — Robustesse du cron
 
-### 11. Retry et backoff sur tous les appels réseau
+### 11. Retry et backoff sur tous les appels réseau ✅
 
 `urllib` + `raise` partout : un seul 429 ou 502 et le digest du jour n'existe pas.
 C'est un job nocturne sans surveillance humaine, il doit survivre à un hoquet de fournisseur.
@@ -174,7 +174,7 @@ chaque tentative via le module console. Garde-le dans un module utilitaire testa
 et ajoute des tests avec une doublure qui échoue N fois avant de réussir.
 ```
 
-### 12. Dégrader proprement sur lot de scoring incomplet
+### 12. Dégrader proprement sur lot de scoring incomplet ✅
 
 `_score_batch` lève dès que le modèle rend 39 notes sur 40, ce qui tue la catégorie en cours et
 toutes les suivantes.
@@ -189,7 +189,7 @@ renvoie AUCUNE note exploitable pour le lot. Ajoute des tests : lot complet, lot
 manquante, lot avec un id dupliqué, réponse vide.
 ```
 
-### 13. Retenter au lieu de lever sur réponse tronquée
+### 13. Retenter au lieu de lever sur réponse tronquée ✅
 
 Le garde `finish_reason == "length"` dans `llm.chat` protège d'un parsing silencieux mais tue la
 journée entière au lieu de s'adapter.
@@ -202,8 +202,8 @@ divisé par deux, récursivement jusqu'à une taille plancher de 5 articles, ava
 Garde la levée immédiate pour les autres profils. Trace chaque redécoupage.
 ```
 
-### 14. Plafonner l'entrée du chemin résumé
-
+### 14. Plafonner l'entrée du chemin résumé ✅
+ 
 Le scoring est soigneusement borné à 400 caractères par article, mais `_summarize_with_openai`
 envoie `content_text` **intégral** pour 12 articles, avec `max_tokens=None`.
 Douze articles de fond, c'est facilement 100 000 caractères en entrée, sans plafond ni garde-fou.
@@ -216,7 +216,7 @@ tronque proprement sur une frontière de phrase plutôt qu'au caractère, et don
 explicite au profil DIGEST. Trace le volume total de caractères envoyé par catégorie.
 ```
 
-### 15. Découper les journées en Europe/Paris
+### 15. Découper les journées en Europe/Paris ✅
 
 `fetch_daily_articles` borne la journée en UTC : en heure d'été, un article publié à 1 h du matin à
 Paris tombe dans la veille et n'apparaît jamais dans le bon digest.
@@ -465,7 +465,7 @@ partielles. Dis-moi surtout si le gain justifie le coût compte tenu de l'item 2
 
 1. **Aujourd'hui** — items 1 ✅, 2 ✅, 3 ✅ : trois modifications de prompt, gain de qualité immédiat.
 2. **Cette semaine** — items 8 ✅, 9 ✅, 10 ✅, 16 ✅ : sécurité et le correctif de performance le plus rentable.
-3. **Ensuite** — items 11, 12, 14, 15 : le cron devient fiable sans surveillance.
+3. **Ensuite** — items 11 ✅, 12 ✅, 14 ✅, 15 ✅ : le cron devient fiable sans surveillance.
 4. **Puis** — items 20, 21 : la qualité de l'entrée, qui conditionne tout le reste.
 5. **Quand le pipeline est stable** — items 4, 5, 6, 17, 19.
 6. **À arbitrer** — items 27, 28, 29.
