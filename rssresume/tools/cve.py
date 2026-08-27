@@ -19,7 +19,7 @@ import urllib.request
 
 from rssresume.models import Article
 from rssresume.tools import console
-from rssresume.tools.text import strip_html_document
+from rssresume.tools.text import strip_html
 
 CVE_PATTERN = re.compile(r"CVE[-\s]\d{4}[-\s]\d{4,7}", re.IGNORECASE)
 
@@ -75,4 +75,4 @@ def fetch_detail(url: str) -> str:
         # Un avis inaccessible ne doit pas faire tomber le digest du jour.
         console.detail(f"CVE : page non lue ({url}) : {exc}")
         return ""
-    return strip_html_document(raw.decode(charset, errors="replace"))[:MAX_DETAIL_LENGTH]
+    return strip_html(raw.decode(charset, errors="replace"))[:MAX_DETAIL_LENGTH]

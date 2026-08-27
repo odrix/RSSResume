@@ -27,6 +27,25 @@ def make_article(item_id):
     )
 
 
+def fetch(pages, day=dt.date(2026, 8, 23), include_read=False):
+    """Récupère une journée sur des pages simulées ; rend (articles, appels passés).
+
+    `pages` est une réponse unique ou la liste des réponses successives de l'API.
+    Chaque appel est relevé sous la forme (chemin, paramètres).
+    """
+    reponses = [pages] if isinstance(pages, dict) else list(pages)
+    appels = []
+
+    def _json_get(self, path, params=None):
+        appels.append((path, params or {}))
+        return reponses[len(appels) - 1]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = FreshRSSClient(make_config(tmpdir), include_read=include_read)
+        with mock.patch.object(FreshRSSClient, "_json_get", _json_get):
+            return client.fetch_daily_articles("Tech", day), appels
+
+
 class FreshRSSClientTests(unittest.TestCase):
     def test_list_categories_ignores_feeds_without_user_label(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -42,22 +61,61 @@ class FreshRSSClientTests(unittest.TestCase):
                 self.assertEqual(["Tech"], client.list_categories())
 
     def test_fetch_daily_articles_keeps_only_the_requested_day(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            client = FreshRSSClient(make_config(tmpdir))
-            day = dt.date(2026, 8, 23)
-            in_day = dt.datetime(2026, 8, 23, 10, 0, tzinfo=dt.timezone.utc).timestamp()
-            day_before = dt.datetime(2026, 8, 22, 23, 0, tzinfo=dt.timezone.utc).timestamp()
-            payload = {
-                "items": [
-                    {"title": "Gardé", "published": in_day, "summary": {"content": "<p>Texte</p>"}},
-                    {"title": "Trop tôt", "published": day_before},
-                ]
-            }
-            with mock.patch.object(FreshRSSClient, "_json_get", return_value=payload):
-                articles = client.fetch_daily_articles("Tech", day)
+        """Le filtre Python reste en filet : il tient la borne haute, et couvre un `ot` ignoré."""
+        day = dt.date(2026, 8, 23)
+        in_day = dt.datetime(2026, 8, 23, 10, 0, tzinfo=dt.timezone.utc).timestamp()
+        day_before = dt.datetime(2026, 8, 22, 23, 0, tzinfo=dt.timezone.utc).timestamp()
+        day_after = dt.datetime(2026, 8, 24, 1, 0, tzinfo=dt.timezone.utc).timestamp()
+        payload = {
+            "items": [
+                {"title": "Gardé", "published": in_day, "summary": {"content": "<p>Texte</p>"}},
+                {"title": "Trop tôt", "published": day_before},
+                {"title": "Trop tard", "published": day_after},
+            ]
+        }
 
-            self.assertEqual(["Gardé"], [article.title for article in articles])
-            self.assertEqual("Texte", articles[0].content_text)
+        articles, _ = fetch(payload, day=day)
+
+        self.assertEqual(["Gardé"], [article.title for article in articles])
+        self.assertEqual("Texte", articles[0].content_text)
+
+    def test_fetch_daily_articles_filters_on_the_api_side(self):
+        """Paginer tout le flux pour en garder vingt coûtait des dizaines d'appels par jour."""
+        day = dt.date(2026, 8, 23)
+
+        _, appels = fetch({"items": []}, day=day)
+
+        (_, params), = appels
+        # Borne basse de la journée, en secondes : l'API ne remonte pas plus loin.
+        self.assertEqual(str(int(dt.datetime(2026, 8, 23, tzinfo=dt.timezone.utc).timestamp())),
+                         params["ot"])
+        # Un article lu est un article déjà digéré : il n'a rien à faire dans le lot.
+        self.assertEqual(READ_STATE, params["xt"])
+
+    def test_fetch_daily_articles_repeats_the_filters_on_every_page(self):
+        """La continuation dit où reprendre, pas ce qu'on demandait : sans les filtres, la
+        deuxième page ramenait de nouveau tout le flux."""
+        pages = [
+            {"items": [{"title": "Un", "published": 0}], "continuation": "page-2"},
+            {"items": [{"title": "Deux", "published": 0}]},
+        ]
+
+        _, appels = fetch(pages)
+
+        self.assertEqual(2, len(appels))
+        premiers, seconds = (params for _, params in appels)
+        self.assertNotIn("c", premiers)
+        self.assertEqual("page-2", seconds["c"])
+        self.assertEqual(premiers["ot"], seconds["ot"])
+        self.assertEqual(premiers["xt"], seconds["xt"])
+
+    def test_include_read_asks_for_the_articles_already_read(self):
+        """Rejouer une journée close : ses articles sont lus, il faut les redemander."""
+        _, appels = fetch({"items": []}, include_read=True)
+
+        (_, params), = appels
+        self.assertNotIn("xt", params)
+        self.assertIn("ot", params)
 
 
 def capture_posts(action):

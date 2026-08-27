@@ -89,8 +89,12 @@ def theme_from_tags(tags: tuple[str, ...]) -> str | None:
 
 
 class FreshRSSClient:
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, include_read: bool = False):
         self._config = config
+        #: Par défaut, les articles déjà lus sont écartés côté serveur : le pipeline
+        #: marque comme lu ce qu'il a traité, donc un article lu est un article déjà
+        #: digéré. Rejouer une journée close, elle, demande de les redemander.
+        self._include_read = include_read
         self._auth_token: str | None = None
         self._edit_token: str | None = None
 
@@ -172,15 +176,32 @@ class FreshRSSClient:
         return sorted(categories)
 
     def fetch_daily_articles(self, category: str, day: dt.date) -> list[Article]:
+        """Les articles du jour d'une catégorie, filtrés par l'API autant qu'elle le permet.
+
+        La journée était découpée en Python *après* avoir paginé tout le flux : des dizaines
+        d'appels par catégorie pour en garder vingt. L'API Google Reader sait le faire en
+        base — `ot` borne la journée par le bas, `xt` écarte un flux d'état, ici les articles
+        déjà lus.
+
+        Le filtre Python reste derrière, en filet : il tient la borne haute, qui n'a pas de
+        paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot`. Un
+        paramètre inconnu est ignoré sans erreur : au pire on repaie la pagination d'avant,
+        jamais un article manquant.
+        """
         start = dt.datetime.combine(day, dt.time.min, tzinfo=dt.timezone.utc)
         end = start + dt.timedelta(days=1)
         stream_id = urllib.parse.quote(f"{LABEL_STREAM_PREFIX}{category}", safe="")
         path = f"{API_ROOT}/reader/api/0/stream/contents/{stream_id}"
+        filtres = {"output": "json", "n": PAGE_SIZE, "ot": str(int(start.timestamp()))}
+        if not self._include_read:
+            filtres["xt"] = READ_STATE
         items: list[Article] = []
         continuation: str | None = None
 
         while True:
-            params = {"output": "json", "n": PAGE_SIZE}
+            # Les filtres repartent à chaque page : la continuation dit où reprendre,
+            # pas ce qu'on demandait.
+            params = dict(filtres)
             if continuation:
                 params["c"] = continuation
             payload = self._json_get(path, params)

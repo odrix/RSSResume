@@ -16,7 +16,7 @@ from rssresume.summaries import SummaryGenerator
 from rssresume.tools import console
 
 
-def build_service(config: AppConfig) -> DigestService:
+def build_service(config: AppConfig, include_read: bool = False) -> DigestService:
     """Assemble le service, un fournisseur par action.
 
     C'est le seul endroit où les fournisseurs sont choisis : trois actions, trois
@@ -25,7 +25,7 @@ def build_service(config: AppConfig) -> DigestService:
     """
     return DigestService(
         config=config,
-        freshrss_client=FreshRSSClient(config),
+        freshrss_client=FreshRSSClient(config, include_read=include_read),
         scorer=llm.for_action(providers.SCORING),
         summary_generator=SummaryGenerator(
             llm.for_action(providers.DIGEST),
@@ -52,6 +52,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Leave articles unread in FreshRSS. Scores are still written, so they are not recomputed.",
     )
     parser.add_argument(
+        "--include-read",
+        action="store_true",
+        help="Fetch articles already marked as read, which the API excludes by default.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Shorthand for --no-email --no-tags --no-mark-read.",
@@ -62,8 +67,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
-    service = build_service(config)
+    service = build_service(config, include_read=args.include_read)
     day = dt.date.fromisoformat(args.date)
+    if args.include_read:
+        console.log("Articles déjà lus : inclus (--include-read)")
     send_email = not (args.dry_run or args.no_email)
     write_tags = not (args.dry_run or args.no_tags)
     mark_read = not (args.dry_run or args.no_mark_read)
