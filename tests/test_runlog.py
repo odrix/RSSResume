@@ -335,6 +335,11 @@ class PipelineTests(unittest.TestCase):
 
         parametres = journaux["tech.log.json"]["parametres"]
         self.assertEqual(7, parametres["seuil"])
+        # La règle entière, et non le seul seuil : deux catégories du même jour n'ont
+        # plus forcément le même, et le repli change ce qui est retenu.
+        self.assertEqual(5, parametres["seuil_repli"])
+        self.assertEqual(12, parametres["plafond"])
+        self.assertIn("minimum_retenus", parametres)
         # Qui fait quoi : le journal fixe le fournisseur et le modèle de chaque action.
         self.assertEqual(
             set(("scoring", "article", "digest", "tts")), set(parametres["fournisseurs"])
@@ -342,6 +347,17 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(parametres["fournisseurs"]["digest"]["modele"])
         self.assertTrue(parametres["fournisseurs"]["tts"]["voix"])
         self.assertTrue(parametres["empreinte_scoring"])
+
+
+    def test_the_journal_records_the_threshold_actually_applied(self):
+        """Sans lui, un journal replié ne dit pas pourquoi des articles à cinq sont retenus."""
+        articles = [make_article(f"a{rang}") for rang in range(3)]
+
+        journaux = self._run({"Tech": articles}, min_digest_items=5, fallback_threshold=5)
+
+        resultat = journaux["tech.log.json"]["resultat"]
+        self.assertEqual(5, resultat["seuil_applique"])
+        self.assertEqual(7, journaux["tech.log.json"]["parametres"]["seuil"])
 
 
 if __name__ == "__main__":

@@ -107,6 +107,9 @@ class CategoryJournal:
         self.notes: dict[str, Note] = {}
         self.new_notes: dict[str, Note] = {}
         self.selected: list[Article] = []
+        #: Le seuil réellement appliqué à la journée, repli compris. `None` tant que la
+        #: sélection n'a pas eu lieu — une catégorie interrompue avant, notamment.
+        self.seuil_applique: int | None = None
         self.digest: CategoryDigest | None = None
 
     # -- alimentation ------------------------------------------------------
@@ -151,6 +154,15 @@ class CategoryJournal:
                 detail={"voix": voice} if voice else {},
             )
         )
+
+    def set_seuil_applique(self, seuil: int) -> None:
+        """Le seuil qui a réellement trié la journée : celui de la catégorie, ou son repli.
+
+        Il ne se déduit pas de `parametres` : c'est le nombre d'articles du jour qui
+        décide entre le seuil et son repli, et sans lui un journal de dix articles à
+        cinq de moyenne ne dit pas pourquoi ils sont tous retenus.
+        """
+        self.seuil_applique = seuil
 
     def set_notes(self, notes: dict[str, Note], new_notes: dict[str, Note]) -> None:
         self.notes = notes
@@ -206,6 +218,7 @@ class CategoryJournal:
             "statut": self._statut(),
             "articles": len(self.articles),
             "retenus": len(self.selected),
+            "seuil_applique": self.seuil_applique,
             "notes_relues_des_tags": len(self.notes) - len(self.new_notes),
             "notes_calculees": len(self.new_notes),
             "audio": audio.name if audio else None,

@@ -9,7 +9,7 @@ from rssresume import runlog
 from rssresume.config import AppConfig
 from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
 from rssresume.llm import providers
-from rssresume.models import Article, CategoryDigest, Note
+from rssresume.models import Article, CategoryDigest, Note, Selection, SelectionRule
 from rssresume.protocols import (
     AudioGeneratorProtocol,
     EmailSenderProtocol,
@@ -119,8 +119,9 @@ class DigestService:
         se ranger sous la bonne, sans que rien n'ait à leur transmettre la catégorie.
         """
         slug = slugify(category)
-        with runlog.category_scope(category, slug, day, day_dir, self._parametres()) as journal:
-            digest = self._build_category(category, day, day_dir, slug, write_tags, journal)
+        regle = self._config.selection_rule(category)
+        with runlog.category_scope(category, slug, day, day_dir, self._parametres(regle)) as journal:
+            digest = self._build_category(category, day, day_dir, slug, write_tags, journal, regle)
             journal.set_digest(digest)
             return digest
 
@@ -128,11 +129,19 @@ class DigestService:
         """L'empreinte du noteur actif, `None` quand il n'y en a pas."""
         return self._scorer.scoring_fingerprint(self._config.profil) if self._scorer else None
 
-    def _parametres(self) -> dict:
-        """Les réglages qui expliquent le contenu du journal, relus sans la config."""
+    def _parametres(self, regle: SelectionRule) -> dict:
+        """Les réglages qui expliquent le contenu du journal, relus sans la config.
+
+        Le seuil est celui de cette catégorie, repli compris : deux catégories du même
+        jour n'ont plus forcément le même, et le journal est l'endroit où on le vérifie.
+        Le seuil réellement appliqué, lui, est un résultat de la journée : il est dans
+        `resultat`, pas ici.
+        """
         return {
-            "seuil": self._config.score_threshold,
-            "plafond": self._config.max_digest_items,
+            "seuil": regle.seuil,
+            "seuil_repli": regle.seuil_repli,
+            "minimum_retenus": regle.minimum,
+            "plafond": regle.plafond,
             "langue": self._config.summary_language,
             # Qui fait quoi : fournisseur et modèle de chaque action, tels qu'ils ont été
             # lus au lancement. Une action dont `actif` est faux est retombée sur le
@@ -151,6 +160,7 @@ class DigestService:
         slug: str,
         write_tags: bool,
         journal: runlog.CategoryJournal,
+        regle: SelectionRule,
     ) -> CategoryDigest:
         articles = self._freshrss_client.fetch_daily_articles(category, day)
         console.category(category, f"{len(articles)} article(s)")
@@ -170,12 +180,16 @@ class DigestService:
         # Le journal veut toutes les notes, pas seulement celles calculées : c'est la
         # seule vue où un score relu des tags et un score frais se lisent côte à côte.
         journal.set_notes(notes, new_notes)
-        selected = self._select(articles, notes)
+        selection = self._select(articles, notes, regle)
+        journal.set_seuil_applique(selection.seuil)
+        selected = self._grouped_by_theme(selection.retenus, notes)
 
         if not selected:
             # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
             # Ni résumé ni synthèse vocale — l'audio n'aurait rien à dire.
-            marker_path = self._write_marker(day_dir, slug, self._score_listing(articles, notes))
+            marker_path = self._write_marker(
+                day_dir, slug, self._score_listing(articles, notes, selection.seuil)
+            )
             console.detail(
                 f"aucun article retenu : {marker_path.name} (ni IA ni synthèse vocale)"
             )
@@ -185,7 +199,7 @@ class DigestService:
             return CategoryDigest(
                 category=category,
                 articles=articles,
-                summary_text=no_selection_message(category, self._config.score_threshold),
+                summary_text=no_selection_message(category, selection.seuil),
                 new_notes=new_notes,
                 stale_item_ids=stale,
                 marker_path=marker_path,
@@ -219,17 +233,13 @@ class DigestService:
         marker_path.write_text(content, encoding="utf-8")
         return marker_path
 
-    def _score_listing(self, articles: list[Article], notes: dict[str, Note]) -> str:
+    def _score_listing(self, articles: list[Article], notes: dict[str, Note], seuil: int) -> str:
         """Les notes obtenues, les meilleures d'abord : de quoi juger le seuil sans FreshRSS.
 
         La thématique y figure aussi : elle est calculée de toute façon, et c'est elle
         qui explique l'ordre de lecture du digest quand il y a une sélection.
         """
-        lines = [
-            f"Aucun article retenu sur {len(articles)} "
-            f"(seuil {self._config.score_threshold}).",
-            "",
-        ]
+        lines = [f"Aucun article retenu sur {len(articles)} (seuil {seuil}).", ""]
         classes = sorted(articles, key=lambda a: self._score_of(a, notes), reverse=True)
         lines.extend(
             f"{self._score_of(a, notes):>2}/10 {self._note_of(a, notes).thematique:<13} - {a.title}"
@@ -308,23 +318,28 @@ class DigestService:
             "url": article.url,
         }
 
-    def _select(self, articles: list[Article], notes: dict[str, Note]) -> list[Article]:
-        """Articles au-dessus du seuil, plafonnés, puis remis en ordre par thématique."""
-        if not notes:
-            return articles
+    def _select(
+        self, articles: list[Article], notes: dict[str, Note], regle: SelectionRule
+    ) -> Selection[Article]:
+        """Ce que la règle de la catégorie retient de la journée.
 
-        # Le plafond s'applique sur le score : c'est lui qui décide qui entre dans le
-        # digest, la thématique ne décide que de l'ordre dans lequel on les raconte.
-        retenus = sorted(
-            (a for a in articles if self._score_of(a, notes) >= self._config.score_threshold),
-            key=lambda a: self._score_of(a, notes),
-            reverse=True,
-        )[: self._config.max_digest_items]
-        console.detail(
-            f"sélection : {len(retenus)} article(s) retenu(s) sur {len(articles)} "
-            f"(seuil {self._config.score_threshold})"
+        Sans note — aucune API de scoring configurée — il n'y a ni seuil ni plafond à
+        appliquer : tout entre, et le seuil rapporté est zéro.
+        """
+        if not notes:
+            return Selection(retenus=articles, seuil=0, regle=regle)
+
+        selection = regle.appliquer(articles, lambda a: self._score_of(a, notes))
+        repli = (
+            f", seuil abaissé de {regle.seuil} faute de {regle.minimum} article(s) retenu(s)"
+            if selection.repliee
+            else ""
         )
-        return self._grouped_by_theme(retenus, notes)
+        console.detail(
+            f"sélection : {len(selection.retenus)} article(s) retenu(s) sur {len(articles)} "
+            f"(seuil {selection.seuil}){repli}"
+        )
+        return selection
 
     @classmethod
     def _grouped_by_theme(cls, articles: list[Article], notes: dict[str, Note]) -> list[Article]:

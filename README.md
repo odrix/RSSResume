@@ -7,7 +7,8 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 1. connexion à l'API Google Reader compatible de FreshRSS
 2. lecture des articles du jour pour chaque catégorie ciblée (les flux hors catégorie sont ignorés)
 3. notation de chaque article : score de 0 à 10, thématique et angle, sur titre + extrait court
-4. sélection des articles au-dessus du seuil, puis regroupement par thématique pour l'écoute
+4. sélection des articles au-dessus du seuil — celui de la catégorie, abaissé les jours
+   creux — puis regroupement par thématique pour l'écoute
 5. pour les avis de vulnérabilité trop courts, lecture de la page de l'avis pour en avoir le détail
 6. résumé texte de la sélection, en prose continue, sans lien ni liste (le texte part en audio),
    ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
@@ -70,14 +71,14 @@ Seuls les fichiers audio sont joints à l'email.
 | --- | --- |
 | `articles` | tous les articles lus, les mieux notés en tête : score, thématique, angle, retenu ou non, et si la note a été calculée ou relue des tags |
 | `couts` | le coût des appels IA, détaillé **par typologie** — somme des scorings, somme des résumés, somme de la synthèse vocale — puis appel par appel |
-| `parametres`, `resultat` | seuil, plafond, modèles, empreinte de scoring ; statut, compteurs, fichier produit |
+| `parametres`, `resultat` | seuil de la catégorie, seuil de repli, plafond, modèles, empreinte de scoring ; statut, compteurs, **seuil réellement appliqué** ce jour-là, fichier produit |
 
 ```json
 {
   "categorie": "Tech",
   "date": "2026-08-23",
-  "parametres": { "seuil": 7, "plafond": 12, "modele_resume": "gpt-5.6-luna", "…": "…" },
-  "resultat": { "statut": "audio", "articles": 24, "retenus": 5, "audio": "tech.mp3", "…": "…" },
+  "parametres": { "seuil": 7, "seuil_repli": 5, "plafond": 12, "…": "…" },
+  "resultat": { "statut": "audio", "articles": 24, "retenus": 5, "seuil_applique": 7, "…": "…" },
   "couts": {
     "devise": "USD",
     "total": 0.014327,
@@ -135,6 +136,11 @@ Variables optionnelles :
 - `RSSRESUME_PROFILE` — profil de pertinence, en clair (voir ci-dessous)
 - `RSSRESUME_PROFILE_FILE=profil.txt` — le même, dans un fichier
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
+- `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5` — seuil propre à une catégorie, sous
+  la forme `Catégorie=score`, plusieurs entrées séparées par des virgules
+- `RSSRESUME_MIN_DIGEST_ITEMS=5` — en dessous de ce nombre de retenus, le seuil de la
+  catégorie tombe à `RSSRESUME_FALLBACK_THRESHOLD` pour la journée ; `0` désactive le repli
+- `RSSRESUME_FALLBACK_THRESHOLD=5` — le seuil de repli
 - `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
 - `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
 

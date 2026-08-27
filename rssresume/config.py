@@ -11,6 +11,7 @@ import dataclasses
 import os
 import pathlib
 
+from rssresume.models import SelectionRule
 from rssresume.profil import load_profil
 
 
@@ -23,6 +24,22 @@ def _split_csv(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _split_thresholds(value: str | None, name: str) -> dict[str, int]:
+    """`Catégorie=score, Autre=score` → seuils par catégorie, clés repliées en casse.
+
+    Une entrée mal formée lève au lancement plutôt que d'être ignorée : un seuil qu'on
+    croit posé sur une catégorie et qui ne l'est pas ne se voit qu'au bout de plusieurs
+    digests trop courts, et pour la même raison que le fichier de profil illisible.
+    """
+    seuils: dict[str, int] = {}
+    for item in _split_csv(value):
+        categorie, _, score = item.rpartition("=")
+        if not categorie.strip() or not score.strip().isdigit():
+            raise ValueError(f"{name} : « {item} » n'est pas de la forme « Catégorie=score »")
+        seuils[categorie.strip().casefold()] = int(score.strip())
+    return seuils
 
 
 @dataclasses.dataclass(frozen=True)
@@ -40,6 +57,15 @@ class AppConfig:
     profil: str
     #: Score minimal pour qu'un article entre dans le digest.
     score_threshold: int
+    #: Seuils propres à certaines catégories, qui l'emportent sur `score_threshold`.
+    #: Clés repliées en casse. Une catégorie généraliste, où tout est intéressant sans
+    #: être actionnable, ne se juge pas au même seuil qu'un flux d'avis de sécurité.
+    category_thresholds: dict[str, int]
+    #: Seuil de repli, appliqué à la journée entière quand le seuil normal retient
+    #: moins de `min_digest_items` articles.
+    fallback_threshold: int
+    #: Nombre de retenus en dessous duquel le seuil de repli s'applique. `0` le désactive.
+    min_digest_items: int
     #: Nombre maximum d'articles retenus par catégorie.
     max_digest_items: int
     smtp_host: str | None
@@ -78,6 +104,11 @@ class AppConfig:
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
             profil=load_profil(),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
+            category_thresholds=_split_thresholds(
+                _env("RSSRESUME_CATEGORY_THRESHOLDS"), "RSSRESUME_CATEGORY_THRESHOLDS"
+            ),
+            fallback_threshold=int(_env("RSSRESUME_FALLBACK_THRESHOLD", "5") or "5"),
+            min_digest_items=int(_env("RSSRESUME_MIN_DIGEST_ITEMS", "5") or "5"),
             max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
             smtp_host=_env("SMTP_HOST"),
             smtp_port=int(_env("SMTP_PORT", "587") or "587"),
@@ -87,4 +118,18 @@ class AppConfig:
             smtp_to=_split_csv(_env("SMTP_TO")),
             smtp_use_tls=(_env("SMTP_USE_TLS", "true") or "").lower() == "true",
             smtp_use_ssl=(_env("SMTP_USE_SSL", "false") or "").lower() == "true",
+        )
+
+    def selection_rule(self, category: str) -> SelectionRule:
+        """La règle de sélection d'une catégorie : son seuil, son repli, son plafond.
+
+        Le seuil est le seul réglage qui se surcharge par catégorie. Le repli et le
+        plafond, eux, valent pour toutes : ils répondent au volume d'une journée, pas
+        à la nature d'un flux.
+        """
+        return SelectionRule(
+            seuil=self.category_thresholds.get(category.casefold(), self.score_threshold),
+            seuil_repli=self.fallback_threshold,
+            minimum=self.min_digest_items,
+            plafond=self.max_digest_items,
         )
