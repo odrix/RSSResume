@@ -214,7 +214,8 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | `--no-email` | n'envoie pas l'email |
 | `--no-tags` | n'écrit aucun tag FreshRSS (`score-NN`, `theme-<thematique>`, `scoring-<hash>`, `digested`) |
 | `--no-mark-read` | laisse les articles non lus dans FreshRSS |
-| `--dry-run` | raccourci pour les trois options précédentes |
+| `--include-read` | redemande aussi les articles déjà lus, que l'API exclut par défaut |
+| `--dry-run` | raccourci pour `--no-email --no-tags --no-mark-read` |
 
 Les trois axes sont indépendants et se cumulent :
 
@@ -226,6 +227,14 @@ Les trois axes sont indépendants et se cumulent :
 | `--no-mark-read` | oui | oui | non |
 | `--no-email --no-mark-read` | non | oui | non |
 | `--dry-run` | non | non | non |
+
+`--include-read` est d'un autre ordre : il ne décide pas de ce qu'on écrit, mais de ce qu'on
+demande. Les articles du jour sont récupérés **non lus uniquement** — l'API les filtre, ce qui
+évite de paginer tout le flux —, donc rejouer une journée déjà livrée exige de les redemander :
+
+```bash
+python -m rssresume --date 2026-08-23 --include-read --no-email
+```
 
 ### Changer de profil de pertinence
 

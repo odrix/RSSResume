@@ -48,12 +48,29 @@ après la dernière catégorie.
 
 ### 2. Récupération des articles
 
-Pagination par 100 sur `stream/contents`, filtrée sur la journée demandée en UTC. Chaque article
-remonte avec ses **tags utilisateur déjà posés** (`Article.tags`) — c'est ce qui rend le cache de
-scoring possible à l'étape suivante.
+**Le tri se fait côté API, pas en Python.** `stream/contents` est appelé avec `ot` — borne basse
+de la journée, en secondes — et `xt=user/-/state/com.google/read`, qui écarte les articles déjà
+lus. La pagination par 100 reprend ces deux paramètres à chaque page : la continuation dit où
+reprendre, pas ce qu'on demandait. Auparavant le flux entier était paginé jusqu'à épuisement avant
+d'être découpé en Python : des dizaines d'appels HTTP par catégorie pour en garder vingt.
+
+Le découpage Python subsiste **en filet** : il tient la borne haute de la journée, qui n'a pas de
+paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot` — un paramètre inconnu
+est ignoré sans erreur, donc le pire cas est de repayer la pagination d'avant, jamais un article
+manquant.
+
+Conséquence sur le rejeu : une journée déjà livrée a ses articles marqués lus, donc l'API ne les
+rend plus. La rejouer demande `--include-read`. La mise au point d'un prompt, elle, passe par
+`--no-mark-read` et n'est pas concernée.
+
+Chaque article remonte avec ses **tags utilisateur déjà posés** (`Article.tags`) — c'est ce qui
+rend le cache de scoring possible à l'étape suivante.
 
 Une catégorie sans article s'arrête ici : un fichier marqueur vide `<categorie>.no-article` est
 écrit, et aucun appel IA n'est déclenché.
+
+Le HTML de chaque article est dépouillé dès l'ingestion (`strip_html`), scripts et styles retirés
+**avec leur contenu** : voir [Contraintes de sécurité](#contraintes-de-sécurité).
 
 ### 3. Scoring
 
@@ -414,7 +431,8 @@ sur l'article en même temps que sa note.
 ```
 
 Conséquence pratique : tant que tu ne touches ni au profil, ni au barème, ni au modèle, relancer la
-même journée ne coûte **rien** en scoring. Le profil entrant dans l'empreinte, en injecter un autre
+même journée ne coûte **rien** en scoring — à condition de la redemander avec `--include-read` si
+elle a déjà été marquée lue. Le profil entrant dans l'empreinte, en injecter un autre
 renote automatiquement : aucun score calculé contre l'ancien profil ne peut survivre. Dès que tu modifies l'un des trois, l'empreinte change et
 les articles concernés sont renotés automatiquement — sans que tu aies à purger quoi que ce soit.
 
@@ -522,6 +540,89 @@ texte du résumé, donc sur les prompts de `llm/prompts.py`, qui écrivent déj�
 Le modèle de notation entre dans l'empreinte du prompt de scoring : en changer renote
 tout l'historique. Changer de fournisseur pour la notation en change donc aussi le
 modèle, et déclenche la même renotation — c'est voulu, deux modèles ne notent pas pareil.
+
+## Contraintes de sécurité
+
+Une exécution prend du texte écrit par des tiers, le donne à un modèle, et rend un fichier audio
+qui oriente des décisions d'exploitation. Trois frontières sont donc explicites dans le code, et
+une quatrième est à tenir le jour où le digest sera rendu ailleurs qu'en audio.
+
+### 1. Tout ce qui entre est hostile jusqu'à preuve du contraire
+
+Deux entrées ne sont pas sous notre contrôle :
+
+- le **contenu des articles** remonté par FreshRSS — titre, résumé, corps HTML, écrits par
+  l'éditeur du flux ;
+- le **texte des pages d'avis** lu par `cve.enrich()`, à une URL que le flux a lui-même fournie.
+
+Un billet piégé qui fait minorer une CVE, ou qui fait taire un sujet, a ici une cible qui vaut
+l'effort : le lecteur du digest est celui qui décide d'appliquer un correctif ou non.
+
+### 2. Le HTML est dépouillé à l'ingestion, corps compris
+
+`tools/text.strip_html()` passe par `html.parser` et non par une expression régulière. La
+différence n'est pas cosmétique : `<[^>]+>` retirait les balises mais **gardait leur corps**, donc
+le JavaScript d'un `<script>` et les règles d'un `<style>` partaient dans le prompt — payés en
+tokens, et lus par le modèle comme du contenu. Un chevron dans un attribut lui faisait en prime
+couper la balise au mauvais endroit et recracher du balisage.
+
+Sont retirés **avec leur contenu** : `script`, `style`, `noscript`, `template`, `svg`. Les
+commentaires HTML le sont aussi — ce qui n'est pas affiché à un lecteur humain n'a pas à être
+résumé. Sur du HTML cassé (un `<script>` jamais refermé), le parseur perd la fin du texte plutôt
+que de laisser passer le code : c'est le sens du compromis.
+
+### 3. Un article est une donnée, jamais une instruction
+
+Les trois prompts système — notation, résumé d'article, digest — se terminent par le même bloc
+`INJECTION_GUARD` (`llm/prompts.py`) : ce qui arrive dans la zone de données est de la donnée,
+aucune consigne trouvée dans un article n'est suivie, et le format de sortie ne se négocie pas.
+
+La consigne serait décorative sans la frontière qu'elle désigne : `prompts.fenced()` encadre le
+contenu des articles par `<<<DONNEES ARTICLES>>>` et `<<<FIN DONNEES ARTICLES>>>` dans les trois
+messages utilisateur, et **neutralise ces marqueurs** s'ils apparaissent dans le texte d'un
+article — sans quoi il suffirait de recopier le marqueur de fin pour écrire hors de la zone.
+
+C'est une **mitigation, pas une garantie** : aucune consigne ne rend un modèle imperméable à ce
+qu'il lit. Elle est gratuite, elle élève le coût d'une tentative, et son absence se remarquerait
+dans le dépôt d'un éditeur SecNumCloud.
+
+> Le prompt de notation entre dans l'empreinte du cache : retoucher `INJECTION_GUARD` renote tout
+> l'historique, au même titre qu'un changement de barème.
+
+Deux propriétés du digest limitent par ailleurs ce qu'une injection réussie pourrait obtenir :
+l'URL et le nom du flux **n'entrent pas** dans le contexte du résumé (étape 5), donc aucun canal
+d'exfiltration par lien fabriqué ; et les liens de l'email viennent de la sélection, pas du texte
+produit par le modèle (étape 7).
+
+### 4. La sortie du modèle n'est pas plus fiable que son entrée
+
+Un modèle nourri de contenu non fiable produit du contenu non fiable. Aujourd'hui le risque est
+**nul, par construction** : le texte part en synthèse vocale et dans un corps d'email en
+`text/plain` (`EmailSender._build_message` appelle `set_content`, jamais `add_alternative`). Rien
+n'est interprété nulle part.
+
+Cela cesse d'être vrai au premier rendu HTML. Si un jour le digest est rendu autrement — email en
+HTML, page web, entrée RSS republiée dans FreshRSS (piste étudiée) — alors :
+
+- la sortie du LLM doit être **échappée** ou passée dans un assainisseur, jamais insérée telle
+  quelle dans du HTML, et surtout jamais affectée à un `innerHTML` ;
+- la même règle vaut pour les champs venus des articles : titre, nom de flux, URL. Une URL
+  d'article en `javascript:` dans un `href` est un XSS aussi sûrement qu'une balise ;
+- le bloc « Sources » de l'email suit la même règle, bien qu'il ne vienne pas du modèle : ses
+  titres et ses URL viennent des flux.
+
+Le précédent existe et n'est pas théorique : l'extension FreshRSS `xExtension-NewsAssistant`
+injecte la réponse de son LLM dans `innerHTML` — un XSS déclenchable **à travers le modèle**, par
+un simple article de flux.
+
+### Limites connues, non traitées à ce jour
+
+- `cve.fetch_detail()` requête l'URL fournie par le flux et suit les redirections, sans filtrage
+  des adresses privées : depuis la machine du cron, un flux hostile peut faire émettre une requête
+  vers le réseau interne et voir la réponse arriver dans le prompt. Volume limité (seuls les
+  articles mentionnant une CVE, sans contenu suffisant), mais la surface existe.
+- Aucune limite de taille sur le texte envoyé au résumé : un article très long est un coût, pas
+  une faille, mais c'est le même chemin d'entrée non contrôlée.
 
 ## Ce qui n'est pas branché
 

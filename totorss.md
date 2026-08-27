@@ -110,7 +110,7 @@ FONCTIONNEMENT.md. Dans les deux cas, la documentation doit décrire ce que le c
 
 ## B — Sécurité
 
-### 8. Ajouter un garde anti-injection dans les deux prompts
+### 8. Ajouter un garde anti-injection dans les deux prompts ✅
 
 Le contenu RSS est une entrée non contrôlée, et le digest alimente des décisions de CTO d'un éditeur
 de sécurité — un billet piégé qui fait minorer une CVE a une cible de valeur.
@@ -127,7 +127,7 @@ frontière donnée/instruction soit visible. Ajoute un test avec un article cont
 d'injection.
 ```
 
-### 9. Corriger `strip_html`
+### 9. Corriger `strip_html` ✅
 
 La regex `re.sub(r"<[^>]+>", " ", ...)` retire les balises mais **conserve le corps** des `<script>`
 et `<style>` : du JavaScript se retrouve dans le texte envoyé au modèle.
@@ -142,7 +142,7 @@ Ajoute des tests couvrant : script avec du JS, style avec du CSS, commentaire HT
 contenant un chevron.
 ```
 
-### 10. Échapper la sortie du modèle si une vue HTML apparaît
+### 10. Échapper la sortie du modèle si une vue HTML apparaît ✅
 
 Aujourd'hui la sortie part en TTS et en pièce jointe, le risque est nul — mais l'extension
 NewsAssistant injecte sa réponse LLM dans `innerHTML`, ce qui crée un XSS *à travers* le modèle.
@@ -234,7 +234,7 @@ bonne journée.
 
 ## D — Coût et performance
 
-### 16. Filtrer côté API dans `fetch_daily_articles`
+### 16. Filtrer côté API dans `fetch_daily_articles` ✅
 
 La méthode pagine **tout** le flux par pages de 100 jusqu'à épuisement, puis jette en Python ce qui
 n'est pas du jour : des dizaines d'appels HTTP quotidiens pour récupérer 20 articles.
@@ -464,7 +464,7 @@ partielles. Dis-moi surtout si le gain justifie le coût compte tenu de l'item 2
 ## Ordre d'attaque suggéré
 
 1. **Aujourd'hui** — items 1 ✅, 2 ✅, 3 ✅ : trois modifications de prompt, gain de qualité immédiat.
-2. **Cette semaine** — items 8, 9, 16 : sécurité et le correctif de performance le plus rentable.
+2. **Cette semaine** — items 8 ✅, 9 ✅, 10 ✅, 16 ✅ : sécurité et le correctif de performance le plus rentable.
 3. **Ensuite** — items 11, 12, 14, 15 : le cron devient fiable sans surveillance.
 4. **Puis** — items 20, 21 : la qualité de l'entrée, qui conditionne tout le reste.
 5. **Quand le pipeline est stable** — items 4, 5, 6, 17, 19.
