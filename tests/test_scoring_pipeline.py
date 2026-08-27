@@ -194,6 +194,56 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
 
         self.assertEqual(["item-1", "item-2"], sorted(a.item_id for a in digests[0].selected))
 
+    def test_a_category_can_have_its_own_threshold(self):
+        """Le généraliste, où tout est intéressant sans être actionnable, se juge à cinq."""
+        articles = [make_article("item-1"), make_article("item-2")]
+        notes = [self.note("item-1", 6), self.note("item-2", 5)]
+
+        _, _, digests = self._run(
+            articles, notes, config_overrides={"category_thresholds": {"tech": 5}}
+        )
+
+        self.assertEqual(["item-1", "item-2"], [a.item_id for a in digests[0].selected])
+
+    def test_a_thin_day_falls_back_to_the_lower_threshold(self):
+        """Moins de cinq retenus à sept : le seuil du jour tombe à cinq pour tout le monde."""
+        articles = [make_article(f"item-{i}") for i in range(6)]
+        notes = [self.note(f"item-{i}", score) for i, score in enumerate([9, 8, 7, 6, 5, 4])]
+
+        _, _, digests = self._run(
+            articles, notes, config_overrides={"min_digest_items": 5, "fallback_threshold": 5}
+        )
+
+        self.assertEqual(
+            ["item-0", "item-1", "item-2", "item-3", "item-4"],
+            [a.item_id for a in digests[0].selected],
+        )
+
+    def test_a_full_day_keeps_its_threshold(self):
+        """Cinq articles au-dessus du seuil : rien à replier, les 5-6 restent dehors."""
+        articles = [make_article(f"item-{i}") for i in range(6)]
+        notes = [self.note(f"item-{i}", score) for i, score in enumerate([10, 9, 8, 7, 7, 6])]
+
+        _, _, digests = self._run(
+            articles, notes, config_overrides={"min_digest_items": 5, "fallback_threshold": 5}
+        )
+
+        self.assertNotIn("item-5", [a.item_id for a in digests[0].selected])
+
+    def test_the_fallback_does_not_rescue_a_day_that_has_nothing(self):
+        """Descendre à cinq ne fabrique pas d'article : la catégorie reste sans sélection."""
+        articles = [make_article("item-1"), make_article("item-2")]
+        notes = [self.note("item-1", 4), self.note("item-2", 2)]
+
+        client, _, digests = self._run(
+            articles, notes, config_overrides={"min_digest_items": 5, "fallback_threshold": 5}
+        )
+
+        self.assertEqual([], digests[0].selected)
+        self.assertEqual([], client.digested)
+        # Le message annonce le seuil réellement appliqué, pas celui de la catégorie.
+        self.assertIn("score minimal 5", digests[0].summary_text)
+
     def test_summary_receives_only_the_selection(self):
         articles = [make_article("item-1"), make_article("item-2")]
         notes = [self.note("item-1", 9), self.note("item-2", 1)]

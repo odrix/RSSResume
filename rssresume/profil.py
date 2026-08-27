@@ -31,11 +31,25 @@ Axes de veille pertinents :
 - marche : marché et concurrence (acteurs du transfert de fichiers sécurisé et du
   cloud souverain français ou européen, levées, rachats, appels d'offres publics).
 - stack : veille technologique sur la stack d'un SaaS de ce type (stockage objet,
-  chiffrement de bout en bout, performance de transfert, observabilité, coûts cloud).
+  chiffrement de bout en bout, performance de transfert, observabilité), et l'économie
+  de cette infrastructure : tarifs et grilles de prix des hébergeurs et des clouds
+  (OVHcloud, Scaleway, Outscale, Hetzner, AWS, Azure, GCP), coûts de stockage et de
+  bande passante, frais de sortie, changements de facturation. Un tarif qui bouge se
+  répercute directement sur la marge du produit : cela se suit comme une décision.
+- autre : la façon de faire de la tech et de la faire faire. Pratiques de
+  développement et d'ingénierie (méthodes, revue de code, tests, dette technique,
+  productivité d'une équipe, retours d'expérience d'autres équipes techniques), et
+  management humain : recrutement, fidélisation, rapport au travail des nouvelles
+  générations, organisation d'une équipe technique, et surtout la conduite du
+  changement quand une technologie majeure arrive — IA, crypto, post-quantique — ou
+  quand la société bouge autour du métier.
 
-Ne sont PAS pertinents : l'actualité IA grand public, les levées de fonds hors de ce
-marché, le hardware grand public, les annonces produit sans impact technique ou
-réglementaire pour cet éditeur."""
+Ne sont PAS pertinents : les levées de fonds hors de ce marché, le hardware grand
+public, les annonces produit sans impact technique, réglementaire ou tarifaire pour cet
+éditeur, et l'actualité IA grand public — usages consumer, démonstrations, classements
+de modèles. L'IA reste pertinente sur deux terrains seulement : ce qu'elle change à la
+sécurité et à la conformité, et ce qu'elle change à la façon de développer et
+d'encadrer une équipe."""
 
 
 def load_profil(override: str | None = None) -> str:

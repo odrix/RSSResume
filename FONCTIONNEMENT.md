@@ -15,7 +15,7 @@ flowchart TD
     C --> E[Sélection]
     D --> E
 
-    E -->|score ≥ seuil, plafonné,<br/>regroupé par thématique| F[SummaryGenerator<br/>texte intégral + angle]
+    E -->|score ≥ seuil de la catégorie<br/>abaissé les jours creux, plafonné,<br/>regroupé par thématique| F[SummaryGenerator<br/>texte intégral + angle]
     E -->|aucun retenu| N[".no-article<br/>liste des scores obtenus"]
     N --> T
     F --> G[AudioGenerator<br/>synthèse vocale]
@@ -101,8 +101,28 @@ Sans API configurée, cette étape est sautée : tous les articles passent à l'
 
 ### 4. Sélection
 
-Articles dont le score atteint `RSSRESUME_SCORE_THRESHOLD` (défaut 7), triés par score décroissant,
-plafonnés à `RSSRESUME_MAX_DIGEST_ITEMS` (défaut 12).
+Articles dont le score atteint le seuil de la catégorie, triés par score décroissant,
+plafonnés à `RSSRESUME_MAX_DIGEST_ITEMS` (défaut 12). Les quatre réglages qui décident de tout
+cela sont portés ensemble par un `SelectionRule`, résolu une fois par catégorie
+(`AppConfig.selection_rule`) : le seuil, son repli, le nombre d'articles qui déclenche le repli,
+et le plafond.
+
+**Le seuil, par catégorie.** `RSSRESUME_SCORE_THRESHOLD` (défaut 7) vaut pour toutes les
+catégories, et `RSSRESUME_CATEGORY_THRESHOLDS` le surcharge pour certaines, sous la forme
+`Catégorie=score`. Toutes les catégories ne se jugent pas au même barème : dans une catégorie
+généraliste, presque tout tombe dans la tranche 5-6 du barème — « intéressant à connaître, non
+actionnable » — et à 7 elle se vidait tous les jours. Elle est donc réglée à 5, là où un flux
+d'avis de sécurité reste à 7. Le nom est comparé casse repliée ; une entrée mal formée fait
+échouer le lancement, elle n'est pas ignorée en silence.
+
+**Le repli, les jours creux.** Quand le seuil retient moins de `RSSRESUME_MIN_DIGEST_ITEMS`
+articles (défaut 5), il tombe à `RSSRESUME_FALLBACK_THRESHOLD` (défaut 5) pour la journée
+entière. Ce n'est pas un remplissage jusqu'au minimum : le seuil baisse pour tout le monde, donc
+une journée repliée peut rendre plus de cinq articles — seul le plafond la borne. Une catégorie
+déjà à 5 n'a rien à replier, et `RSSRESUME_MIN_DIGEST_ITEMS=0` désactive le mécanisme. Le seuil
+réellement appliqué repart avec la sélection, et non recalculé par l'appelant : c'est lui
+qu'affiche la console, qu'annonce le marqueur d'une catégorie vide, et qu'écrit le journal sous
+`resultat.seuil_applique`.
 
 **Puis regroupés par thématique.** Le plafond s'applique sur le score — c'est lui qui décide qui
 entre —, mais l'ordre de lecture, lui, est thématique : le tri par score seul faisait sauter du
@@ -114,7 +134,7 @@ appel supplémentaire, la thématique étant déjà notée.
 C'est cette sélection — et elle seule — qui alimente le résumé **et** qui reçoit le tag `digested`.
 Les deux ne peuvent pas diverger : un test le verrouille.
 
-**Sélection vide.** Si aucun article n'atteint le seuil, la catégorie s'arrête ici, comme une
+**Sélection vide.** Si aucun article n'atteint le seuil — repli compris —, la catégorie s'arrête ici, comme une
 catégorie sans article : ni résumé ni synthèse vocale — l'audio n'aurait rien à dire. Le marqueur
 `<categorie>.no-article` est écrit, mais avec la liste des scores obtenus :
 
@@ -279,7 +299,7 @@ Il fixe ce qu'une exécution finie ne conservait nulle part :
 | --- | --- | --- |
 | `articles` | tous les articles lus, les mieux notés en tête : score, thématique, `angle`, `retenu`, `rang_digest`, et `origine_note` (`calculee`, `tags`, `aucune`) | juger un seuil, voir ce qui est passé juste à côté, retrouver l'angle qu'a vu le résumeur |
 | `couts` | le coût par typologie d'appel — `scoring`, `resume`, `tts` — puis appel par appel | savoir où part l'argent, avant de changer de modèle |
-| `parametres`, `resultat` | seuil, plafond, modèles, empreinte de scoring ; statut, compteurs, fichier produit | savoir contre quels réglages ce journal a été produit |
+| `parametres`, `resultat` | seuil de la catégorie, seuil de repli, minimum, plafond, modèles, empreinte de scoring ; statut, compteurs, `seuil_applique` (le seuil qui a réellement trié la journée), fichier produit | savoir contre quels réglages ce journal a été produit, et si le repli a joué |
 
 **Quand il est écrit.** Toute catégorie qui a lu au moins un article a le sien : avec audio, sans
 sélection, et même après une erreur en cours de route (`"statut": "interrompu"`), qui est justement

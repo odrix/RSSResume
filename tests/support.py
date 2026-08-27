@@ -103,6 +103,11 @@ def make_config(output_dir):
         # que `empreinte()` calcule sans argument.
         profil=DEFAULT_PROFIL,
         score_threshold=7,
+        category_thresholds={},
+        fallback_threshold=5,
+        # Repli désactivé par défaut : chaque test qui l'attend le rallume, les autres
+        # jugent la règle de base sans qu'un seuil se dérobe sous eux.
+        min_digest_items=0,
         max_digest_items=12,
         smtp_host="smtp.example.com",
         smtp_port=587,
