@@ -11,7 +11,7 @@ import urllib.request
 
 from rssresume.config import AppConfig
 from rssresume.models import Article, Note
-from rssresume.tools import console
+from rssresume.tools import console, http
 from rssresume.tools.text import strip_html
 
 API_ROOT = "/api/greader.php"
@@ -38,6 +38,11 @@ THEME_TAG_TEMPLATE = "theme-{thematique}"
 SCORE_TAG_PATTERN = re.compile(r"^score-(\d{2})$")
 SCORING_TAG_PATTERN = re.compile(r"^scoring-([0-9a-f]+)$")
 THEME_TAG_PATTERN = re.compile(r"^theme-([a-z]+)$")
+
+
+def _endpoint(url: str) -> str:
+    """Le chemin appelé, sans l'hôte ni les paramètres : de quoi lire une trace de reprise."""
+    return urllib.parse.urlsplit(url).path or url
 
 
 def score_tag(score: int) -> str:
@@ -106,10 +111,19 @@ class FreshRSSClient:
         return url
 
     def _request(self, url: str, data: bytes | None = None, headers: dict[str, str] | None = None) -> bytes:
+        """Un aller-retour avec FreshRSS, rejoué tant que l'échec est passager.
+
+        Le digest tourne la nuit : un 502 du reverse proxy pendant sa rotation de
+        certificat suffisait à ce qu'aucune catégorie n'existe le lendemain matin.
+        """
         request = urllib.request.Request(url, data=data, headers=headers or {})
-        try:
+
+        def _envoyer() -> bytes:
             with urllib.request.urlopen(request) as response:
                 return response.read()
+
+        try:
+            return http.retry(_envoyer, f"FreshRSS {_endpoint(url)}")
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"FreshRSS request failed: {exc.code} {body}") from exc
@@ -187,9 +201,16 @@ class FreshRSSClient:
         paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot`. Un
         paramètre inconnu est ignoré sans erreur : au pire on repaie la pagination d'avant,
         jamais un article manquant.
+
+        La journée est celle du fuseau configuré, pas celle d'UTC : en heure d'été, un
+        article publié à 1 h du matin à Paris tombait dans la veille et n'apparaissait
+        donc dans aucun digest — la veille étant déjà livrée et ses articles marqués lus.
+        Les horodatages restent comparés en absolu, seules les bornes changent d'origine.
         """
-        start = dt.datetime.combine(day, dt.time.min, tzinfo=dt.timezone.utc)
-        end = start + dt.timedelta(days=1)
+        start = dt.datetime.combine(day, dt.time.min, tzinfo=self._config.timezone)
+        # Un jour civil, pas 24 heures : la nuit du changement d'heure en fait 23 ou 25.
+        end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time.min,
+                                  tzinfo=self._config.timezone)
         stream_id = urllib.parse.quote(f"{LABEL_STREAM_PREFIX}{category}", safe="")
         path = f"{API_ROOT}/reader/api/0/stream/contents/{stream_id}"
         filtres = {"output": "json", "n": PAGE_SIZE, "ot": str(int(start.timestamp()))}

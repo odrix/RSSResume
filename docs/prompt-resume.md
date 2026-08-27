@@ -4,7 +4,8 @@ Ce qu'un appel de **digest de catégorie** envoie, mot pour mot. Le code de réf
 [`summaries.py`](../rssresume/summaries.py) (`system_prompt`, `_user_prompt`, `_to_payload`).
 
 C'est le poste `resume` du journal `<categorie>.log.json`, et de loin le plus cher des trois :
-il est le seul à voir le **texte intégral** des articles.
+il est le seul à voir le **texte** des articles, et non leur seul titre — plafonné à
+`RSSRESUME_ARTICLE_CHAR_LIMIT` caractères par article, 8 000 par défaut.
 
 ## Convention de lecture
 
@@ -17,9 +18,9 @@ injectées à l'exécution. Chacune est décrite dans le tableau [Données injec
 | --- | --- |
 | Endpoint | `POST {OPENAI_BASE_URL}/chat/completions` |
 | Modèle | `AppConfig.summary_model` ← `OPENAI_SUMMARY_MODEL`, défaut `gpt-5.6-luna` |
-| Paramètres | `reasoning_effort: "medium"`, **aucun plafond de sortie** (modèle raisonnant) — ou `temperature: 0.4` sur un modèle classique |
+| Paramètres | `reasoning_effort: "medium"`, `max_completion_tokens: 8192` (modèle raisonnant) — ou `temperature: 0.4` et `max_tokens: 8192` sur un modèle classique. Plafond large et non serré : un digest fait ~1 200 tokens de texte, le reste couvre le raisonnement |
 | Fréquence | **un seul appel par catégorie**, quel que soit le nombre d'articles retenus |
-| Ce qu'il voit | uniquement les articles **retenus** (score ≥ seuil de la catégorie, abaissé les jours creux, plafonnés), en texte intégral |
+| Ce qu'il voit | uniquement les articles **retenus** (score ≥ seuil de la catégorie, abaissé les jours creux, plafonnés), à raison de 8 000 caractères chacun au plus |
 | Ordre de grandeur réel | ~3 850 tokens d'entrée / ~660 de sortie (dont ~340 de raisonnement) pour 5 articles |
 
 Le texte produit part ensuite tel quel en synthèse vocale : c'est ce qui explique la moitié des
@@ -88,7 +89,7 @@ Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés 
 | `{langue}` | `RSSRESUME_SUMMARY_LANGUAGE` | défaut `fr` |
 | `{palier de profondeur}` | `_depth_instruction(len(articles))` | une des trois phrases du tableau ci-dessous, selon le **nombre d'articles retenus** |
 | `{titre de l'article}` | `Article.title` | brut |
-| `{texte intégral de l'article}` | `Article.content_text` | HTML retiré, **aucune troncature** — contrairement aux 400 caractères du scoring. Complété pour les CVE, voir plus bas |
+| `{texte intégral de l'article}` | `Article.content_text` | HTML retiré, coupé à `RSSRESUME_ARTICLE_CHAR_LIMIT` (8 000 par défaut) sur la dernière **phrase entière**, avec ` […]` en marque de coupe — bien au-delà des 400 caractères du scoring, et au-dessus des 6 000 d'un avis enrichi. Complété pour les CVE, voir plus bas |
 | `{thématique du scoring}` | `Note.thematique` | `reglementaire`, `cyber`, `marche`, `stack` ou `autre`. Absent si le scoring est désactivé |
 | `{angle du scoring}` | `Note.angle` | **la clé entière disparaît du JSON quand l'angle est vide**, ce qui est le cas de tout article dont la note a été relue des tags |
 

@@ -1,0 +1,6 @@
+# RSSResume tourne sur la bibliothèque standard, à une exception près.
+#
+# tzdata : la base de fuseaux horaires que `zoneinfo` lit sur le système. Linux la
+# fournit, Windows non — et sans elle, `ZoneInfo("Europe/Paris")` échoue au lancement.
+# Le découpage des journées en heure locale en dépend (RSSRESUME_TIMEZONE).
+tzdata>=2025.1

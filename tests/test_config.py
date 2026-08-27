@@ -8,7 +8,13 @@ import pathlib
 import unittest
 from unittest import mock
 
-from rssresume.config import AppConfig
+from rssresume.config import (
+    DEFAULT_ARTICLE_CHAR_LIMIT,
+    DEFAULT_TIMEZONE,
+    ENV_ARTICLE_CHAR_LIMIT,
+    ENV_TIMEZONE,
+    AppConfig,
+)
 from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL
 
 BASE_ENV = {
@@ -118,6 +124,41 @@ class AppConfigTests(unittest.TestCase):
     def test_from_env_reads_an_injected_profile(self):
         """Le profil est résolu une fois au démarrage, pas à chaque prompt."""
         self.assertEqual("Vigneronne en Anjou.", AppConfig.from_env().profil)
+
+
+class TimezoneTests(unittest.TestCase):
+    """Le fuseau qui découpe les journées, résolu une fois au lancement."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_day_is_cut_in_paris_by_default(self):
+        """En UTC, un article publié à 1 h du matin à Paris tombait dans la veille."""
+        self.assertEqual(DEFAULT_TIMEZONE, str(AppConfig.from_env().timezone))
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_TIMEZONE: "America/Montreal"}, clear=True)
+    def test_the_timezone_is_configurable(self):
+        self.assertEqual("America/Montreal", str(AppConfig.from_env().timezone))
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_TIMEZONE: "Europe/Pariss"}, clear=True)
+    def test_an_unknown_timezone_fails_at_startup(self):
+        """Un fuseau introuvable doit échouer au lancement, pas décaler une journée en silence."""
+        with self.assertRaises(ValueError) as raised:
+            AppConfig.from_env()
+
+        self.assertIn("Europe/Pariss", str(raised.exception))
+        # Le cas le plus fréquent est une base de fuseaux absente : le dire évite de chercher.
+        self.assertIn("tzdata", str(raised.exception))
+
+
+class ArticleCharLimitTests(unittest.TestCase):
+    """Le plafond d'entrée du chemin résumé, seul chemin du pipeline qui n'en avait pas."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_limit_has_a_default(self):
+        self.assertEqual(DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig.from_env().article_char_limit)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_ARTICLE_CHAR_LIMIT: "2500"}, clear=True)
+    def test_the_limit_is_configurable(self):
+        self.assertEqual(2500, AppConfig.from_env().article_char_limit)
 
 
 if __name__ == "__main__":

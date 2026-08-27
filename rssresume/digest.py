@@ -299,11 +299,24 @@ class DigestService:
             [self._to_payload(article) for article in a_noter],
             profil=self._config.profil,
         )
+        # Un article que le modèle a sauté ressort avec `notee` à faux et un score de
+        # remplissage. Il est écarté ici, et de la journée : entrer avec un zéro le
+        # ferait taguer `score-00` sous l'empreinte courante, donc relire de ce cache
+        # à chaque passage suivant — un accident de lot deviendrait définitif. Sans
+        # tag, un rejeu de la journée (`--include-read`) le note de nouveau, et le
+        # journal de la catégorie le montre sans note.
+        perdues = [note for note in calculees if not note.get("notee", True)]
+        if perdues:
+            console.detail(
+                f"scoring : {len(perdues)} article(s) laissé(s) sans note par le modèle, "
+                f"écartés du digest du jour, aucun tag posé"
+            )
         new_notes = {
             note["id"]: Note(
                 score=note["score"], thematique=note["thematique"], angle=note["angle"]
             )
             for note in calculees
+            if note.get("notee", True)
         }
         return {**notes, **new_notes}, new_notes, stale
 
@@ -323,10 +336,12 @@ class DigestService:
     ) -> Selection[Article]:
         """Ce que la règle de la catégorie retient de la journée.
 
-        Sans note — aucune API de scoring configurée — il n'y a ni seuil ni plafond à
-        appliquer : tout entre, et le seuil rapporté est zéro.
+        Sans noteur — aucune API de scoring configurée — il n'y a ni seuil ni plafond à
+        appliquer : tout entre, et le seuil rapporté est zéro. La condition porte sur le
+        noteur et non sur les notes : une journée dont le scoring a tout perdu doit rendre
+        un digest vide, surtout pas la journée entière racontée sans avoir été triée.
         """
-        if not notes:
+        if self._scorer is None:
             return Selection(retenus=articles, seuil=0, regle=regle)
 
         selection = regle.appliquer(articles, lambda a: self._score_of(a, notes))

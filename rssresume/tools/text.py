@@ -60,6 +60,38 @@ def strip_html(value: str) -> str:
     return re.sub(r"\s+", " ", parser.text()).strip()
 
 
+#: Fin de phrase : une ponctuation forte suivie d'une espace ou de la fin du texte.
+SENTENCE_END = re.compile(r"[.!?…](?=\s|$)")
+#: En deçà de cette fraction du plafond, aucune frontière de phrase n'est acceptable :
+#: un article sans ponctuation forte rendrait sinon une portion dérisoire de son texte.
+MIN_SENTENCE_RATIO = 0.6
+#: Marque laissée à la coupe. Le modèle doit voir qu'il lit un extrait : sans elle, il
+#: conclut sur une fin de texte qui n'en est pas une.
+TRUNCATION_MARK = " […]"
+
+
+def truncate_sentences(value: str, limit: int) -> str:
+    """`value` ramené sous `limit` caractères, coupé à la dernière phrase entière.
+
+    Couper au caractère laisse une phrase en l'air, et une phrase en l'air, un modèle la
+    termine tout seul — c'est-à-dire l'invente. On recule donc jusqu'à la dernière
+    ponctuation forte, sauf si elle est si tôt qu'il ne resterait presque rien.
+
+    Un `limit` nul ou négatif ne plafonne rien : c'est ainsi que le plafond se désactive.
+    """
+    texte = value or ""
+    if limit <= 0 or len(texte) <= limit:
+        return texte
+    tete = texte[:limit]
+    frontieres = [fin.end() for fin in SENTENCE_END.finditer(tete)]
+    coupe = (
+        frontieres[-1]
+        if frontieres and frontieres[-1] >= limit * MIN_SENTENCE_RATIO
+        else limit
+    )
+    return tete[:coupe].rstrip() + TRUNCATION_MARK
+
+
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "category"
 

@@ -31,6 +31,7 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
             llm.for_action(providers.DIGEST),
             language=config.summary_language,
             profil=config.profil,
+            char_limit=config.article_char_limit,
         ),
         audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
         email_sender=EmailSender(config),
@@ -39,7 +40,9 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate daily FreshRSS audio summaries by category.")
-    parser.add_argument("--date", default=dt.date.today().isoformat(), help="Date to summarize (YYYY-MM-DD).")
+    # Pas de défaut ici : « aujourd'hui » se lit dans le fuseau configuré, que seule la
+    # configuration connaît — et l'horloge d'un serveur de cron est souvent en UTC.
+    parser.add_argument("--date", help="Date to summarize (YYYY-MM-DD). Defaults to today in RSSRESUME_TIMEZONE.")
     parser.add_argument("--no-email", action="store_true", help="Skip sending the digest email.")
     parser.add_argument(
         "--no-tags",
@@ -68,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
     service = build_service(config, include_read=args.include_read)
-    day = dt.date.fromisoformat(args.date)
+    day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
     if args.include_read:
         console.log("Articles déjà lus : inclus (--include-read)")
     send_email = not (args.dry_run or args.no_email)

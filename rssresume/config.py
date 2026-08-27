@@ -8,11 +8,44 @@ ce qui est propre à cette installation — FreshRSS, les catégories, le seuil,
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
 import os
 import pathlib
+import zoneinfo
 
 from rssresume.models import SelectionRule
 from rssresume.profil import load_profil
+
+#: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
+#: article publié à 1 h du matin à Paris tombait dans la veille et n'apparaissait dans
+#: aucun digest — un décalage muet, invisible tant qu'on ne le cherche pas.
+ENV_TIMEZONE = "RSSRESUME_TIMEZONE"
+DEFAULT_TIMEZONE = "Europe/Paris"
+
+#: Plafond de caractères par article sur le chemin du résumé. Le scoring est borné à 400
+#: caractères depuis toujours ; le résumé, lui, envoyait le texte intégral de douze
+#: articles, soit facilement cent mille caractères sans le moindre garde-fou. Huit mille
+#: laissent passer entier un avis de sécurité enrichi par `tools/cve.py`, qui en lit six
+#: mille au plus — c'est là que sont les versions touchées, et rien ne doit les couper.
+ENV_ARTICLE_CHAR_LIMIT = "RSSRESUME_ARTICLE_CHAR_LIMIT"
+DEFAULT_ARTICLE_CHAR_LIMIT = 8000
+
+
+def load_timezone(name: str | None = None) -> dt.tzinfo:
+    """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
+
+    `zoneinfo` lit la base de fuseaux du système. Windows n'en fournit pas, d'où le paquet
+    `tzdata` en dépendance : le dire dans le message évite de chercher une demi-heure.
+    """
+    nom = (name or DEFAULT_TIMEZONE).strip() or DEFAULT_TIMEZONE
+    try:
+        return zoneinfo.ZoneInfo(nom)
+    except (KeyError, ValueError, OSError) as exc:
+        raise ValueError(
+            f"{ENV_TIMEZONE} : fuseau « {nom} » introuvable ({exc}). Vérifier le nom "
+            f"(par exemple {DEFAULT_TIMEZONE}) et, sur un système sans base de fuseaux — "
+            "Windows en tête — que le paquet `tzdata` est installé."
+        ) from exc
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -51,6 +84,9 @@ class AppConfig:
     categories: list[str]
     excluded_categories: list[str]
     summary_language: str
+    #: Fuseau dans lequel une « journée » commence et finit, pour FreshRSS comme pour la
+    #: date par défaut de la ligne de commande.
+    timezone: dt.tzinfo
     #: Profil de pertinence : le texte qui définit ce qui mérite d'être noté et raconté.
     #: Résolu une fois au démarrage — un fichier de profil illisible doit faire échouer
     #: le lancement, pas la troisième catégorie.
@@ -68,6 +104,8 @@ class AppConfig:
     min_digest_items: int
     #: Nombre maximum d'articles retenus par catégorie.
     max_digest_items: int
+    #: Plafond de caractères envoyés au résumeur par article. `0` le désactive.
+    article_char_limit: int
     smtp_host: str | None
     smtp_port: int
     smtp_username: str | None
@@ -102,6 +140,7 @@ class AppConfig:
             categories=_split_csv(_env("RSSRESUME_CATEGORIES")),
             excluded_categories=_split_csv(_env("RSSRESUME_EXCLUDED_CATEGORIES")),
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
+            timezone=load_timezone(_env(ENV_TIMEZONE)),
             profil=load_profil(),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             category_thresholds=_split_thresholds(
@@ -110,6 +149,10 @@ class AppConfig:
             fallback_threshold=int(_env("RSSRESUME_FALLBACK_THRESHOLD", "5") or "5"),
             min_digest_items=int(_env("RSSRESUME_MIN_DIGEST_ITEMS", "5") or "5"),
             max_digest_items=int(_env("RSSRESUME_MAX_DIGEST_ITEMS", "12") or "12"),
+            article_char_limit=int(
+                _env(ENV_ARTICLE_CHAR_LIMIT, str(DEFAULT_ARTICLE_CHAR_LIMIT))
+                or DEFAULT_ARTICLE_CHAR_LIMIT
+            ),
             smtp_host=_env("SMTP_HOST"),
             smtp_port=int(_env("SMTP_PORT", "587") or "587"),
             smtp_username=_env("SMTP_USERNAME"),

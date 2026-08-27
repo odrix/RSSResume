@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessingError(RuntimeError):
-    """Réponse du modèle inexploitable : JSON invalide ou lot incomplet.
+    """Réponse du modèle inexploitable : JSON invalide, ou lot entièrement perdu.
+
+    Un lot seulement incomplet n'en fait pas partie : les notes manquantes sont
+    signalées article par article, pas levées (voir `read_scores`).
 
     Les échecs propres au fournisseur (HTTP, réponse tronquée) remontent en `llm.LLMError`.
     """
@@ -50,12 +53,28 @@ def full_text(article: dict) -> str:
 def read_scores(raw: str, lot: list[dict]) -> list[dict]:
     """Relit la réponse d'un lot de notation et la réaligne sur les articles envoyés.
 
-    Renvoie {id, score, thematique, angle} par article du lot, dans l'ordre d'envoi.
+    Renvoie {id, score, thematique, angle, notee} par article du lot, dans l'ordre
+    d'envoi. `notee` est faux quand le modèle n'a rien rendu pour cet article : trente-neuf
+    notes sur quarante faisaient échouer la catégorie en cours et toutes les suivantes,
+    alors que le réalignement sait déjà où sont les trous. L'article manquant sort donc
+    avec un score nul et le drapeau baissé — c'est à l'appelant de décider ce qu'il en
+    fait, et `digest.py` choisit de ne pas le noter du tout plutôt que de figer un zéro.
+
+    Une réponse dont RIEN n'est exploitable reste une erreur : ce n'est plus un trou dans
+    un lot, c'est un lot qui n'a pas été traité.
     """
-    resultats = _resultats(_extract_json(raw))
-    if len(resultats) != len(lot):
+    alignees = _by_rank(_resultats(_extract_json(raw)), len(lot))
+    manquantes = [article for article, note in zip(lot, alignees) if not note]
+    if len(manquantes) == len(lot):
         raise ProcessingError(
-            f"Lot incomplet : {len(lot)} article(s) envoyé(s), {len(resultats)} noté(s)."
+            f"Aucune note exploitable dans la réponse : {len(lot)} article(s) envoyé(s)."
+        )
+    if manquantes:
+        logger.warning(
+            "Scoring : %d note(s) manquante(s) sur %d, article(s) laissé(s) sans note : %s",
+            len(manquantes),
+            len(lot),
+            " | ".join(str(article.get("title") or article.get("id")) for article in manquantes),
         )
     return [
         {
@@ -63,8 +82,11 @@ def read_scores(raw: str, lot: list[dict]) -> list[dict]:
             "score": _clean_score(note.get("score")),
             "thematique": _clean_thematique(note.get("thematique")),
             "angle": str(note.get("angle") or "").strip(),
+            # Faux pour un trou du lot : la note qui suit est une valeur de remplissage,
+            # pas un jugement du modèle.
+            "notee": bool(note),
         }
-        for article, note in zip(lot, _by_rank(resultats, len(lot)))
+        for article, note in zip(lot, alignees)
     ]
 
 
@@ -141,8 +163,17 @@ def _by_rank(resultats: list[dict], taille: int) -> list[dict]:
             "Scoring : %d note(s) au numéro illisible ou dupliqué, rattachée(s) par ordre",
             len(en_attente),
         )
-    for item in en_attente:
-        par_rang[par_rang.index(None)] = item
+    libres = [rang for rang, item in enumerate(par_rang) if item is None]
+    for rang, item in zip(libres, en_attente):
+        par_rang[rang] = item
+    if len(en_attente) > len(libres):
+        # Le modèle a rendu plus de notes que d'articles envoyés : les surnuméraires
+        # n'ont personne à qui se rattacher, et les inventer serait pire que les jeter.
+        logger.warning(
+            "Scoring : %d note(s) en trop pour %d article(s), ignorée(s)",
+            len(en_attente) - len(libres),
+            taille,
+        )
 
     return [item or {} for item in par_rang]
 
@@ -210,7 +241,7 @@ def _demo() -> None:
     """Scoring puis résumé sur les trois articles ci-dessus, via le fournisseur configuré."""
     # Import local : `llm` importe ce module, le charger en tête ferait un cycle.
     from rssresume import llm
-    from rssresume.providers import ARTICLE, SCORING
+    from rssresume.llm.providers import ARTICLE, SCORING
 
     noteur = llm.for_action(SCORING)
     if noteur is None:

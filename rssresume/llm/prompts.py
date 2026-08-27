@@ -21,6 +21,11 @@ from rssresume.profil import load_profil
 #: À changer en même temps que le `max_tokens` de l'action `scoring`, qui la dimensionne.
 SCORING_BATCH_SIZE = 40
 
+#: Plancher du redécoupage : une réponse tronquée fait rejouer le lot en deux, jusqu'à
+#: cette taille. En dessous, ce n'est plus la longueur de la réponse qui est en cause —
+#: insister ne ferait que repayer le même appel pour la même coupure.
+SCORING_MIN_BATCH = 5
+
 
 # ---------------------------------------------------------------------------
 # Frontière entre données et instructions

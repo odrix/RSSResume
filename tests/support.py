@@ -1,11 +1,12 @@
 """Doublures et fabriques partagées par les tests."""
 
 import pathlib
+import zoneinfo
 from unittest import mock
 
 from rssresume.llm import processing
 from rssresume.tools import console
-from rssresume.config import AppConfig
+from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig
 from rssresume.profil import DEFAULT_PROFIL
 
 # Les tests n'affichent pas le suivi d'exécution.
@@ -99,6 +100,9 @@ def make_config(output_dir):
         categories=["Tech", "News"],
         excluded_categories=[],
         summary_language="fr",
+        # Le fuseau des journées : les tests le fixent plutôt que de le lire de
+        # l'environnement, sans quoi une machine en UTC ne verrait pas les mêmes bornes.
+        timezone=zoneinfo.ZoneInfo("Europe/Paris"),
         # Le profil par défaut, pour que l'empreinte de scoring des tests soit celle
         # que `empreinte()` calcule sans argument.
         profil=DEFAULT_PROFIL,
@@ -109,6 +113,7 @@ def make_config(output_dir):
         # jugent la règle de base sans qu'un seuil se dérobe sous eux.
         min_digest_items=0,
         max_digest_items=12,
+        article_char_limit=DEFAULT_ARTICLE_CHAR_LIMIT,
         smtp_host="smtp.example.com",
         smtp_port=587,
         smtp_username="smtp-user",

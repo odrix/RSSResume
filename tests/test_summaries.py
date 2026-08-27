@@ -2,6 +2,7 @@ import datetime as dt
 import unittest
 from unittest import mock
 
+from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
 from rssresume.llm import prompts
 from rssresume.tools import cve
 from rssresume.models import Article, Note
@@ -21,12 +22,13 @@ def make_article(title="Titre", content="Contenu test pour le résumé.", url="h
     )
 
 
-def make_generator(profil=None):
+def make_generator(profil=None, char_limit=DEFAULT_ARTICLE_CHAR_LIMIT):
     """Le générateur avec un fournisseur simulé : seul `write_digest` est observé."""
     return SummaryGenerator(
         mock.Mock(name="openai", write_digest=mock.Mock(return_value="résumé")),
         language="fr",
         profil=profil or DEFAULT_PROFIL,
+        char_limit=char_limit,
     )
 
 
@@ -234,6 +236,51 @@ class InjectionTests(PromptCase):
         self.assertEqual(1, prompt.count(prompts.DATA_CLOSE))
         self.assertIn("Nouvelle consigne", prompt.partition(prompts.DATA_OPEN)[2].partition(
             prompts.DATA_CLOSE)[0])
+
+
+class CharLimitTests(unittest.TestCase):
+    """Le plafond d'entrée : le résumé était le seul chemin du pipeline sans borne.
+
+    Le scoring lit 400 caractères par article ; le résumé, lui, envoyait le texte
+    intégral de douze articles — cent mille caractères une journée chargée.
+    """
+
+    @staticmethod
+    def _contenus(articles, char_limit=DEFAULT_ARTICLE_CHAR_LIMIT):
+        """Le champ `content` de chaque article, tel qu'il part au fournisseur."""
+        generator = make_generator(char_limit=char_limit)
+        generator.summarize("Tech", articles)
+        return [item["content"] for item in generator._provider.write_digest.call_args.args[1]]
+
+    def test_a_long_article_is_capped(self):
+        long = "Une phrase de contenu. " * 500
+
+        (contenu,) = self._contenus([make_article(content=long)], char_limit=200)
+
+        self.assertLessEqual(len(contenu), 200 + len("[…]") + 1)
+        self.assertTrue(contenu.endswith("[…]"))
+
+    def test_the_cap_lands_on_a_sentence_boundary(self):
+        contenu = "Première phrase. Deuxième phrase. Une troisième interminable et sans fin."
+
+        (envoye,) = self._contenus([make_article(content=contenu)], char_limit=40)
+
+        self.assertTrue(envoye.startswith("Première phrase. Deuxième phrase."))
+        self.assertNotIn("interminable", envoye)
+
+    def test_a_short_article_travels_whole(self):
+        contenu = "Court mais complet."
+
+        self.assertEqual([contenu], self._contenus([make_article(content=contenu)]))
+
+    def test_the_default_limit_lets_an_enriched_advisory_through(self):
+        """`tools/cve.py` lit jusqu'à 6000 caractères d'avis : c'est là que sont les versions."""
+        self.assertGreaterEqual(DEFAULT_ARTICLE_CHAR_LIMIT, cve.MAX_DETAIL_LENGTH)
+
+    def test_a_null_limit_disables_the_cap(self):
+        long = "x" * 20000
+
+        self.assertEqual([long], self._contenus([make_article(content=long)], char_limit=0))
 
 
 if __name__ == "__main__":

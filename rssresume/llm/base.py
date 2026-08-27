@@ -23,12 +23,22 @@ import urllib.request
 from rssresume import runlog
 from rssresume.llm import processing, prompts, providers
 from rssresume.llm.providers import ARTICLE, DIGEST, SCORING, TTS, Call, Settings, Voice
+from rssresume.tools import console, http
 
 logger = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
     """Échec côté fournisseur : requête rejetée, réponse tronquée ou inexploitable."""
+
+
+class TruncatedResponse(LLMError):
+    """Réponse coupée par le plafond de sortie, avant d'être complète.
+
+    Nommée à part parce qu'elle se rattrape là où les autres échecs ne se rattrapent
+    pas : sur la notation, un lot deux fois plus court tient dans le même plafond. Pour
+    les autres actions, elle reste ce qu'elle a toujours été — une `LLMError` fatale.
+    """
 
 
 class LLMProvider:
@@ -172,14 +182,18 @@ class LLMProvider:
         if tronquee:
             # Sans ce garde-fou, une réponse coupée ressort en erreur de parsing bien plus
             # loin. Sur un modèle raisonnant, le plafond a pu partir en raisonnement.
-            raise LLMError(
+            raise TruncatedResponse(
                 f"{self.label} {action} : réponse tronquée par le plafond de sortie "
                 f"({call.max_tokens}) sur le modèle {call.model}."
             )
         return text
 
     def _post(self, path: str, payload: dict, label: str) -> bytes:
-        """POST JSON, et renvoie le corps brut de la réponse."""
+        """POST JSON, et renvoie le corps brut de la réponse.
+
+        Rejoué sur un échec passager : un 429 ou un 502 du fournisseur ne doit pas coûter
+        la journée. Le détail du réessai est dans `tools/http.py`.
+        """
         request = urllib.request.Request(
             f"{self._settings.base_url}{path}",
             data=json.dumps(payload).encode(),
@@ -188,9 +202,13 @@ class LLMProvider:
                 "Content-Type": "application/json",
             },
         )
-        try:
+
+        def _envoyer() -> bytes:
             with urllib.request.urlopen(request) as response:
                 return response.read()
+
+        try:
+            return http.retry(_envoyer, f"{self.label} {label}")
         except urllib.error.HTTPError as exc:
             corps = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"{self.label} {label} : {exc.code} {corps}") from exc
@@ -198,7 +216,40 @@ class LLMProvider:
     # -- interne -------------------------------------------------------------
 
     def _score_batch(self, lot: list[dict], profil: str | None) -> list[dict]:
-        """Note un lot en un seul appel, et vérifie qu'aucun article n'a été perdu."""
+        """Note un lot en un seul appel, en le redécoupant si la réponse est coupée.
+
+        Un lot qui ne tient pas dans le plafond de sortie tuait la journée entière. Il
+        n'y a pourtant rien à comprendre : la même consigne sur deux fois moins
+        d'articles rend deux fois moins de JSON. On redescend donc jusqu'à
+        `SCORING_MIN_BATCH` — en dessous, ce n'est plus la taille qui est en cause, et
+        insister ne ferait que repayer le même appel.
+        """
+        try:
+            brut = self._chat(
+                SCORING, prompts.scoring_system(profil), prompts.scoring_user(self._lot(lot))
+            )
+        except TruncatedResponse:
+            if len(lot) <= prompts.SCORING_MIN_BATCH:
+                raise
+            moitie = len(lot) // 2
+            console.detail(
+                f"scoring : réponse tronquée sur {len(lot)} article(s), "
+                f"redécoupage en {moitie} + {len(lot) - moitie}"
+            )
+            logger.warning(
+                "Scoring : lot de %d tronqué, redécoupé en %d + %d",
+                len(lot),
+                moitie,
+                len(lot) - moitie,
+            )
+            return self._score_batch(lot[:moitie], profil) + self._score_batch(
+                lot[moitie:], profil
+            )
+        return processing.read_scores(brut, lot)
+
+    @staticmethod
+    def _lot(lot: list[dict]) -> list[dict]:
+        """Le lot tel que le modèle le voit : un numéro, un titre, un résumé court."""
         payload = [
             {
                 # Numéro local, jamais l'identifiant FreshRSS : une chaîne du genre
@@ -211,8 +262,7 @@ class LLMProvider:
             }
             for rang, article in enumerate(lot, start=1)
         ]
-        brut = self._chat(SCORING, prompts.scoring_system(profil), prompts.scoring_user(payload))
-        return processing.read_scores(brut, lot)
+        return payload
 
 
 # -- fabrique ----------------------------------------------------------------

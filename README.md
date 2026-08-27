@@ -133,6 +133,9 @@ Variables optionnelles :
 - `RSSRESUME_EXCLUDED_CATEGORIES=Non classé`
 - `RSSRESUME_OUTPUT_DIR=output`
 - `RSSRESUME_SUMMARY_LANGUAGE=fr`
+- `RSSRESUME_TIMEZONE=Europe/Paris` — fuseau dans lequel une journée commence et finit.
+  En UTC, un article publié à 1 h du matin à Paris en heure d'été tombe dans la veille,
+  donc dans une journée déjà livrée : il n'apparaît dans aucun digest
 - `RSSRESUME_PROFILE` — profil de pertinence, en clair (voir ci-dessous)
 - `RSSRESUME_PROFILE_FILE=profil.txt` — le même, dans un fichier
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
@@ -142,6 +145,9 @@ Variables optionnelles :
   catégorie tombe à `RSSRESUME_FALLBACK_THRESHOLD` pour la journée ; `0` désactive le repli
 - `RSSRESUME_FALLBACK_THRESHOLD=5` — le seuil de repli
 - `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
+- `RSSRESUME_ARTICLE_CHAR_LIMIT=8000` — plafond de caractères envoyés au résumeur par
+  article, coupé à la dernière phrase entière ; `0` le désactive. À ne pas descendre sous
+  6000 : c'est ce que `tools/cve.py` lit sur la page d'un avis, versions touchées comprises
 - `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
 
 ### Fournisseurs de LLM
@@ -194,6 +200,18 @@ rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas — 
 - `SMTP_USE_TLS=true`
 - `SMTP_USE_SSL=false`
 
+## Dépendances
+
+RSSResume tourne sur la bibliothèque standard, à une exception près :
+
+```bash
+pip install -r requirements.txt   # tzdata
+```
+
+`tzdata` est la base de fuseaux horaires que lit `zoneinfo`. Linux la fournit, Windows non,
+et le découpage des journées en heure locale (`RSSRESUME_TIMEZONE`) en dépend : sans elle,
+la configuration échoue au lancement avec un message qui le dit.
+
 ## Exécution
 
 set env variables
@@ -202,7 +220,7 @@ Get-Content .env.local | ? {$_ -match '^\s*[^#]'} | % { $kv = $_ -split '=',2; S
 ```
 
 ```bash
-python -m rssresume                        # exécution normale du jour
+python -m rssresume                        # exécution normale du jour, dans RSSRESUME_TIMEZONE
 python -m rssresume --date 2026-08-23      # rejouer une journée précise
 ```
 
@@ -306,6 +324,7 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `tools/console.py` | suivi d'exécution affiché dans la console |
 | `tools/text.py` | nettoyage de HTML, slugs, et quelques phrases toutes faites |
 | `tools/cve.py` | lecture de la page d'un avis de vulnérabilité, quand le flux n'en dit rien |
+| `tools/http.py` | réessai des appels réseau : backoff, jitter, `Retry-After` |
 
 Les tests suivent le même découpage (`tests/test_<module>.py`, doublures partagées dans `tests/support.py`).
 
@@ -321,7 +340,7 @@ FreshRSS : 3 catégorie(s) découverte(s)
 [Tech] 24 article(s)
   scoring : 18 score(s) relu(s) des tags, 6 à calculer
   sélection : 5 article(s) retenu(s) sur 24 (seuil 7)
-  résumé via l'API gpt-4o-mini (5 article(s))
+  résumé via openai — gpt-5.6-luna (5 article(s), 31428 caractère(s) envoyés, 1 tronqué(s) à 8000)
   synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : notation de 6 article(s) sur 4 valeur(s) de score et 3 thématique(s)

@@ -19,6 +19,20 @@ Les modules du paquet importent `rssresume.llm.base`, jamais `rssresume.llm` : c
 qui est exporté ici n'existe qu'une fois `base` chargé.
 """
 
-from rssresume.llm.base import LLMProvider, LLMError, adapters, build, for_action
+from rssresume.llm.base import (
+    LLMError,
+    LLMProvider,
+    TruncatedResponse,
+    adapters,
+    build,
+    for_action,
+)
 
-__all__ = ["LLMError", "LLMProvider", "adapters", "build", "for_action"]
+__all__ = [
+    "LLMError",
+    "LLMProvider",
+    "TruncatedResponse",
+    "adapters",
+    "build",
+    "for_action",
+]

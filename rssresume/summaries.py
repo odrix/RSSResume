@@ -7,10 +7,11 @@ Le générateur ne sait rien du fournisseur au-delà de son contrat : il reçoit
 
 from __future__ import annotations
 
+from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
 from rssresume.llm import LLMProvider
 from rssresume.models import Article, Note
 from rssresume.tools import console, cve
-from rssresume.tools.text import no_article_message
+from rssresume.tools.text import no_article_message, truncate_sentences
 
 FALLBACK_ARTICLES = 5
 FALLBACK_EXCERPT_LENGTH = 180
@@ -20,10 +21,14 @@ class SummaryGenerator:
     """Résume une catégorie. Sans fournisseur, un extractif local qui s'entend aussi bien."""
 
     def __init__(self, provider: LLMProvider | None = None, language: str = "fr",
-                 profil: str | None = None):
+                 profil: str | None = None,
+                 char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT):
         self._provider = provider
         self._language = language
         self._profil = profil
+        #: Plafond de caractères par article. Le résumé était le seul chemin sans borne
+        #: d'entrée du pipeline : douze articles de fond partaient intégralement.
+        self._char_limit = char_limit
 
     def summarize(
         self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
@@ -36,14 +41,20 @@ class SummaryGenerator:
         articles = cve.enrich(articles)
         notes = notes or {}
         payload = [self._to_payload(article, notes.get(article.item_id)) for article in articles]
+        volume = sum(len(item["content"]) for item in payload)
+        tronques = sum(
+            1
+            for article, item in zip(articles, payload)
+            if len(item["content"]) < len(article.content_text)
+        )
         console.detail(
             f"résumé via {self._provider.name} — {self._provider.model('digest')} "
-            f"({len(articles)} article(s))"
+            f"({len(articles)} article(s), {volume} caractère(s) envoyés"
+            + (f", {tronques} tronqué(s) à {self._char_limit})" if tronques else ")")
         )
         return self._provider.write_digest(category, payload, self._language, self._profil)
 
-    @staticmethod
-    def _to_payload(article: Article, note: Note | None) -> dict:
+    def _to_payload(self, article: Article, note: Note | None) -> dict:
         """Article tel qu'il part au résumeur : son contenu, plus ce que le scoring en sait.
 
         L'angle et la thématique sont déjà payés par le scoring. Les jeter obligeait le
@@ -55,7 +66,9 @@ class SummaryGenerator:
             # prononcé. L'auditeur ne veut pas du média, et une URL vue dans le contexte
             # est une URL que le modèle peut recopier de travers. Les liens et les sources
             # de l'email viennent de `CategoryDigest.links`, pas du texte produit ici.
-            "content": article.content_text,
+            # Plafonné, et coupé à la phrase : le scoring lisait 400 caractères par
+            # article quand le résumé en envoyait le texte entier, douze fois.
+            "content": truncate_sentences(article.content_text, self._char_limit),
         }
         if note:
             payload["thematique"] = note.thematique

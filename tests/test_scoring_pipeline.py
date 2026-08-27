@@ -376,6 +376,49 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 
 
+class DegradedScoringTests(PipelineHarness, unittest.TestCase):
+    """Un article que le modèle a sauté : écarté du jour, jamais figé dans un tag.
+
+    Le lot incomplet ne fait plus tomber la catégorie ; il ne doit pas non plus laisser
+    un `score-00` derrière lui, qui servirait de cache à toutes les exécutions suivantes.
+    """
+
+    @staticmethod
+    def sans_note(item_id):
+        """La note de remplissage que rend `read_scores` pour un article oublié."""
+        return {"id": item_id, "score": 0, "thematique": "autre", "angle": "", "notee": False}
+
+    def test_an_unscored_article_is_neither_tagged_nor_digested(self):
+        articles = [make_article("item-1"), make_article("item-2")]
+
+        client, _, digests = self._run(
+            articles, [self.note("item-1", 9), self.sans_note("item-2")]
+        )
+
+        self.assertEqual({"item-1": 9}, client.scored)
+        self.assertEqual({"item-1": "cyber"}, client.themed)
+        self.assertEqual(["item-1"], client.digested)
+        self.assertEqual(["item-1"], [a.item_id for a in digests[0].selected])
+
+    def test_the_rest_of_the_batch_is_scored_as_usual(self):
+        """C'est tout l'intérêt : la catégorie sort, amputée d'un article et non perdue."""
+        articles = [make_article("item-1"), make_article("item-2")]
+
+        _, _, digests = self._run(articles, [self.sans_note("item-1"), self.note("item-2", 8)])
+
+        self.assertIsNotNone(digests[0].audio_path)
+
+    def test_a_category_whose_scoring_lost_everything_yields_no_audio(self):
+        """Sans une seule note, la journée est vide — surtout pas racontée sans avoir été triée."""
+        articles = [make_article("item-1"), make_article("item-2")]
+
+        client, _, digests = self._run(articles, [self.sans_note("item-1"), self.sans_note("item-2")])
+
+        self.assertEqual({}, client.scored)
+        self.assertEqual([], digests[0].selected)
+        self.assertIsNone(digests[0].audio_path)
+
+
 class NoSelectionMarkerTests(unittest.TestCase):
     """Aucun article au-dessus du seuil : marqueur listant les scores, pas d'audio."""
 

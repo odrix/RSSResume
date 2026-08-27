@@ -59,6 +59,15 @@ paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot` —
 est ignoré sans erreur, donc le pire cas est de repayer la pagination d'avant, jamais un article
 manquant.
 
+**La journée est celle du fuseau configuré**, `RSSRESUME_TIMEZONE`, par défaut `Europe/Paris`.
+Les bornes se calculaient en UTC : en heure d'été, un article publié à 1 h du matin à Paris
+tombait dans la veille — une journée déjà livrée, dont les articles sont marqués lus. Il
+n'apparaissait donc dans aucun digest, et rien ne le signalait. La borne haute est prise au
+jour civil suivant et non à vingt-quatre heures, pour que la nuit du changement d'heure fasse
+ses vingt-trois ou vingt-cinq heures. La date par défaut de la ligne de commande suit le même
+fuseau : l'horloge d'un serveur de cron est souvent en UTC, et « aujourd'hui » n'y est pas le
+même après 22 h.
+
 Conséquence sur le rejeu : une journée déjà livrée a ses articles marqués lus, donc l'API ne les
 rend plus. La rejouer demande `--include-read`. La mise au point d'un prompt, elle, passe par
 `--no-mark-read` et n'est pas concernée.
@@ -103,9 +112,24 @@ mauvais groupe, elle est donc traitée comme absente. L'angle, lui, n'est pas mi
 phrase entière n'a rien à faire dans un label FreshRSS. Un article relu du cache part donc au
 résumé sans son angle, et le prompt le prévoit.
 
-Les articles à noter partent par lots de 40 en un appel chacun. Le module vérifie que le modèle
-renvoie **autant de notes que d'articles envoyés** ; sinon l'exécution s'arrête plutôt que de
-digérer une sélection silencieusement tronquée.
+Les articles à noter partent par lots de 40 en un appel chacun.
+
+**Un lot incomplet ne fait plus tomber la journée.** Trente-neuf notes sur quarante levaient une
+erreur qui tuait la catégorie en cours et toutes les suivantes, alors que le réalignement sait
+déjà où sont les trous. L'article oublié ressort donc marqué comme non noté, et il est écarté :
+ni note en mémoire, ni tag dans FreshRSS. Ce dernier point est le seul qui compte vraiment —
+entrer avec un score de zéro le ferait taguer `score-00` sous l'empreinte courante, donc relire
+de ce cache à chaque exécution suivante : un accident de lot deviendrait définitif. Sans tag,
+un rejeu de la journée (`--include-read`) le note de nouveau, et le journal de la catégorie le
+montre sans note (`origine_note: aucune`). Une réponse dont *rien* n'est exploitable, elle,
+reste une erreur : ce n'est plus un trou dans un lot, c'est un lot qui n'a pas été traité.
+
+**Une réponse coupée par le plafond de sortie redécoupe le lot** au lieu d'abandonner. Il n'y a
+rien à comprendre à cette panne : la même consigne sur deux fois moins d'articles rend deux fois
+moins de JSON. Le lot est donc rejoué en deux moitiés, récursivement, jusqu'à un plancher de 5
+articles — en dessous, ce n'est plus la taille qui est en cause, et insister repaierait le même
+appel pour la même coupure. Ce rattrapage est propre à la notation : sur le digest, qui n'a pas
+de lot à découper, une troncature reste immédiatement fatale.
 
 **Le modèle ne voit jamais les identifiants FreshRSS.** Chaque article part sous un numéro local
 de 1 à N, et les notes sont réalignées à l'arrivée. Un identifiant comme
@@ -169,7 +193,14 @@ chaque passage.
 
 ### 5. Résumé et audio
 
-Le résumé reçoit le **texte intégral** des articles retenus, sans troncature, chacun accompagné de
+Le résumé reçoit le **texte** des articles retenus — plafonné à `RSSRESUME_ARTICLE_CHAR_LIMIT`
+caractères par article, 8000 par défaut, et coupé à la dernière phrase entière plutôt qu'au
+caractère : une phrase laissée en l'air, un modèle la termine tout seul, c'est-à-dire l'invente.
+C'était le seul chemin du pipeline sans borne d'entrée, quand le scoring n'a jamais lu que 400
+caractères : douze articles de fond faisaient facilement cent mille caractères. Le plafond est
+posé au-dessus des 6000 caractères que `tools/cve.py` lit sur la page d'un avis, pour qu'un avis
+enrichi passe entier — c'est là que sont les versions touchées. Le volume réellement envoyé est
+affiché par catégorie dans le suivi d'exécution. Chaque article est accompagné de
 sa thématique et de son `angle` — la phrase du scoring qui dit en quoi l'article compte pour ce
 profil. C'est l'angle à prendre, pas une phrase à recopier, et il ne coûte rien : il est produit par
 l'appel de scoring, qui a déjà eu lieu.
@@ -541,6 +572,42 @@ Le modèle de notation entre dans l'empreinte du prompt de scoring : en changer 
 tout l'historique. Changer de fournisseur pour la notation en change donc aussi le
 modèle, et déclenche la même renotation — c'est voulu, deux modèles ne notent pas pareil.
 
+## Ce qui tient quand le réseau lâche
+
+Le digest tourne la nuit, sans personne devant : un seul 429 du fournisseur ou un 502 devant
+FreshRSS suffisait à ce que la journée n'existe pas. Les deux clients réseau —
+[llm/base.py](rssresume/llm/base.py) et [external/freshrss.py](rssresume/external/freshrss.py) —
+passent donc par le même réessai, [tools/http.py](rssresume/tools/http.py) :
+
+- **trois tentatives**, un délai qui double (1 s, 2 s), à moitié tiré au sort — deux clients
+  tombés ensemble ne doivent pas revenir ensemble ;
+- **sur 429, 500, 502, 503, 504** et sur les erreurs de connexion et les délais dépassés. Tout
+  autre 4xx vient de nous : même requête, même réponse, et sur un `edit-tag` la rejouer
+  réécrirait ce qui est déjà écrit ;
+- **`Retry-After` l'emporte** sur le backoff quand le serveur le donne, en secondes comme en
+  date HTTP, plafonné à 30 secondes : au-delà, la catégorie suivante attend pour rien ;
+- **l'exception d'origine ressort intacte** une fois les tentatives épuisées. C'est l'appelant
+  qui la traduit — `LLMError` chez un fournisseur, `RuntimeError` côté FreshRSS — et il n'a pas
+  à démêler une erreur de transport d'une erreur de réessai.
+
+Chaque reprise est tracée dans le suivi d'exécution, avec sa cause et son délai :
+
+```
+  OpenAI scoring : HTTP 429, nouvelle tentative dans 1.4s (1/3)
+  FreshRSS /api/greader.php/reader/api/0/stream/contents : HTTP 502, nouvelle tentative dans 0.8s (1/3)
+```
+ Le module ne
+connaît ni FreshRSS ni les fournisseurs : il reçoit un appel à tenter et le rejoue, ce qui le
+rend jugeable sans réseau — une doublure qui échoue N fois avant de réussir suffit.
+
+C'est aussi l'arbitrage assumé face à une passerelle type Portkey : à une exécution par jour,
+vingt lignes de réessai coûtent moins cher à exploiter qu'un composant de plus.
+
+Les autres failles du même ordre sont traitées là où elles tombent : lot de notation incomplet
+ou tronqué à l'étape 3, page d'avis injoignable à l'étape 5 (`tools/cve.py` laisse alors
+l'article tel quel), échec d'envoi de l'email à l'étape 7 — qui, lui, empêche le marquage comme
+lu, pour que la journée reste rejouable.
+
 ## Contraintes de sécurité
 
 Une exécution prend du texte écrit par des tiers, le donne à un modèle, et rend un fichier audio
@@ -652,7 +719,7 @@ FreshRSS : authentifié en tant que mon-utilisateur
 [Tech] 4 article(s)
   scoring : 2 score(s) relu(s) des tags, 2 à calculer, dont 1 à renoter (prompt modifié)
   sélection : 2 article(s) retenu(s) sur 4 (seuil 7)
-  résumé via l'API gpt-4o-mini (2 article(s))
+  résumé via openai — gpt-5.6-luna (2 article(s), 9140 caractère(s) envoyés)
   synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : nettoyage de 2 tag(s) de scoring obsolète(s)
@@ -676,6 +743,7 @@ une synthèse.
 flowchart LR
     CLI[cli.py] --> DIG[digest.py<br/>orchestration]
     DIG --> FR[external/freshrss.py]
+    FR --> HTTP[tools/http.py<br/>réessai réseau]
     DIG --> SU[summaries.py]
     DIG --> AU[audio.py]
     DIG --> MA[external/mailer.py]
@@ -687,6 +755,7 @@ flowchart LR
     BASE --> OAI[llm/openai.py]
     BASE --> MIS[llm/mistral.py]
     BASE --> PRO[llm/prompts.py]
+    BASE --> HTTP
     BASE -->|usage, caractères| RL
     CFG[llm/providers.py<br/>+ providers.json] -.->|Settings injectés| BASE
     RL --> PRI[pricing.py]

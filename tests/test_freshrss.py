@@ -2,7 +2,10 @@ import dataclasses
 import datetime as dt
 import tempfile
 import unittest
+import zoneinfo
 from unittest import mock
+
+from rssresume.config import AppConfig
 
 from rssresume.external.freshrss import (
     DIGEST_TAG,
@@ -27,11 +30,12 @@ def make_article(item_id):
     )
 
 
-def fetch(pages, day=dt.date(2026, 8, 23), include_read=False):
+def fetch(pages, day=dt.date(2026, 8, 23), include_read=False, timezone="Europe/Paris"):
     """Récupère une journée sur des pages simulées ; rend (articles, appels passés).
 
     `pages` est une réponse unique ou la liste des réponses successives de l'API.
-    Chaque appel est relevé sous la forme (chemin, paramètres).
+    Chaque appel est relevé sous la forme (chemin, paramètres). Le fuseau est celui qui
+    découpe la journée : c'est lui qui décide où tombe un article de la nuit.
     """
     reponses = [pages] if isinstance(pages, dict) else list(pages)
     appels = []
@@ -41,9 +45,18 @@ def fetch(pages, day=dt.date(2026, 8, 23), include_read=False):
         return reponses[len(appels) - 1]
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        client = FreshRSSClient(make_config(tmpdir), include_read=include_read)
+        config = make_config(tmpdir)
+        config = AppConfig(**{**config.__dict__, "timezone": zoneinfo.ZoneInfo(timezone)})
+        client = FreshRSSClient(config, include_read=include_read)
         with mock.patch.object(FreshRSSClient, "_json_get", _json_get):
             return client.fetch_daily_articles("Tech", day), appels
+
+
+def paris(year, month, day, hour, minute=0):
+    """Un horodatage donné à l'heure de Paris, tel que FreshRSS le publierait."""
+    return dt.datetime(
+        year, month, day, hour, minute, tzinfo=zoneinfo.ZoneInfo("Europe/Paris")
+    ).timestamp()
 
 
 class FreshRSSClientTests(unittest.TestCase):
@@ -63,14 +76,15 @@ class FreshRSSClientTests(unittest.TestCase):
     def test_fetch_daily_articles_keeps_only_the_requested_day(self):
         """Le filtre Python reste en filet : il tient la borne haute, et couvre un `ot` ignoré."""
         day = dt.date(2026, 8, 23)
-        in_day = dt.datetime(2026, 8, 23, 10, 0, tzinfo=dt.timezone.utc).timestamp()
-        day_before = dt.datetime(2026, 8, 22, 23, 0, tzinfo=dt.timezone.utc).timestamp()
-        day_after = dt.datetime(2026, 8, 24, 1, 0, tzinfo=dt.timezone.utc).timestamp()
         payload = {
             "items": [
-                {"title": "Gardé", "published": in_day, "summary": {"content": "<p>Texte</p>"}},
-                {"title": "Trop tôt", "published": day_before},
-                {"title": "Trop tard", "published": day_after},
+                {
+                    "title": "Gardé",
+                    "published": paris(2026, 8, 23, 10),
+                    "summary": {"content": "<p>Texte</p>"},
+                },
+                {"title": "Trop tôt", "published": paris(2026, 8, 22, 23)},
+                {"title": "Trop tard", "published": paris(2026, 8, 24, 3)},
             ]
         }
 
@@ -79,6 +93,26 @@ class FreshRSSClientTests(unittest.TestCase):
         self.assertEqual(["Gardé"], [article.title for article in articles])
         self.assertEqual("Texte", articles[0].content_text)
 
+    def test_a_night_article_belongs_to_the_local_day_not_the_utc_one(self):
+        """00h30 à Paris en été, c'est 22h30 la veille en UTC : l'article disparaissait.
+
+        La veille étant déjà livrée et ses articles marqués lus, il n'apparaissait
+        ensuite dans aucun digest — un décalage muet, invisible sans le chercher.
+        """
+        payload = {"items": [{"title": "Publié à 00h30", "published": paris(2026, 8, 23, 0, 30)}]}
+
+        articles, _ = fetch(payload, day=dt.date(2026, 8, 23))
+
+        self.assertEqual(["Publié à 00h30"], [article.title for article in articles])
+
+    def test_the_timezone_is_configurable(self):
+        """Le même horodatage, lu en UTC, tombe dans la journée précédente."""
+        payload = {"items": [{"title": "Publié à 00h30", "published": paris(2026, 8, 23, 0, 30)}]}
+
+        articles, _ = fetch(payload, day=dt.date(2026, 8, 23), timezone="UTC")
+
+        self.assertEqual([], articles)
+
     def test_fetch_daily_articles_filters_on_the_api_side(self):
         """Paginer tout le flux pour en garder vingt coûtait des dizaines d'appels par jour."""
         day = dt.date(2026, 8, 23)
@@ -86,9 +120,8 @@ class FreshRSSClientTests(unittest.TestCase):
         _, appels = fetch({"items": []}, day=day)
 
         (_, params), = appels
-        # Borne basse de la journée, en secondes : l'API ne remonte pas plus loin.
-        self.assertEqual(str(int(dt.datetime(2026, 8, 23, tzinfo=dt.timezone.utc).timestamp())),
-                         params["ot"])
+        # Borne basse de la journée, en secondes : minuit à Paris, soit 22h UTC la veille.
+        self.assertEqual(str(int(paris(2026, 8, 23, 0))), params["ot"])
         # Un article lu est un article déjà digéré : il n'a rien à faire dans le lot.
         self.assertEqual(READ_STATE, params["xt"])
 

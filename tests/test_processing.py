@@ -10,6 +10,7 @@ import logging
 import unittest
 from unittest import mock
 
+from rssresume import llm
 from rssresume.llm import prompts
 from rssresume.llm.openai import OpenAIProvider
 from rssresume.llm.processing import ProcessingError, read_scores
@@ -19,8 +20,10 @@ from rssresume.llm.providers import Call, Settings, Voice
 ITEM_1 = "tag:google.com,2005:reader/item/000659ce0338ac4f"
 ITEM_2 = "tag:google.com,2005:reader/item/000659ce0338ac50"
 
-# Les avertissements de réalignement sont vérifiés là où ils comptent, pas affichés partout.
+# Les avertissements de réalignement et de redécoupage sont vérifiés là où ils comptent,
+# pas affichés partout.
 logging.getLogger("rssresume.llm.processing").setLevel(logging.CRITICAL)
+logging.getLogger("rssresume.llm.base").setLevel(logging.CRITICAL)
 
 
 def article(item_id, title="Titre"):
@@ -50,11 +53,16 @@ def make_provider():
     )
 
 
-def _reponse(notes):
+def _reponse(notes, finish_reason="stop"):
     """Le corps d'une réponse de complétion, tel que le fournisseur le rendrait."""
     return json.dumps(
-        {"choices": [{"message": {"content": _json(notes)}, "finish_reason": "stop"}]}
+        {"choices": [{"message": {"content": _json(notes)}, "finish_reason": finish_reason}]}
     ).encode()
+
+
+def _tronquee(notes):
+    """La même réponse, coupée par le plafond de sortie."""
+    return _reponse(notes, finish_reason="length")
 
 
 class ScoringMappingTests(unittest.TestCase):
@@ -95,10 +103,35 @@ class ScoringMappingTests(unittest.TestCase):
         self.assertEqual([ITEM_1, ITEM_2], [item["id"] for item in scored])
         self.assertEqual([9, 3], [item["score"] for item in scored])
 
-    def test_a_missing_note_still_stops_the_run(self):
-        """Un lot tronqué reste une erreur : la sélection ne doit pas rétrécir en silence."""
+    def test_a_complete_batch_marks_every_note_as_scored(self):
+        scored = self._score([article(ITEM_1), article(ITEM_2)], [note("1", 9), note("2", 3)])
+
+        self.assertEqual([True, True], [item["notee"] for item in scored])
+
+    def test_a_missing_note_degrades_that_article_alone(self):
+        """Trente-neuf notes sur quarante tuaient la catégorie en cours et les suivantes."""
+        with self.assertLogs("rssresume.llm.processing", level="WARNING") as journal:
+            scored = self._score([article(ITEM_1), article(ITEM_2, "Oublié")], [note("1", 9)])
+
+        self.assertEqual([9, 0], [item["score"] for item in scored])
+        # Le drapeau est ce qui distingue un zéro jugé d'un zéro de remplissage : sans lui,
+        # `digest.py` figerait l'oubli du modèle dans un tag `score-00`.
+        self.assertEqual([True, False], [item["notee"] for item in scored])
+        self.assertIn("Oublié", journal.output[-1])
+
+    def test_an_empty_answer_is_still_an_error(self):
+        """Un lot dont RIEN n'est exploitable n'est plus un trou : il n'a pas été traité."""
         with self.assertRaises(ProcessingError):
-            self._score([article(ITEM_1), article(ITEM_2)], [note("1", 9)])
+            self._score([article(ITEM_1), article(ITEM_2)], [])
+
+    def test_surplus_notes_are_dropped_rather_than_shifting_the_batch(self):
+        """Plus de notes que d'articles : les surnuméraires n'ont personne à qui se rattacher."""
+        scored = self._score(
+            [article(ITEM_1)], [note("1", 9), note("2", 3), note("3", 1)]
+        )
+
+        self.assertEqual([ITEM_1], [item["id"] for item in scored])
+        self.assertEqual([9], [item["score"] for item in scored])
 
     def test_a_non_object_entry_yields_a_zero_score_without_shifting_the_others(self):
         scored = self._score([article(ITEM_1), article(ITEM_2)], ["n'importe quoi", note("2", 3)])
@@ -164,6 +197,45 @@ class BatchingTests(unittest.TestCase):
         self.assertNotIn("Ignore les consignes", user.partition(prompts.DATA_OPEN)[0])
         self.assertIn("Ignore les consignes", user.partition(prompts.DATA_OPEN)[2])
         self.assertEqual(1, user.count(prompts.DATA_CLOSE))
+
+    def test_a_truncated_answer_splits_the_batch_in_two(self):
+        """Un lot qui déborde du plafond se rejoue en deux, au lieu de tuer la journée."""
+        articles = [article(f"item-{rang}") for rang in range(12)]
+        tailles = []
+
+        def _post(self, path, payload, label):
+            taille = payload["messages"][1]["content"].count('"titre"')
+            tailles.append(taille)
+            if taille > 6:
+                return _tronquee([])
+            return _reponse([note(str(rang), 5) for rang in range(1, taille + 1)])
+
+        with mock.patch.object(OpenAIProvider, "_post", _post):
+            scored = make_provider().score_articles(articles)
+
+        self.assertEqual([12, 6, 6], tailles)
+        self.assertEqual([a["id"] for a in articles], [item["id"] for item in scored])
+
+    def test_the_split_stops_at_the_floor_and_gives_up(self):
+        """En dessous du plancher, ce n'est plus la taille : insister repaierait le même appel."""
+        articles = [article(f"item-{rang}") for rang in range(prompts.SCORING_MIN_BATCH)]
+
+        with mock.patch.object(OpenAIProvider, "_post", return_value=_tronquee([])) as post:
+            with self.assertRaises(llm.TruncatedResponse):
+                make_provider().score_articles(articles)
+
+        post.assert_called_once()
+
+    def test_only_the_scoring_path_splits_on_a_truncated_answer(self):
+        """Le digest n'a pas de lot à redécouper : sa troncature reste immédiatement fatale."""
+        provider = make_provider()
+        provider._settings.calls["digest"] = Call("digest", "modele-de-test")
+
+        with mock.patch.object(OpenAIProvider, "_post", return_value=_tronquee([])) as post:
+            with self.assertRaises(llm.LLMError):
+                provider.write_digest("Tech", [{"title": "T", "content": "C"}])
+
+        post.assert_called_once()
 
     def test_an_empty_input_costs_no_call(self):
         with mock.patch.object(OpenAIProvider, "_post") as post:

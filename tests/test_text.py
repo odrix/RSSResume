@@ -6,7 +6,7 @@ nettoyage était du code envoyé au modèle, payé en tokens et lu comme du cont
 
 import unittest
 
-from rssresume.tools.text import strip_html
+from rssresume.tools.text import strip_html, truncate_sentences
 
 
 class StripHtmlTests(unittest.TestCase):
@@ -68,6 +68,39 @@ class StripHtmlTests(unittest.TestCase):
         self.assertEqual("un deux", strip_html("<p>un\n\n  deux</p>"))
         self.assertEqual("", strip_html(""))
         self.assertEqual("", strip_html(None))
+
+
+class TruncateSentencesTests(unittest.TestCase):
+    """La coupe des articles trop longs, avant qu'ils ne partent au résumeur."""
+
+    def test_a_short_text_is_left_alone(self):
+        self.assertEqual("Court.", truncate_sentences("Court.", 100))
+
+    def test_the_cut_lands_on_a_sentence_boundary(self):
+        """Une phrase coupée au milieu, un modèle la termine tout seul : il l'invente."""
+        texte = "Première phrase. Deuxième phrase. Une troisième, bien plus longue que tout."
+
+        coupe = truncate_sentences(texte, 40)
+
+        self.assertTrue(coupe.startswith("Première phrase. Deuxième phrase."))
+        self.assertNotIn("troisième", coupe)
+
+    def test_a_text_without_punctuation_is_cut_at_the_limit(self):
+        """Sans ponctuation forte, reculer rendrait une portion dérisoire du texte."""
+        coupe = truncate_sentences("a" * 200, 50)
+
+        self.assertTrue(coupe.startswith("a" * 50))
+
+    def test_the_cut_is_visible_to_the_model(self):
+        """Sans marque, le modèle conclut sur une fin de texte qui n'en est pas une."""
+        self.assertTrue(truncate_sentences("Longue phrase à couper ici.", 10).endswith("[…]"))
+
+    def test_a_null_limit_disables_the_cap(self):
+        self.assertEqual("a" * 200, truncate_sentences("a" * 200, 0))
+
+    def test_an_empty_text_is_tolerated(self):
+        self.assertEqual("", truncate_sentences("", 100))
+        self.assertEqual("", truncate_sentences(None, 100))
 
 
 if __name__ == "__main__":
