@@ -293,6 +293,68 @@ concernés.
 - tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
   `python -m rssresume.llm.processing` (nécessite la clé du fournisseur actif, `OPENAI_API_KEY` par défaut).
 
+## Déploiement quotidien (conteneur, Dokploy)
+
+Le conteneur ne sert rien et n'écoute sur aucun port : il dort jusqu'à l'heure dite,
+envoie le digest de la veille, et se rendort. C'est [`rssresume/scheduler.py`](rssresume/scheduler.py)
+qui tient la boucle — pas un `cron`, qui n'hérite ni des variables d'environnement du
+conteneur ni de `RSSRESUME_TIMEZONE`.
+
+| Variable | Effet | Défaut |
+| --- | --- | --- |
+| `RSSRESUME_SCHEDULE` | heure du passage, dans `RSSRESUME_TIMEZONE` | `07:00` |
+| `RSSRESUME_SCHEDULE_DAYS_BACK` | journée digérée, comptée depuis celle du passage | `1` (la veille) |
+
+`DAYS_BACK` n'est pas un détail : à 7 h du matin, « aujourd'hui » ne contient que les
+articles parus depuis minuit. Un passage du matin raconte la veille (`1`) ; un passage
+du soir raconte la journée qui s'achève (`0`).
+
+Une journée qui échoue — FreshRSS injoignable, fournisseur en panne — est journalisée
+et la boucle continue. Un conteneur arrêté au moment du passage ne le rattrape pas : le
+suivant a lieu le lendemain à la même heure.
+
+### L'image
+
+[`Dockerfile`](Dockerfile) : `python:3.14-alpine`, la base de fuseaux d'Alpine, et
+`rssresume/`. Rien d'autre — pas de `pip` dans le résultat, puisqu'il n'y a rien à
+installer. La sortie va dans `/data`, monté en volume : `RSSRESUME_OUTPUT_DIR` y est
+déjà pointé par l'image.
+
+`espeak` n'est pas installé : c'est le repli de la synthèse vocale quand aucune clé
+d'API n'est configurée, et un déploiement qui envoie un digest audio en a forcément une.
+L'ajouter, si besoin : `apk add --no-cache espeak`.
+
+### Dokploy
+
+1. **Create Service → Compose**, dépôt Git de ce projet, `docker-compose.yml` à la racine.
+2. Onglet **Environment** : y coller le contenu de son `.env` local — clés FreshRSS,
+   clés d'API, SMTP, seuils, `RSSRESUME_SCHEDULE`. C'est le seul endroit où les secrets
+   sont saisis, et ils ne passent jamais par le dépôt.
+3. **Deploy**. Aucun domaine à déclarer : le service n'expose rien.
+
+Le chemin d'une variable, de Dokploy jusqu'à `AppConfig.from_env()` :
+
+```
+onglet Environment  →  .env à la racine du projet  →  env_file:  →  environnement du
+                       (écrit par Dokploy)             (compose)     processus Python
+```
+
+Le bloc `environment:` du compose ne sert qu'à deux choses par-dessus : poser les
+défauts de l'horaire, et imposer `RSSRESUME_OUTPUT_DIR=/data`. Il l'emporte sur
+`env_file`, ce qui est voulu : un `RSSRESUME_OUTPUT_DIR=output` recopié du poste de
+travail ferait sinon écrire le conteneur dans `/app`, que l'utilisateur non-root ne
+possède pas — et la sortie du jour n'atterrirait pas dans le volume.
+
+Une valeur sur plusieurs lignes ne survit pas au format `.env` : pour un profil long,
+`RSSRESUME_PROFILE_FILE` et un fichier monté, plutôt que `RSSRESUME_PROFILE`.
+
+Les logs de Dokploy montrent l'heure du prochain passage, puis le suivi d'exécution du
+digest. Pour rejouer une journée à la main, sans attendre l'heure :
+
+```bash
+docker exec -it <conteneur> python -m rssresume --date 2026-08-23
+```
+
 ## Organisation du code
 
 Un module par thème technique, dans [rssresume/](rssresume/) :
@@ -300,6 +362,7 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | Module | Rôle |
 | --- | --- |
 | `cli.py` | arguments, assemblage des composants, `main()` |
+| `scheduler.py` | boucle quotidienne : attend l'heure dite, lance le digest de la veille |
 | `config.py` | configuration lue depuis l'environnement |
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |

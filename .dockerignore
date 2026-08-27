@@ -1,0 +1,5 @@
+# Tout ce qui n'a rien à faire dans le contexte de build : l'image ne contient que
+# `rssresume/`, et un contexte étroit évite qu'un secret local y entre par accident.
+*
+!rssresume
+rssresume/**/__pycache__

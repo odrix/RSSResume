@@ -1,0 +1,32 @@
+# Déploiement Dokploy (type « Compose »).
+#
+# Un seul service, sans port ni domaine : ce n'est pas un serveur, c'est un travailleur
+# qui dort jusqu'à `RSSRESUME_SCHEDULE` puis envoie le digest de la veille.
+services:
+  rssresume:
+    build: .
+    restart: unless-stopped
+    # Les variables saisies dans l'onglet « Environment » de Dokploy y sont écrites.
+    # `required: false` pour qu'un `docker compose up` local sans fichier fonctionne.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Imposé ici et non laissé à l'environnement : `environment` l'emporte sur
+      # `env_file`, donc un `RSSRESUME_OUTPUT_DIR=output` hérité du poste de travail ne
+      # peut pas faire écrire le conteneur dans /app, que l'utilisateur non-root ne
+      # possède pas. La sortie va dans le volume, et nulle part ailleurs.
+      RSSRESUME_OUTPUT_DIR: /data
+      # L'heure du passage et la journée digérée (J-1 par défaut : à 7 h du matin,
+      # « aujourd'hui » ne contient que les articles parus depuis minuit).
+      RSSRESUME_SCHEDULE: ${RSSRESUME_SCHEDULE:-04:00}
+      RSSRESUME_SCHEDULE_DAYS_BACK: ${RSSRESUME_SCHEDULE_DAYS_BACK:-1}
+      RSSRESUME_TIMEZONE: ${RSSRESUME_TIMEZONE:-Europe/Paris}
+      # L'horloge du conteneur, pour que l'horodatage des logs se lise sans conversion.
+      TZ: ${RSSRESUME_TIMEZONE:-Europe/Paris}
+    volumes:
+      # Audio et journaux du jour : l'email les emporte, le volume les garde.
+      - rssresume-data:/data
+
+volumes:
+  rssresume-data:
