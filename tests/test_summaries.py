@@ -1,13 +1,23 @@
 import datetime as dt
+import os
 import unittest
 from unittest import mock
 
-from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
+from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig
 from rssresume.llm import prompts
 from rssresume.tools import cve
 from rssresume.models import Article, Note
 from rssresume.profil import DEFAULT_PROFIL
 from rssresume.summaries import SummaryGenerator
+
+
+#: Le strict nécessaire pour qu'`AppConfig.from_env` construise : le reste prend ses défauts,
+#: et c'est justement le défaut de `max_digest_items` qu'on vient lire.
+MINIMAL_ENV = {
+    "FRESHRSS_BASE_URL": "https://example.com",
+    "FRESHRSS_USERNAME": "user",
+    "FRESHRSS_API_PASSWORD": "password",
+}
 
 
 def make_article(title="Titre", content="Contenu test pour le résumé.", url="https://example.com/a"):
@@ -223,6 +233,109 @@ class PromptTests(PromptCase):
             self.assertNotIn('"angle"', prompt)
         # La consigne reste, elle : c'est elle qui dit quoi faire quand l'angle manque.
         self.assertIn("Quand il manque, dégage l'angle du contenu.", sans_note)
+
+
+class DepthTierTests(PromptCase):
+    """Le dimensionnement du digest : compté en sujets, jamais en puces.
+
+    La sortie part en synthèse vocale : une liste de points s'entend comme une
+    énumération plate. Les paliers restent, mais ils dosent des phrases par sujet.
+    """
+
+    def _tiers(self):
+        """Les textes possibles, paliers puis défaut : du plus généreux au plus serré."""
+        return [instruction for _, instruction in prompts.DEPTH_TIERS] + [prompts.DEPTH_DEFAULT]
+
+    def test_every_tier_sizes_subjects_never_bullets(self):
+        """Le mécanisme de dimensionnement est conservé, son unité change : des sujets."""
+        for instruction in self._tiers():
+            with self.subTest(instruction=instruction):
+                self.assertIn("sujet", instruction)
+                self.assertNotIn("puce", instruction)
+                self.assertNotIn("point", instruction)
+
+    def test_the_generous_tier_holds_up_to_its_own_threshold(self):
+        """Borne large : le seuil du palier lui appartient encore."""
+        seuil, instruction = prompts.DEPTH_TIERS[0]
+
+        for count in (0, 1, seuil):
+            with self.subTest(count=count):
+                self.assertEqual(instruction, prompts.depth_instruction(count))
+
+    def test_the_middle_tier_starts_one_above_the_first(self):
+        premier, _ = prompts.DEPTH_TIERS[0]
+        seuil, instruction = prompts.DEPTH_TIERS[1]
+
+        for count in (premier + 1, seuil):
+            with self.subTest(count=count):
+                self.assertEqual(instruction, prompts.depth_instruction(count))
+
+    def test_above_the_last_threshold_the_default_applies(self):
+        dernier = prompts.DEPTH_TIERS[-1][0]
+
+        for count in (dernier + 1, dernier + 10):
+            with self.subTest(count=count):
+                self.assertEqual(prompts.DEPTH_DEFAULT, prompts.depth_instruction(count))
+
+    def test_the_tiers_are_ordered_by_growing_threshold(self):
+        """Un palier mal ordonné rendrait le suivant inatteignable, sans rien casser d'autre."""
+        seuils = [seuil for seuil, _ in prompts.DEPTH_TIERS]
+
+        self.assertEqual(sorted(seuils), seuils)
+        self.assertEqual(len(set(seuils)), len(seuils))
+
+    def test_a_light_day_reaches_the_generous_tier_in_the_prompt(self):
+        """Bout en bout : le palier choisi doit arriver dans le prompt réellement assemblé."""
+        prompt = self._prompt([make_article()])
+
+        self.assertIn(prompts.DEPTH_TIERS[0][1], prompt)
+        self.assertNotIn(prompts.DEPTH_DEFAULT, prompt)
+
+    def test_a_heavy_day_reaches_the_default_tier_in_the_prompt(self):
+        articles = [make_article(title=f"Titre {index}") for index in range(12)]
+
+        prompt = self._prompt(articles)
+
+        self.assertIn(prompts.DEPTH_DEFAULT, prompt)
+        self.assertNotIn(prompts.DEPTH_TIERS[0][1], prompt)
+
+    def test_the_thresholds_stay_reachable_under_the_selection_cap(self):
+        """Les paliers se comptent en articles retenus : au-delà du plafond, ils sont morts."""
+        with mock.patch.dict(os.environ, MINIMAL_ENV, clear=True):
+            plafond = AppConfig.from_env().max_digest_items
+
+        self.assertLess(prompts.DEPTH_TIERS[-1][0], plafond)
+
+    def test_the_prompt_asks_for_prose_and_bans_every_visual_layout(self):
+        """Puces, numérotation, titres, Markdown : tout ce qui ne s'entend pas est proscrit."""
+        prompt = self._prompt([make_article()])
+
+        self.assertIn("Écris en prose continue", prompt)
+        self.assertIn("des transitions naturelles", prompt)
+        self.assertIn("Jamais de liste à puces", prompt)
+        self.assertIn("jamais de numérotation ni de « premièrement, deuxièmement »", prompt)
+        self.assertIn("jamais de titre ni d'intertitre, aucun Markdown", prompt)
+
+    def test_the_instructions_themselves_are_prose_not_a_list(self):
+        """Un prompt écrit en puces enseigne les puces : les consignes s'écrivent en phrases."""
+        consignes, _, _ = self._prompt([make_article()]).partition(prompts.DATA_OPEN)
+
+        for ligne in consignes.splitlines():
+            with self.subTest(ligne=ligne):
+                self.assertFalse(
+                    ligne.lstrip().startswith(("- ", "* ", "• ", "1.", "2.", "3.")),
+                    ligne,
+                )
+
+    def test_the_tiers_are_counted_in_subjects_after_merging(self):
+        """Le palier est choisi sur le nombre d'articles ; le prompt le rapporte aux sujets."""
+        prompt = self._prompt([make_article(), make_article(title="Autre titre")])
+
+        self.assertIn(
+            "Les paliers de longueur ci-dessus se comptent en sujets après fusion, "
+            "pas en articles reçus",
+            prompt,
+        )
 
 
 class InjectionTests(PromptCase):

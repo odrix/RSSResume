@@ -92,7 +92,7 @@ Le paragraphe d'introduction doit annoncer les thématiques couvertes du jour.
    nommer comme des rubriques. Le texte est lu à voix haute : un sommaire énoncé au micro
    coûte du temps d'écoute et hache l'entrée en matière.
 
-### 6. Passer en prose plutôt qu'en puces pour l'audio
+### 6. Passer en prose plutôt qu'en puces pour l'audio ✅
 
 Le prompt demande explicitement des « points clés », et une liste à puces lue par un TTS donne un
 débit haché et sans liant.

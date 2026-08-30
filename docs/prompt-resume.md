@@ -87,7 +87,7 @@ Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés 
 | `{profil}` | `profil.load_profil()` | identique au scoring |
 | `{categorie}` | nom FreshRSS de la catégorie | brut, entre apostrophes simples |
 | `{langue}` | `RSSRESUME_SUMMARY_LANGUAGE` | défaut `fr` |
-| `{palier de profondeur}` | `_depth_instruction(len(articles))` | une des trois phrases du tableau ci-dessous, selon le **nombre d'articles retenus** |
+| `{palier de profondeur}` | `depth_instruction(len(articles))` | une des trois phrases du tableau ci-dessous, selon le **nombre d'articles retenus** |
 | `{titre de l'article}` | `Article.title` | brut |
 | `{texte intégral de l'article}` | `Article.content_text` | HTML retiré, coupé à `RSSRESUME_ARTICLE_CHAR_LIMIT` (8 000 par défaut) sur la dernière **phrase entière**, avec ` […]` en marque de coupe — bien au-delà des 400 caractères du scoring, et au-dessus des 6 000 d'un avis enrichi. Complété pour les CVE, voir plus bas |
 | `{thématique du scoring}` | `Note.thematique` | `reglementaire`, `cyber`, `marche`, `stack` ou `autre`. Absent si le scoring est désactivé |
