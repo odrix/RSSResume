@@ -52,7 +52,7 @@ CategoryDigest une liste des articles retenus avec leurs URLs, et fais figurer c
 corps de l'email construit par _send_email dans digest.py — l'audio n'a pas de liens, l'email si.
 ```
 
-### 4. Récupérer `thematique` et `angle` jusqu'au résumé
+### 4. Récupérer `thematique` et `angle` jusqu'au résumé ✅
 
 `score_articles` renvoie ces deux champs, `digest.py` ne garde que le score et jette le reste :
 ils sont payés à chaque article puis perdus.

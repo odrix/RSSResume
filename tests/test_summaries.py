@@ -197,6 +197,21 @@ class PromptTests(PromptCase):
         self.assertIn('"thematique": "cyber"', prompt)
         self.assertNotIn('"angle"', prompt)
 
+    def test_an_unscored_article_carries_no_scoring_context(self):
+        """Scoring désactivé, ou article absent du lot noté : les deux champs sautent.
+
+        C'est le cas qui ne doit ni lever ni envoyer de champ vide : un « angle »
+        à la chaîne creuse se lit comme un angle, et le modèle le traduirait.
+        """
+        sans_note = self._prompt([make_article()])
+        hors_lot = self._prompt([make_article()], {"autre-item": Note(9, "cyber", "Un angle.")})
+
+        for prompt in (sans_note, hors_lot):
+            self.assertNotIn('"thematique"', prompt)
+            self.assertNotIn('"angle"', prompt)
+        # La consigne reste, elle : c'est elle qui dit quoi faire quand l'angle manque.
+        self.assertIn("Quand il manque, dégage l'angle du contenu.", sans_note)
+
 
 class InjectionTests(PromptCase):
     """Un article est une donnée, jamais une consigne : le contenu vient d'un flux tiers."""

@@ -50,6 +50,21 @@ class PipelineHarness:
             ).run(DAY, send_email=False, **kwargs)
             return client, scorer.score_articles, digests
 
+    def _summarize_call(self, articles, notes):
+        """L'appel réellement reçu par le résumeur : (catégorie, sélection, notes)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["Tech"])
+            generator = mock.Mock(summarize=mock.Mock(return_value="résumé"))
+            DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                scorer=FakeScorer(notes),
+                summary_generator=generator,
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False)
+            return generator.summarize.call_args.args
+
     @staticmethod
     def note(item_id, score, thematique="cyber", angle="a"):
         return {"id": item_id, "score": score, "thematique": thematique, "angle": angle}
@@ -167,6 +182,31 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
             Note(9, "reglementaire", "Impose une échéance à l'éditeur."),
             digests[0].new_notes["item-1"],
         )
+
+    def test_the_whole_note_is_handed_to_the_summarizer(self):
+        """Le maillon suivant : `_score` ne remontait que {id: score}, et s'arrêtait là."""
+        _, _, notes = self._summarize_call(
+            [make_article("item-1")],
+            [self.note("item-1", 9, "reglementaire", "Impose une échéance à l'éditeur.")],
+        )
+
+        self.assertEqual(
+            {"item-1": Note(9, "reglementaire", "Impose une échéance à l'éditeur.")}, notes
+        )
+
+    def test_a_note_reread_from_the_tags_arrives_without_its_angle(self):
+        """Écart assumé : une phrase entière n'est pas un tag, le cache ne la garde pas.
+
+        Le score et la thématique survivent, l'angle revient vide — et c'est le prompt
+        qui l'assume, pas le code : le champ est alors simplement omis du payload.
+        """
+        articles = [
+            make_article("item-1", tags=(scoring_tag(empreinte()), score_tag(9), theme_tag("cyber")))
+        ]
+
+        _, _, notes = self._summarize_call(articles, [])
+
+        self.assertEqual({"item-1": Note(9, "cyber", "")}, notes)
 
     def test_thematiques_are_written_to_freshrss(self):
         articles = [make_article("item-1"), make_article("item-2")]
