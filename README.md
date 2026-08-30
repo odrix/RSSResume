@@ -263,6 +263,7 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | `--no-tags` | n'écrit aucun tag FreshRSS (`score-NN`, `theme-<thematique>`, `scoring-<hash>`, `digested`) |
 | `--no-mark-read` | laisse les articles non lus dans FreshRSS |
 | `--include-read` | redemande aussi les articles déjà lus, que l'API exclut par défaut |
+| `--send-only` | renvoie l'email d'une journée déjà produite, sans rien recalculer |
 | `--dry-run` | raccourci pour `--no-email --no-tags --no-mark-read` |
 
 Les trois axes sont indépendants et se cumulent :
@@ -282,6 +283,34 @@ demande. Les articles du jour sont récupérés **non lus uniquement** — l'API
 
 ```bash
 python -m rssresume --date 2026-08-23 --include-read --no-email
+```
+
+### Renvoyer l'email d'une journée
+
+Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est l'envoi
+seul qui a échoué — un port SMTP filtré, une clé refusée, un domaine non vérifié — la
+repayer pour retrouver un texte déjà écrit sur le disque n'aurait aucun sens :
+
+```bash
+python -m rssresume --send-only --date 2026-08-29
+```
+
+Tout ce que l'email porte est relu de `output/<date>/*.log.json` : le résumé, les liens
+des articles retenus dans l'ordre du digest, et les `.mp3` en pièces jointes. Ni FreshRSS
+ni le moindre fournisseur n'est appelé, et **rien n'est marqué comme lu** — le renvoi ne
+touche à aucun état.
+
+Deux limites à connaître :
+
+- une catégorie sans le moindre article n'écrit pas de journal — elle n'a rien lu ni rien
+  dépensé — et sa ligne « aucun article » manque donc au corps du renvoi ;
+- les journées produites avant que le journal ne garde le texte du résumé se renvoient
+  sans lui : les liens et l'audio sont là, le texte est vide.
+
+Dans le conteneur, la sortie est dans le volume et non dans `output` :
+
+```bash
+docker exec -it <conteneur> python -m rssresume --send-only --date 2026-08-29
 ```
 
 ### Changer de profil de pertinence

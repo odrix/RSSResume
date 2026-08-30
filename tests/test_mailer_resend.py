@@ -16,6 +16,7 @@ from rssresume.config import MAIL_TRANSPORT_RESEND, MAIL_TRANSPORT_SMTP, AppConf
 from rssresume.external import mail, mailer_resend
 from rssresume.external.mailer import EmailSender
 from rssresume.external.mailer_resend import ResendEmailSender
+from rssresume.tools import http
 from support import make_config
 
 
@@ -73,6 +74,9 @@ class ResendEmailSenderTests(unittest.TestCase):
             requete = urlopen.call_args.args[0]
             self.assertEqual(mailer_resend.API_URL, requete.full_url)
             self.assertEqual("Bearer re_cle", requete.get_header("Authorization"))
+            # Sans lui, Cloudflare rend un « 403 error code: 1010 » avant que Resend
+            # ne voie la requête, et le message accuse la clé à tort.
+            self.assertEqual(http.USER_AGENT, requete.get_header("User-agent"))
             envoye = json.loads(requete.data)
             self.assertEqual(config.smtp_from, envoye["from"])
             self.assertEqual(config.smtp_to, envoye["to"])

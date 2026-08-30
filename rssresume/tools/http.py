@@ -36,6 +36,11 @@ MAX_DELAY = 30.0
 #: Tout autre 4xx vient de nous — même requête, même réponse : la rejouer ne fait que perdre
 #: du temps et, sur un edit-tag, risquerait de réécrire ce qui a déjà été écrit.
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+#: Ce que la machine annonce en sortant. Sans lui, `urllib` signe « Python-urllib/3.x »,
+#: signature que les pare-feux applicatifs bannissent : les sites d'éditeurs rendent un
+#: 403, et Cloudflare — devant l'API de Resend, entre autres — un « error code: 1010 »
+#: qui ne ressemble à rien de ce que le service documente. Un nom honnête suffit à passer.
+USER_AGENT = "Mozilla/5.0 (compatible; RSSResume/1.0)"
 
 
 def retry[T](

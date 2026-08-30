@@ -5,10 +5,15 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 
-from rssresume import llm
+from rssresume import llm, runlog
 from rssresume.audio import AudioGenerator
 from rssresume.config import AppConfig
-from rssresume.digest import DigestService
+from rssresume.digest import (
+    DigestService,
+    email_attachments,
+    email_body,
+    email_subject,
+)
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
 from rssresume.external import mail
@@ -60,6 +65,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Fetch articles already marked as read, which the API excludes by default.",
     )
     parser.add_argument(
+        "--send-only",
+        action="store_true",
+        help="Resend the email of an already-produced day from its logs, without any AI call.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Shorthand for --no-email --no-tags --no-mark-read.",
@@ -67,11 +77,53 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def send_only(config: AppConfig, day: dt.date) -> int:
+    """Renvoie l'email d'une journée déjà produite, sans rien recalculer.
+
+    Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est
+    l'envoi seul qui a échoué — un port SMTP filtré, une clé d'API refusée, un domaine
+    non vérifié — la repayer pour retrouver un texte déjà écrit sur le disque n'a aucun
+    sens. Les journaux du jour portent tout ce que l'email montre.
+
+    Ni FreshRSS ni les fournisseurs ne sont sollicités, et rien n'est marqué comme lu :
+    le renvoi ne touche à aucun état, il ne fait que réexpédier.
+    """
+    day_dir = config.output_dir / day.isoformat()
+    digests = runlog.read_day(day_dir)
+    if not digests:
+        console.error(f"Renvoi : aucun journal dans {day_dir}, rien à renvoyer.")
+        return 1
+
+    sender = mail.sender(config)
+    if not sender.is_configured():
+        console.error("Renvoi : configuration d'envoi incomplète, rien n'est envoyé.")
+        return 1
+
+    console.log(
+        f"Renvoi de l'email du {day.isoformat()} depuis {day_dir} : "
+        f"{len(digests)} catégorie(s), aucun appel IA"
+    )
+    sender.send(
+        subject=email_subject(day),
+        body=email_body(day, digests),
+        attachments=email_attachments(digests),
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
-    service = build_service(config, include_read=args.include_read)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
+    if args.send_only:
+        # Avant l'assemblage : le renvoi n'a besoin d'aucun fournisseur, et en exiger un
+        # ferait échouer la seule commande qui sait se passer d'eux.
+        if args.dry_run or args.no_email:
+            console.error("--send-only n'a rien à faire avec --dry-run ni --no-email.")
+            return 2
+        return send_only(config, day)
+
+    service = build_service(config, include_read=args.include_read)
     if args.include_read:
         console.log("Articles déjà lus : inclus (--include-read)")
     send_email = not (args.dry_run or args.no_email)

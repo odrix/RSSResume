@@ -105,6 +105,11 @@ class ResendEmailSender:
             headers={
                 "Authorization": f"Bearer {self._config.resend_api_key}",
                 "Content-Type": "application/json",
+                # L'API est derrière Cloudflare, qui bannit la signature par défaut
+                # d'`urllib` avant que Resend ne voie la requête — d'où un 403 « error
+                # code: 1010 » qui n'est pas un message du service et n'a rien à voir
+                # avec la clé.
+                "User-Agent": http.USER_AGENT,
             },
         )
 

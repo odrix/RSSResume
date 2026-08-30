@@ -47,6 +47,75 @@ TYPOLOGIE_PAR_LABEL = {
 TYPOLOGIE_PAR_DEFAUT = "resume"
 
 
+def read_day(day_dir: pathlib.Path) -> list[CategoryDigest]:
+    """Les digests d'une journée, relus de ses journaux.
+
+    De quoi renvoyer l'email d'une journée déjà produite sans rappeler ni FreshRSS ni le
+    moindre fournisseur : tout ce que l'email porte — le résumé, les liens des articles
+    retenus, le nom de l'audio — est déjà sur le disque.
+
+    L'ordre est celui des noms de fichier, donc celui des catégories quand elles sont
+    numérotées comme FreshRSS invite à le faire. `articles` reste vide : la relecture ne
+    sert qu'à écrire un email, et surtout pas à remarquer des articles comme lus.
+
+    Une catégorie sans le moindre article n'a pas de journal — elle n'a rien lu ni rien
+    dépensé — et manque donc à la relecture, avec sa ligne « aucun article » dans le corps.
+    """
+    if not day_dir.is_dir():
+        return []
+    return [
+        _digest_relu(json.loads(path.read_text(encoding="utf-8")), day_dir)
+        for path in sorted(day_dir.glob(f"*{LOG_SUFFIX}"))
+    ]
+
+
+def _digest_relu(journal: dict, day_dir: pathlib.Path) -> CategoryDigest:
+    audio = (journal.get("resultat") or {}).get("audio")
+    chemin = day_dir / audio if audio else None
+    return CategoryDigest(
+        category=journal.get("categorie") or "",
+        articles=[],
+        summary_text=journal.get("resume") or "",
+        selected=[_article_relu(entree, journal) for entree in _retenus(journal)],
+        # Un journal peut nommer un audio que l'on a supprimé depuis : l'email part
+        # alors sans lui plutôt que d'échouer à la lecture d'un fichier absent.
+        audio_path=chemin if chemin and chemin.is_file() else None,
+    )
+
+
+def _retenus(journal: dict) -> list[dict]:
+    """Les articles retenus, dans l'ordre où le résumé les a racontés."""
+    retenus = [entree for entree in journal.get("articles") or [] if entree.get("retenu")]
+    return sorted(retenus, key=lambda entree: entree.get("rang_digest") or 0)
+
+
+def _article_relu(entree: dict, journal: dict) -> Article:
+    """L'article réduit à ce que l'email en montre : son titre, son flux, son URL."""
+    return Article(
+        item_id=entree.get("item_id") or "",
+        category=journal.get("categorie") or "",
+        title=entree.get("titre") or "",
+        url=entree.get("url") or "",
+        published_at=_publie_le(entree.get("publie_le"), journal.get("date")),
+        feed_title=entree.get("flux") or "",
+        content_text="",
+    )
+
+
+def _publie_le(horodatage: str | None, jour: str | None) -> dt.datetime:
+    """L'heure de publication, ou le début de la journée à défaut.
+
+    Le champ est requis par `Article` mais ne part pas dans l'email : une date approchée
+    vaut mieux qu'une relecture qui échoue sur un article dont le flux datait mal.
+    """
+    for valeur in (horodatage, jour):
+        try:
+            return dt.datetime.fromisoformat(valeur)
+        except (TypeError, ValueError):
+            continue
+    return dt.datetime.min
+
+
 @dataclasses.dataclass
 class Call:
     """Un appel au fournisseur, avec ce qu'il a consommé et ce qu'il a coûté."""
@@ -205,6 +274,11 @@ class CategoryJournal:
             "date": self.day.isoformat(),
             "genere_le": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
             "parametres": self.parametres,
+            # Le texte du résumé, seule pièce du digest que le journal ne gardait pas.
+            # L'audio le dit à voix haute et l'email l'écrit, mais aucun des deux ne se
+            # relit : sans lui, renvoyer l'email d'une journée passée obligeait à repayer
+            # le scoring, le résumé et la synthèse vocale pour retrouver un texte déjà écrit.
+            "resume": self.digest.summary_text if self.digest else "",
             "resultat": self._resultat(),
             "couts": self._couts(),
             "articles": self._articles(),

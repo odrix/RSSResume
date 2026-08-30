@@ -24,6 +24,42 @@ NO_ARTICLE_SUFFIX = ".no-article"
 BODY_SEPARATOR = "\n\n"
 #: En-tête du bloc de liens ajouté sous chaque résumé, dans l'email seulement.
 LINKS_HEADER = "Sources :"
+
+
+def email_subject(day: dt.date) -> str:
+    return f"Résumé RSS du {day.isoformat()}"
+
+
+def email_body(day: dt.date, digests: list[CategoryDigest]) -> str:
+    """Les sections des catégories, à la suite.
+
+    Fonctions de module et non méthodes : le renvoi d'une journée déjà produite
+    (`cli.send_only`) compose le même email à partir des journaux relus, et deux façons
+    de l'écrire finiraient par ne plus dire pareil.
+    """
+    corps = BODY_SEPARATOR.join(email_section(digest) for digest in digests)
+    return corps or f"Aucun article trouvé pour le {day.isoformat()}."
+
+
+def email_section(digest: CategoryDigest) -> str:
+    """Le résumé de la catégorie, suivi des liens de ses articles retenus.
+
+    L'audio ne porte aucun lien — une URL lue à voix haute est inutilisable, et une
+    URL dans le contexte du modèle est une URL qu'il peut inventer. L'email, lui, est
+    le seul endroit où retrouver l'article derrière un sujet entendu : les liens y
+    figurent, dans l'ordre où le résumé les a racontés.
+    """
+    if not digest.links:
+        return digest.summary_text
+    lignes = [digest.summary_text, "", LINKS_HEADER]
+    lignes.extend(f"- {link.title} ({link.source}) : {link.url}" for link in digest.links)
+    return "\n".join(lignes)
+
+
+def email_attachments(digests: list[CategoryDigest]) -> list[pathlib.Path]:
+    return [digest.audio_path for digest in digests if digest.audio_path]
+
+
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
 SCORING_EXCERPT_LENGTH = 400
 

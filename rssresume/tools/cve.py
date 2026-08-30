@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 
 from rssresume.models import Article
-from rssresume.tools import console
+from rssresume.tools import console, http
 from rssresume.tools.text import strip_html
 
 CVE_PATTERN = re.compile(r"CVE[-\s]\d{4}[-\s]\d{4,7}", re.IGNORECASE)
@@ -31,8 +31,6 @@ MAX_DETAIL_LENGTH = 6000
 #: Plafond de lecture : une page de plus de 1 Mo n'est pas un avis de sécurité.
 MAX_PAGE_BYTES = 1_000_000
 FETCH_TIMEOUT = 15
-#: Certains sites d'éditeurs renvoient 403 à un client sans User-Agent.
-USER_AGENT = "Mozilla/5.0 (compatible; RSSResume/1.0)"
 DETAIL_HEADER = "Détail lu sur la page de l'avis :"
 
 
@@ -66,7 +64,7 @@ def _enriched(article: Article) -> Article:
 
 def fetch_detail(url: str) -> str:
     """Texte lisible de la page, chaîne vide si elle n'est pas récupérable."""
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": http.USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
             raw = response.read(MAX_PAGE_BYTES)
