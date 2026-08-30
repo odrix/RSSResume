@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from rssresume import certfr
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.models import Article, CategoryDigest, Link
@@ -239,6 +240,144 @@ class LinksTests(unittest.TestCase):
         digest = CategoryDigest(category="Tech", articles=[], summary_text="aucun article")
 
         self.assertEqual([], digest.links)
+
+
+class CertfrRoutingTests(unittest.TestCase):
+    """Une catégorie routée quitte le pipeline LLM en entier, et rien ne l'y ramène.
+
+    C'est toute la promesse du traitement déterministe : volume élevé, format
+    répétitif, mauvais rendu audio. Un scoring, un résumé ou une synthèse qui
+    repasserait par là annulerait l'économie sans que rien ne le dise, sinon la facture.
+    """
+
+    CATEGORIE = "1 - Alertes et avis CERT-FR ANSSI"
+
+    def _avis(self, titre, contenu="", item_id="avis-1"):
+        return dataclasses.replace(
+            make_article(category=self.CATEGORIE, title=titre, item_id=item_id),
+            content_text=contenu,
+            url=f"https://www.cert.ssi.gouv.fr/avis/{item_id}/",
+            feed_title="CERT-FR - Avis de securite",
+        )
+
+    def _service(self, tmpdir, articles, routees=None, **collaborateurs):
+        config = make_config(tmpdir)
+        config = AppConfig(
+            **{
+                **config.__dict__,
+                "categories": [self.CATEGORIE],
+                "certfr_categories": [self.CATEGORIE if routees is None else routees],
+            }
+        )
+        client = FakeFreshRSSClient({self.CATEGORIE: articles})
+        service = DigestService(
+            config=config,
+            freshrss_client=client,
+            summary_generator=collaborateurs.get("summary_generator") or SummaryGenerator(None),
+            audio_generator=collaborateurs.get("audio_generator") or FakeAudioGenerator(),
+            email_sender=FakeEmailSender(),
+            scorer=collaborateurs.get("scorer"),
+            certfr_service=certfr.CertfrService(
+                certfr.Stack([certfr.Composant("Keycloak", ["RH-SSO"])])
+            ),
+        )
+        return service, client
+
+    def test_a_routed_category_never_calls_the_scorer_the_summarizer_or_the_tts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scorer, summary_generator, audio_generator = mock.Mock(), mock.Mock(), mock.Mock()
+            service, _ = self._service(
+                tmpdir,
+                [self._avis("Multiples vulnérabilités dans Keycloak (25 août 2026)")],
+                scorer=scorer,
+                summary_generator=summary_generator,
+                audio_generator=audio_generator,
+            )
+
+            digest, = service.run(DAY, send_email=False)
+
+            scorer.score_articles.assert_not_called()
+            summary_generator.summarize.assert_not_called()
+            audio_generator.synthesize.assert_not_called()
+            self.assertIsNone(digest.audio_path)
+
+    def test_every_advisory_of_a_routed_category_is_marked_as_read(self):
+        """« Les autres avis sont marqués lus sans être résumés » : ils sont tous dans `articles`."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service, client = self._service(
+                tmpdir,
+                [
+                    self._avis("Multiples vulnérabilités dans Keycloak (25 août 2026)"),
+                    self._avis(
+                        "Multiples vulnérabilités dans Google Chrome (26 août 2026)",
+                        item_id="avis-2",
+                    ),
+                ],
+            )
+
+            service.run(DAY, send_email=False)
+
+            self.assertEqual(
+                ["avis-1", "avis-2"], [article.item_id for article in client.marked_as_read]
+            )
+
+    def test_only_the_advisories_touching_the_stack_reach_the_email_links(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service, _ = self._service(
+                tmpdir,
+                [
+                    self._avis("Multiples vulnérabilités dans Google Chrome (26 août 2026)"),
+                    self._avis(
+                        "Multiples vulnérabilités dans RH-SSO (25 août 2026)",
+                        "Elles permettent une exécution de code arbitraire à distance.",
+                        item_id="avis-2",
+                    ),
+                ],
+            )
+
+            digest, = service.run(DAY, send_email=False)
+
+            self.assertEqual(2, len(digest.articles))
+            self.assertEqual(["avis-2"], [article.item_id for article in digest.selected])
+            self.assertIn("Keycloak — exécution de code arbitraire à distance", digest.summary_text)
+
+    def test_the_category_is_routed_even_when_the_variable_drops_the_accents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service, _ = self._service(
+                tmpdir,
+                [self._avis("Multiples vulnérabilités dans Keycloak (25 août 2026)")],
+                routees="1 - alertes et avis cert-fr anssi",
+                summary_generator=mock.Mock(),
+            )
+
+            digest, = service.run(DAY, send_email=False)
+
+            self.assertIn("avis CERT-FR aujourd'hui", digest.summary_text)
+
+    def test_an_unrouted_category_keeps_the_llm_pipeline(self):
+        """Le garde-fou symétrique : sans la variable, rien ne change pour personne."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary_generator = mock.Mock()
+            summary_generator.summarize.return_value = "Le résumé."
+            service, _ = self._service(
+                tmpdir,
+                [self._avis("Multiples vulnérabilités dans Keycloak (25 août 2026)")],
+                routees="Une autre catégorie",
+                summary_generator=summary_generator,
+            )
+
+            service.run(DAY, send_email=False)
+
+            summary_generator.summarize.assert_called_once()
+
+    def test_a_routed_category_without_any_advisory_writes_the_usual_marker(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service, _ = self._service(tmpdir, [], summary_generator=mock.Mock())
+
+            digest, = service.run(DAY, send_email=False)
+
+            self.assertTrue(digest.marker_path.exists())
+            self.assertIn("Aucun nouvel article", digest.summary_text)
 
 
 if __name__ == "__main__":

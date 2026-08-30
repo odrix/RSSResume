@@ -15,6 +15,7 @@ import zoneinfo
 
 from rssresume.models import SelectionRule
 from rssresume.profil import load_profil
+from rssresume.tools.text import casefold_ascii, words
 
 #: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
 #: article publié à 1 h du matin à Paris tombait dans la veille et n'apparaissait dans
@@ -43,6 +44,12 @@ DEFAULT_MAIL_TRANSPORT = MAIL_TRANSPORT_SMTP
 
 #: La clé d'API de Resend, nommée d'après le service comme celles des fournisseurs de LLM.
 ENV_RESEND_API_KEY = "RESEND_API_KEY"
+
+#: Catégories routées vers le traitement déterministe des avis CERT-FR (`rssresume/certfr/`)
+#: au lieu du scoring, du résumé et de la synthèse vocale. Le routage est explicite et non
+#: déduit du nom de la catégorie : rien ne doit changer de pipeline parce que quelqu'un a
+#: renommé un dossier FreshRSS. Vide — le défaut — laisse tout au chemin habituel.
+ENV_CERTFR_CATEGORIES = "RSSRESUME_CERTFR_CATEGORIES"
 
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
@@ -104,6 +111,29 @@ def _split_thresholds(value: str | None, name: str) -> dict[str, int]:
     return seuils
 
 
+def _split_categories(value: str | None, name: str) -> list[str]:
+    """`Catégorie, Autre` → les libellés, une entrée mal formée levant au lancement.
+
+    Deux fautes se ressemblent assez pour arriver, et aucune des deux ne se verrait
+    autrement qu'à l'usage : recopier la forme de `RSSRESUME_CATEGORY_THRESHOLDS` —
+    « Catégorie=7 » là où seul le libellé est attendu — et laisser une entrée qui ne
+    porte pas un mot, reste d'une liste à demi effacée. Dans les deux cas la catégorie
+    ne serait jamais routée, et le digest continuerait de la passer au LLM sans rien
+    dire. Même arbitrage que les seuils par catégorie : on lève.
+    """
+    libelles = []
+    for item in _split_csv(value):
+        if "=" in item:
+            raise ValueError(
+                f"{name} : « {item} » n'est qu'un libellé de catégorie à recopier, sans "
+                "« = » ni valeur — cette variable ne prend pas de réglage par catégorie"
+            )
+        if not words(item):
+            raise ValueError(f"{name} : « {item} » ne porte ni lettre ni chiffre")
+        libelles.append(item)
+    return libelles
+
+
 @dataclasses.dataclass(frozen=True)
 class AppConfig:
     freshrss_base_url: str
@@ -148,6 +178,10 @@ class AppConfig:
     #: parce que le transport change.
     mail_transport: str = DEFAULT_MAIL_TRANSPORT
     resend_api_key: str | None = None
+    #: Catégories routées hors du pipeline LLM, vers le traitement déterministe des avis
+    #: CERT-FR. Les libellés sont gardés tels qu'ils ont été écrits — c'est
+    #: `est_deterministe` qui les replie pour comparer, et le journal n'a rien à y lire.
+    certfr_categories: list[str] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -197,6 +231,9 @@ class AppConfig:
             smtp_use_ssl=(_env("SMTP_USE_SSL", "false") or "").lower() == "true",
             mail_transport=load_mail_transport(_env(ENV_MAIL_TRANSPORT)),
             resend_api_key=_env(ENV_RESEND_API_KEY),
+            certfr_categories=_split_categories(
+                _env(ENV_CERTFR_CATEGORIES), ENV_CERTFR_CATEGORIES
+            ),
         )
 
     def selection_rule(self, category: str) -> SelectionRule:
@@ -212,3 +249,17 @@ class AppConfig:
             minimum=self.min_digest_items,
             plafond=self.max_digest_items,
         )
+
+    def est_deterministe(self, category: str) -> bool:
+        """Vrai quand cette catégorie est routée hors du pipeline LLM.
+
+        La comparaison retire la casse **et** les accents, là où `excluded_categories` ne
+        replie que la casse. C'est délibéré et ce n'est pas une préférence : le libellé
+        réel en porte — « 1 - Alertes et avis CERT-FR ANSSI » —, et un libellé recopié
+        dans une variable d'environnement les perd régulièrement en route ; `.env.local`
+        contient déjà un `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. Une catégorie qu'on
+        croit routée et qui ne l'est pas ne fait pas d'erreur : elle repasse par le
+        scoring, le résumé et la synthèse vocale, tous les matins, sans que rien ne le dise.
+        """
+        replie = casefold_ascii(category)
+        return any(casefold_ascii(nom) == replie for nom in self.certfr_categories)

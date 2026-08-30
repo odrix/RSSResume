@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 
-from rssresume import ephemeride, llm, runlog
+from rssresume import certfr, ephemeride, llm, runlog
 from rssresume.audio import AudioGenerator
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
@@ -39,6 +39,10 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
         ephemeride_service=ephemeride.EphemerideService(
             llm.for_action(providers.EPHEMERIDE)
         ),
+        # Sans fournisseur, et c'est tout l'intérêt : les catégories que
+        # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de
+        # composants est lue ici, au lancement, comme le profil de pertinence.
+        certfr_service=certfr.CertfrService(),
     )
 
 

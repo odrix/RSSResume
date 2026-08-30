@@ -13,6 +13,7 @@ import datetime as dt
 import pathlib
 
 from rssresume import runlog
+from rssresume.certfr import CertfrService
 from rssresume.config import AppConfig
 from rssresume.ephemeride import EphemerideService
 from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
@@ -30,6 +31,7 @@ from rssresume.models import (
 from rssresume.newsletter import Lettre
 from rssresume.protocols import (
     AudioGeneratorProtocol,
+    CertfrServiceProtocol,
     EmailSenderProtocol,
     EphemerideServiceProtocol,
     FreshRSSClientProtocol,
@@ -55,6 +57,7 @@ class DigestService:
         email_sender: EmailSenderProtocol,
         scorer: ScorerProtocol | None = None,
         ephemeride_service: EphemerideServiceProtocol | None = None,
+        certfr_service: CertfrServiceProtocol | None = None,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
@@ -64,6 +67,12 @@ class DigestService:
         #: Sans service injecté, celui qui n'appelle personne : table embarquée et
         #: calendrier. L'email a toujours son introduction, même monté à la main.
         self._ephemeride_service = ephemeride_service or EphemerideService()
+        #: Le tri déterministe des avis CERT-FR, avec la liste de composants livrée à
+        #: défaut. Construit toujours, sollicité seulement par les catégories que
+        #: `RSSRESUME_CERTFR_CATEGORIES` route — mais construit ici et non à la première
+        #: d'entre elles, pour qu'un fichier de stack fautif fasse échouer le lancement
+        #: plutôt que la troisième catégorie d'un matin.
+        self._certfr_service = certfr_service or CertfrService()
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
@@ -126,7 +135,9 @@ class DigestService:
         articles = sum(len(digest.articles) for digest in digests)
         retenus = sum(len(digest.selected) for digest in digests)
         vides = sum(1 for digest in digests if not digest.articles)
-        sans_selection = len(digests) - audios - vides
+        # Compté sur la sélection et non par soustraction des audios : une catégorie
+        # déterministe n'a pas d'audio sans être pour autant restée les mains vides.
+        sans_selection = sum(1 for digest in digests if digest.articles and not digest.selected)
         return (
             f"Terminé : {articles} article(s) lu(s), {retenus} retenu(s), "
             f"{audios} fichier(s) audio, {vides} catégorie(s) sans article"
@@ -165,8 +176,18 @@ class DigestService:
         """
         slug = slugify(category)
         regle = self._config.selection_rule(category)
-        with runlog.category_scope(category, slug, day, day_dir, self._parametres(regle)) as journal:
-            digest = self._build_category(category, day, day_dir, slug, write_tags, journal, regle)
+        # Le routage est décidé avant d'ouvrir le journal, parce que les deux chemins n'y
+        # écrivent pas les mêmes réglages : un seuil et une empreinte de prompt ne veulent
+        # rien dire pour une catégorie qui n'a appelé aucun modèle.
+        deterministe = self._config.est_deterministe(category)
+        parametres = self._parametres_certfr() if deterministe else self._parametres(regle)
+        with runlog.category_scope(category, slug, day, day_dir, parametres) as journal:
+            if deterministe:
+                digest = self._build_certfr(category, day, day_dir, slug)
+            else:
+                digest = self._build_category(
+                    category, day, day_dir, slug, write_tags, journal, regle
+                )
             journal.set_digest(digest)
             return digest
 
@@ -196,6 +217,65 @@ class DigestService:
             # pas noté leurs articles contre le même profil, et ne se comparent pas.
             "empreinte_scoring": self._scoring_fingerprint(),
         }
+
+    def _parametres_certfr(self) -> dict:
+        """Les réglages d'une catégorie déterministe : ni seuil, ni modèle, ni prompt.
+
+        Un bloc à part, et non `_parametres` amputé de trois clés. `seuil`,
+        `seuil_repli` et `empreinte_scoring` n'ont aucun sens sans scoring : les écrire
+        à zéro ferait lire ce journal comme celui d'une catégorie qui n'a rien retenu,
+        et les laisser à leur valeur de configuration ferait croire à un tri qui n'a
+        pas eu lieu. Ce qui explique le contenu, ici, c'est la liste des composants —
+        d'où son empreinte, qui dit si deux journées ont été appariées contre la même.
+        """
+        stack = self._certfr_service.stack
+        return {
+            "traitement": runlog.TRAITEMENT_DETERMINISTE,
+            "langue": self._config.summary_language,
+            "composants": len(stack),
+            "empreinte_stack": stack.empreinte,
+        }
+
+    def _build_certfr(
+        self, category: str, day: dt.date, day_dir: pathlib.Path, slug: str
+    ) -> CategoryDigest:
+        """La catégorie routée hors du pipeline LLM : ni scoring, ni résumé, ni voix.
+
+        Trois choix, et chacun retombe ailleurs sans une ligne de plus :
+
+        - `articles` porte **tous** les avis, appariés ou non. `_mark_read` aplatit les
+          `articles` de tous les digests : les avis qui ne nous touchent pas sont donc
+          marqués lus sans avoir été résumés, ce qui était exactement la demande ;
+        - `selected` ne porte que les avis qui touchent la stack. `CategoryDigest.links`
+          en dérive, et ils remontent dans la liste « À lire » de l'email ;
+        - `audio_path` reste `None` : une phrase ne se raconte pas. `newsletter.py` sait
+          déjà présenter une section sans audio — pas de badge de durée, pas de pièce
+          jointe, et `Section.racontee` suit `selected`, pas le fichier.
+
+        Aucun tag n'est écrit non plus : il n'y a ni note à mettre en cache, ni prompt
+        dont il faudrait retenir la version.
+        """
+        articles = self._freshrss_client.fetch_daily_articles(category, day)
+        console.category(category, f"{len(articles)} avis (traitement déterministe)")
+
+        if not articles:
+            marker_path = self._write_marker(day_dir, slug)
+            console.detail(f"aucun avis : {marker_path.name} (ni IA ni synthèse vocale)")
+            return CategoryDigest(
+                category=category,
+                articles=articles,
+                summary_text=no_article_message(category),
+                marker_path=marker_path,
+            )
+
+        revue = self._certfr_service.lire(articles)
+        console.detail(revue.phrase)
+        return CategoryDigest(
+            category=category,
+            articles=articles,
+            summary_text=revue.phrase,
+            selected=revue.touches,
+        )
 
     def _build_category(
         self,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from html.parser import HTMLParser
 
 #: Balises dont le corps n'est pas du texte à lire. Les retirer avec leur contenu, et pas
@@ -94,6 +95,52 @@ def truncate_sentences(value: str, limit: int) -> str:
 
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "category"
+
+
+#: Un mot, une fois la casse et les accents retirés : lettres latines et chiffres.
+WORD = re.compile(r"[a-z0-9]+")
+
+
+def casefold_ascii(value: str) -> str:
+    """Texte replié pour comparaison : casse repliée ET accents retirés.
+
+    `casefold()` seul ne suffit pas partout. Il replie la casse mais laisse les accents,
+    et les libellés de catégorie FreshRSS en portent — « 1 - Alertes et avis CERT-FR
+    ANSSI ». Or un libellé recopié dans une variable d'environnement, puis collé dans le
+    panneau d'un hébergeur, y perd régulièrement ses accents : `.env.local` porte déjà un
+    `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. La comparaison échouait alors sans rien
+    dire, ce qui est exactement le genre de réglage qu'on croit posé pendant des semaines.
+
+    La décomposition NFKD sépare la lettre de base de son diacritique ; ne restent que
+    les caractères qui ne se combinent à rien.
+    """
+    decompose = unicodedata.normalize("NFKD", value or "")
+    return "".join(c for c in decompose if not unicodedata.combining(c)).casefold()
+
+
+def words(value: str) -> tuple[str, ...]:
+    """Les mots d'un texte, casse et accents retirés, ponctuation jetée.
+
+    Découper avant de comparer est ce qui distingue un appariement d'un `in` : chercher
+    « Go » dans « Google Chrome » réussit sur la chaîne et se trompe sur le produit. Sur
+    des suites de mots, `Go` ne peut plus se cacher dans `Google`.
+    """
+    return tuple(WORD.findall(casefold_ascii(value)))
+
+
+def contains_words(haystack: tuple[str, ...], needle: tuple[str, ...]) -> bool:
+    """Vrai si `needle` apparaît dans `haystack` comme une suite de mots contigus.
+
+    Contigus et dans l'ordre : « Apache Tomcat » ne doit pas se reconnaître dans un texte
+    qui cite Apache d'un côté et Tomcat de l'autre. Un motif vide ne reconnaît rien —
+    sans quoi un alias sans la moindre lettre apparierait tous les textes.
+    """
+    if not needle or len(needle) > len(haystack):
+        return False
+    return any(
+        haystack[depart:depart + len(needle)] == needle
+        for depart in range(len(haystack) - len(needle) + 1)
+    )
 
 
 def no_article_message(category: str) -> str:

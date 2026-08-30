@@ -32,6 +32,9 @@ marqueur vide `<categorie>.no-article` est écrit. Même chose quand le scoring 
 article : pas de résumé ni d'audio, mais le marqueur liste alors les scores obtenus, du meilleur au
 moins bon, de quoi juger le seuil d'un coup d'œil.
 
+Une catégorie peut aussi être **routée hors de ce pipeline** : voir
+[Les avis CERT-FR, sans IA](#les-avis-cert-fr-sans-ia).
+
 Le détail de chaque étape, les schémas et les tags posés : **[FONCTIONNEMENT.md](FONCTIONNEMENT.md)**.
 
 ## Fichiers produits
@@ -149,6 +152,72 @@ Variables optionnelles :
   article, coupé à la dernière phrase entière ; `0` le désactive. À ne pas descendre sous
   6000 : c'est ce que `tools/cve.py` lit sur la page d'un avis, versions touchées comprises
 - `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
+- `RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI` — catégories routées
+  vers le traitement déterministe, sans aucun appel IA (voir ci-dessous)
+- `RSSRESUME_STACK_FILE=stack.json` — liste de composants externe, fusionnée par-dessus
+  `rssresume/certfr/stack.json`
+
+### Les avis CERT-FR, sans IA
+
+Le flux des avis de l'ANSSI ne ressemble à aucune autre catégorie : cinq à dix articles par
+jour, tous bâtis sur le même moule — « Multiples vulnérabilités dans *X* (JJ mois AAAA) » et
+une phrase de description. Le pipeline LLM y était à contre-emploi : cher, répétitif, et sept
+paragraphes qui commencent tous pareil sont exactement ce qu'on n'écoute pas. La seule réponse
+utile tient en une ligne : est-ce que ça touche ma stack.
+
+```bash
+RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI
+```
+
+La catégorie saute alors le scoring, le résumé et la synthèse vocale, et rend une phrase :
+
+```
+7 avis CERT-FR aujourd'hui, 2 touchent la stack :
+  Keycloak — exécution de code arbitraire à distance ; OpenSSL — déni de service à distance.
+```
+
+Les avis appariés remontent dans la liste « À lire » de l'email, les plus graves en tête ;
+**tous** les avis sont marqués lus, appariés ou non. Le journal de la catégorie est écrit
+comme les autres, avec `couts.total` à `0.0` — c'est le signal recherché — et `--send-only`
+le relit sans traitement particulier.
+
+Le routage est **explicite** : aucune catégorie n'y tombe parce qu'elle s'appelle CERT-FR. Le
+libellé est comparé sans tenir compte de la casse **ni des accents** — le libellé réel en
+porte, une variable d'environnement les perd volontiers en route, et une catégorie qu'on croit
+routée et qui ne l'est pas repasse par le LLM tous les matins sans que rien ne le dise.
+
+**La liste des composants est à remplir.** Elle vit dans
+[certfr/stack.json](rssresume/certfr/stack.json), livré vide : les entrées d'exemple sont dans
+un bloc `_exemples` que la lecture ignore, un exemple qui apparierait un vrai avis serait un
+faux positif livré par défaut. Une entrée par composant, la clé étant le nom canonique — celui
+qui sera écrit dans la phrase — et `alias` les autres écritures rencontrées :
+
+```json
+{
+  "Keycloak":    {"alias": ["Red Hat Single Sign-On", "RH-SSO"]},
+  "noyau Linux": {"alias": ["Linux kernel"]},
+  "Traefik":     {}
+}
+```
+
+L'appariement porte sur des **mots entiers**, casse et accents ignorés : « Go » ne reconnaît
+pas « Google », et un alias de plusieurs mots exige les mots à la suite — « Apache Tomcat » ne
+se reconnaît pas dans un avis qui cite Apache d'un côté et Tomcat de l'autre. Éviter les alias
+d'un seul mot courant (« Cloud », « Vault », « Core ») : ils ramènent des faux positifs, et un
+composant qui ressort tous les jours finit par rendre la phrase entière inutile.
+
+La criticité est lue dans l'avis lui-même. Un avis CERT-FR ne porte ni score CVSS ni cotation
+de gravité : il nomme ce que la faille permet, dans un vocabulaire fixe — « exécution de code
+arbitraire à distance », « élévation de privilèges », « déni de service ». C'est ce vocabulaire
+qui est reconnu, et le plus grave des impacts annoncés qui est retenu ; quand rien n'est
+reconnu, la phrase le dit (« impact non précisé par l'avis ») plutôt que de laisser croire à
+une faille bénigne. Rien n'est déduit, rien n'est inventé — sur un avis de sécurité, une
+information fabriquée est pire que pas d'information.
+
+`RSSRESUME_STACK_FILE` désigne un fichier fusionné par-dessus, clé à clé : de quoi tenir la
+vraie liste hors du dépôt, et le seul moyen de la changer en conteneur sans rebuild, le fichier
+livré étant dans l'image. Comme le fichier de profil, un fichier annoncé mais illisible ou vide
+fait échouer le lancement.
 
 ### Fournisseurs de LLM
 
@@ -431,6 +500,10 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `audio.py` | synthèse vocale (fournisseur configuré, ou `espeak`) |
 | `pricing.py` | lecture de la grille de tarifs et calcul du coût d'un appel |
 | `runlog.py` | journal `<categorie>.log.json` : articles, scores et coûts par catégorie |
+| **`certfr/`** | **la catégorie qui ne passe par aucun modèle** |
+| `certfr/stack.json` | la liste des composants surveillés — à remplir, livrée vide |
+| `certfr/stack.py` | lecture de cette liste, et appariement d'un texte d'avis sur elle |
+| `certfr/service.py` | tri d'une journée d'avis : criticité, classement, phrase produite |
 | **`external/`** | **les systèmes que l'on ne contrôle pas** |
 | `external/freshrss.py` | client de l'API Google Reader de FreshRSS (lecture, tags, marquage comme lu) |
 | `external/mailer.py` | construction et envoi de l'email |

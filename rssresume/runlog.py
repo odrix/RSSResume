@@ -78,6 +78,12 @@ LIBELLE_TYPOLOGIE = {
 #: Ouverture du récapitulatif, dans le style des autres lignes de la console.
 RECAP_PREFIXE = "Consommation IA"
 
+#: Le traitement d'une catégorie routée hors du pipeline LLM, tel que son bloc
+#: `parametres` le nomme. C'est la seule chose qui distingue ces journaux des autres :
+#: le statut en dépend, et un outil qui recompte une facture sait à quoi s'attendre en
+#: y trouvant `couts.total` à zéro.
+TRAITEMENT_DETERMINISTE = "certfr"
+
 
 def read_day(day_dir: pathlib.Path) -> list[CategoryDigest]:
     """Les digests d'une journée, relus de ses journaux.
@@ -591,6 +597,13 @@ class CategoryJournal(Journal):
             # Jamais écrit sur disque (voir `worth_writing`), mais le statut reste juste
             # pour qui lit le journal en mémoire.
             return "aucun-article"
+        if self.parametres.get("traitement") == TRAITEMENT_DETERMINISTE:
+            # Un statut à part, et avant les deux suivants : une catégorie déterministe
+            # n'a jamais d'audio et n'a pas toujours d'apparié, ce qui la ferait passer
+            # pour une catégorie que le seuil a vidée. Ce n'est pas la même journée :
+            # ici, rien n'a été jugé, tout a été comparé — et `retenus`, à côté, dit
+            # combien d'avis touchaient la stack.
+            return "deterministe"
         if not self.selected:
             return "aucun-article-retenu"
         return "audio" if self.digest.audio_path else "sans-audio"

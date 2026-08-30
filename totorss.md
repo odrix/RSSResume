@@ -289,7 +289,7 @@ bloc par article avec des séparateurs explicites (par exemple des lignes de tir
 lui est parsé. Mesure et documente l'écart de tokens dans le commentaire.
 ```
 
-### 19. Traiter les avis CERT-FR de façon déterministe
+### 19. Traiter les avis CERT-FR de façon déterministe ✅
 
 10 à 15 bulletins par jour, format quasi identique : un résumé LLM de ça produit du très mauvais
 audio et consomme l'essentiel de la facture pour rien.

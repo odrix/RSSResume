@@ -6,7 +6,13 @@ nettoyage était du code envoyé au modèle, payé en tokens et lu comme du cont
 
 import unittest
 
-from rssresume.tools.text import strip_html, truncate_sentences
+from rssresume.tools.text import (
+    casefold_ascii,
+    contains_words,
+    strip_html,
+    truncate_sentences,
+    words,
+)
 
 
 class StripHtmlTests(unittest.TestCase):
@@ -101,6 +107,54 @@ class TruncateSentencesTests(unittest.TestCase):
     def test_an_empty_text_is_tolerated(self):
         self.assertEqual("", truncate_sentences("", 100))
         self.assertEqual("", truncate_sentences(None, 100))
+
+
+class CasefoldAsciiTests(unittest.TestCase):
+    """Le repli qui sert aux comparaisons de libellés : casse ET accents.
+
+    `casefold()` seul laissait passer l'écart entre un libellé de catégorie accentué et
+    la variable d'environnement qui le désigne, recopiée sans accents.
+    """
+
+    def test_case_and_accents_are_both_dropped(self):
+        self.assertEqual(
+            casefold_ascii("1 - Alertes et avis CERT-FR ANSSI"),
+            casefold_ascii("1 - alertes et avis cert-fr anssi"),
+        )
+        self.assertEqual("elevation de privileges", casefold_ascii("Élévation de privilèges"))
+
+    def test_the_cedilla_and_the_ligature_survive_the_comparison(self):
+        self.assertEqual("francais", casefold_ascii("Français"))
+
+    def test_an_empty_value_is_not_an_error(self):
+        self.assertEqual("", casefold_ascii(None))
+
+
+class WordsTests(unittest.TestCase):
+    """Découper avant de comparer : c'est ce qui distingue un appariement d'un `in`."""
+
+    def test_punctuation_and_accents_are_dropped(self):
+        self.assertEqual(("red", "hat", "single", "sign", "on"), words("Red Hat Single Sign-On"))
+        self.assertEqual(("noyau", "linux"), words("noyau Linux"))
+
+    def test_a_value_without_a_single_word_yields_nothing(self):
+        self.assertEqual((), words("--- ///"))
+
+
+class ContainsWordsTests(unittest.TestCase):
+    def test_a_word_sequence_is_found_only_when_contiguous(self):
+        texte = words("Multiples vulnérabilités dans Apache HTTP Server et Tomcat")
+
+        self.assertTrue(contains_words(texte, words("Apache HTTP Server")))
+        self.assertFalse(contains_words(texte, words("Apache Tomcat")))
+
+    def test_a_short_word_does_not_hide_inside_a_longer_one(self):
+        """Le piège de l'appariement naïf : « Go » trouvé dans « Google »."""
+        self.assertFalse(contains_words(words("Google Chrome"), words("Go")))
+
+    def test_an_empty_pattern_matches_nothing(self):
+        """Sans cette borne, un alias sans lettre reconnaîtrait tous les textes."""
+        self.assertFalse(contains_words(words("Keycloak"), ()))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import datetime as dt
 import pathlib
 from typing import Iterable, Protocol
 
+from rssresume.certfr import Revue, Stack
 from rssresume.models import Article, Ephemeride, Note
 
 
@@ -65,6 +66,23 @@ class EphemerideServiceProtocol(Protocol):
     """
 
     def of(self, day: dt.date) -> Ephemeride:
+        ...
+
+
+class CertfrServiceProtocol(Protocol):
+    """Ce que `DigestService` attend du traitement déterministe des avis CERT-FR.
+
+    Deux choses seulement, et la seconde n'est pas décorative : la journée triée, et la
+    liste contre laquelle elle l'a été. C'est cette liste que le journal de la catégorie
+    fixe, à la place de l'empreinte de scoring — qui n'a ici aucun sens, puisque aucun
+    prompt n'a servi.
+    """
+
+    @property
+    def stack(self) -> Stack:
+        ...
+
+    def lire(self, articles: list[Article]) -> Revue:
         ...
 
 

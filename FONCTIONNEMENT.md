@@ -7,7 +7,11 @@ Pour l'installation et les commandes, voir [README.md](README.md).
 
 ```mermaid
 flowchart TD
-    A[FreshRSS<br/>API Google Reader] -->|articles du jour + leurs tags| B{Scoring<br/>nécessaire ?}
+    A[FreshRSS<br/>API Google Reader] -->|articles du jour + leurs tags| R{Catégorie routée ?<br/>RSSRESUME_CERTFR_CATEGORIES}
+
+    R -->|oui| S["CertfrService<br/>appariement sur stack.json<br/>zéro appel IA"]
+    S --> J
+    R -->|non| B{Scoring<br/>nécessaire ?}
 
     B -->|tags scoring-hash + theme à jour| C[Note relue des tags<br/>zéro appel IA]
     B -->|tag absent ou périmé| D[score_articles<br/>score + thématique + angle]
@@ -45,6 +49,15 @@ catégorie ne sont jamais traités.
 
 Les étapes 2 à 6 sont ensuite répétées **par catégorie**. Les étapes 7 et 8 n'ont lieu qu'une fois,
 après la dernière catégorie.
+
+**Une catégorie peut quitter ce pipeline entièrement.** `RSSRESUME_CERTFR_CATEGORIES` liste celles
+qui sont routées vers le traitement déterministe des avis CERT-FR : elles passent de l'étape 2 à
+l'étape 6 sans toucher aux étapes 3, 4 ni 5 — ni scoring, ni résumé, ni synthèse vocale. Voir
+[Le traitement déterministe des avis CERT-FR](#le-traitement-déterministe-des-avis-cert-fr).
+
+Le choix est fait dans `DigestService._build_digest`, **à l'intérieur** du `runlog.category_scope` :
+le journal, le slug et l'écriture du fichier restent les mêmes des deux côtés, seul le contenu de
+la catégorie change. C'est ce qui garantit que `--send-only` relit les deux sans le savoir.
 
 ### 2. Récupération des articles
 
@@ -416,6 +429,154 @@ table et le calendrier, sans aucun appel, comme le promet `--send-only`.
 échec d'email les laisse non lus : le passage suivant les reprend, et le cache de scoring fait qu'il
 ne repaie rien.
 
+## Le traitement déterministe des avis CERT-FR
+
+Le flux « CERT-FR - Avis de securite » publie cinq à dix articles par jour, tous bâtis sur le même
+moule : un titre « Multiples vulnérabilités dans *X* (JJ mois AAAA) » et une description d'une
+phrase, qui nomme ce que la faille permet. Rien d'autre — l'enrichissement de `tools/cve.py` ne s'y
+déclenche même pas, la description ne mentionnant aucun identifiant de CVE.
+
+Ce format-là ne demande pas un résumé, il demande une **réponse** : est-ce que ça touche ma stack.
+Le faire passer par le pipeline LLM revenait à payer un scoring puis un résumé pour faire
+reformuler un formulaire, et à écouter tous les matins sept paragraphes qui commencent pareil.
+
+```bash
+RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI
+```
+
+La catégorie ainsi routée saute les étapes 3, 4 et 5 et rend une phrase, une seule :
+
+```
+7 avis CERT-FR aujourd'hui, 2 touchent la stack :
+  Keycloak — exécution de code arbitraire à distance ; OpenSSL — déni de service à distance.
+```
+
+**Le routage est explicite.** Aucune catégorie n'y tombe parce qu'elle s'appelle CERT-FR : rien ne
+doit changer de pipeline parce que quelqu'un a renommé un dossier FreshRSS. Le libellé est comparé
+casse repliée **et accents retirés** (`tools/text.casefold_ascii`), là où `RSSRESUME_EXCLUDED_CATEGORIES`
+ne replie que la casse. Ce n'est pas une préférence : le libellé réel porte des accents, un
+copier-coller vers un panneau d'hébergeur les perd régulièrement — `RSSRESUME_CATEGORY_THRESHOLDS`
+en est déjà un exemple dans cette installation —, et une catégorie qu'on croit routée et qui ne
+l'est pas ne fait pas d'erreur : elle repasse par le LLM, tous les matins, en silence. Une entrée
+écrite comme un seuil (« Catégorie=7 ») fait échouer le lancement, pour la même raison qu'un seuil
+mal formé.
+
+### Ce que la catégorie rend
+
+| Champ du `CategoryDigest` | Contenu | Ce qui en découle |
+| --- | --- | --- |
+| `articles` | **tous** les avis du jour | `_mark_read` les aplatit : les avis qui ne nous touchent pas sont marqués lus sans être résumés, sans une ligne de code de plus |
+| `selected` | les avis qui touchent la stack, les plus graves en tête | la liste « À lire » de l'email, dérivée par `CategoryDigest.links` |
+| `summary_text` | la phrase | le corps de la section, et le `resume` du journal |
+| `audio_path` | `None` | aucun appel TTS, aucune pièce jointe, aucun badge de durée — `newsletter.py` traitait déjà ce cas |
+
+Aucun tag FreshRSS n'est écrit : il n'y a ni note à mettre en cache, ni empreinte de prompt à
+retenir.
+
+### L'appariement
+
+Le titre **et** la description, sur la liste de [certfr/stack.json](rssresume/certfr/stack.json) :
+le titre nomme le produit dans la quasi-totalité des avis, mais « Multiples vulnérabilités dans les
+produits IBM » ne nomme le composant réellement touché que dans son texte.
+
+La comparaison porte sur des **suites de mots contigus**, casse et accents retirés, et jamais sur la
+chaîne. C'est ce qui distingue un appariement d'un `in` : chercher « Go » dans « Google Chrome »
+réussit sur la chaîne et se trompe sur le produit. Un composant qui ressort tous les jours parce que
+son nom est court rend la phrase entière inutile en trois matins. Corollaire dans l'autre sens :
+« Apache Tomcat » ne se reconnaît pas dans un avis qui cite Apache d'un côté et Tomcat de l'autre.
+
+La liste est livrée **vide** : ses entrées d'exemple sont dans un bloc `_exemples` que la lecture
+ignore, comme toute clé préfixée d'un `_`. Un exemple qui apparierait un vrai avis serait un faux
+positif livré par défaut, le jour de l'installation. Tant qu'elle est vide, la phrase le dit :
+
+```
+5 avis CERT-FR aujourd'hui, sans appariement : aucun composant n'est déclaré dans la liste de la stack.
+```
+
+`RSSRESUME_STACK_FILE` désigne un fichier fusionné par-dessus, clé à clé — la vraie liste hors du
+dépôt, et le seul moyen de la changer en conteneur sans rebuild. Un fichier annoncé mais illisible
+ou vide **fait échouer le lancement** : retomber en silence sur la liste livrée ferait apparier une
+journée entière contre une stack qui n'est pas celle qu'on croit, et le digest conclurait
+tranquillement que rien ne nous touche. Même arbitrage que le fichier de profil.
+
+### La criticité, et d'où elle sort
+
+Un avis CERT-FR ne porte **ni score CVSS ni cotation de gravité** — sa page liste les CVE, pas leurs
+scores. Ce qu'il porte, c'est la liste de ce que la faille permet, dans un vocabulaire fixe :
+« De multiples vulnérabilités ont été découvertes dans SPIP. Certaines d'entre elles permettent à un
+attaquant de provoquer une exécution de code arbitraire à distance, une injection SQL (SQLi) et une
+falsification de requêtes côté serveur (SSRF). »
+
+C'est ce vocabulaire, et lui seul, que `certfr/service.py` reconnaît, dans un ordre de gravité qui
+est un classement **local** — celui de l'exploitant, prendre la main devant la couper :
+
+```
+exécution de code arbitraire à distance
+exécution de code arbitraire
+élévation de privilèges
+contournement de la politique de sécurité / de l'authentification / de la fonctionnalité de sécurité
+injection de code indirecte à distance / injection SQL / falsification de requêtes côté serveur
+atteinte à l'intégrité des données
+atteinte à la confidentialité des données
+déni de service à distance
+déni de service
+```
+
+L'ordre fait tout le travail : la reconnaissance s'arrête au premier libellé qui répond, et
+« exécution de code arbitraire à distance » est cherché avant « exécution de code arbitraire », dont
+il contient les mots. Le libellé cherché est aussi celui qui s'écrit dans la phrase — un seul texte
+pour les deux, sans quoi elle finirait par nommer autre chose que ce qui a été reconnu.
+
+Quand rien n'est reconnu — un bulletin d'actualité, un avis « à l'impact non spécifié par
+l'éditeur » —, la phrase le dit : *impact non précisé par l'avis*. Un champ vide se lirait comme une
+faille bénigne. Rien n'est déduit et rien n'est complété : sur un avis de sécurité, une information
+fabriquée est pire que pas d'information.
+
+### Ce que le journal en garde
+
+Le fichier reste `<categorie>.log.json`, au même endroit, mais son bloc `parametres` est différent :
+`seuil`, `seuil_repli` et `empreinte_scoring` n'ont aucun sens sans scoring, et les écrire à zéro
+ferait lire ce journal comme celui d'une catégorie qui n'a rien retenu.
+
+```json
+"parametres": {
+  "traitement": "certfr",
+  "langue": "fr",
+  "composants": 12,
+  "empreinte_stack": "3f9a2c81b4de"
+},
+"resultat": { "statut": "deterministe", "articles": 7, "retenus": 2, "audio": null },
+"couts": { "devise": "USD", "total": 0.0, "appels": [] }
+```
+
+`empreinte_stack` est le pendant de `empreinte_scoring` : deux journaux dont elle diffère n'ont pas
+été appariés contre la même liste, et une journée qui ne signalait rien s'explique sans avoir à
+retrouver le fichier de l'époque. `couts.total` à `0.0` avec `appels` vide n'est pas une remontée
+partielle, c'est le signal recherché.
+
+`"statut": "deterministe"` est une valeur à part, et testée avant les autres : une catégorie
+déterministe n'a jamais d'audio et n'a pas toujours d'apparié, ce qui la ferait passer pour une
+catégorie que le seuil a vidée. Ce n'est pas la même journée — ici rien n'a été jugé, tout a été
+comparé — et `retenus`, juste à côté, dit combien d'avis touchaient la stack.
+
+**`--send-only` relit ce journal sans traitement particulier**, et c'est cette contrainte qui a
+dicté sa forme : même suffixe de fichier, un `resume`, et `retenu` + `rang_digest` sur les avis
+appariés — sans eux, le renvoi arriverait avec une section vide de tout lien. Le `score` reste à
+`null` : `_a_surveiller` exige un entier dans la fourchette 4-6, donc aucun avis ne peut entrer par
+accident dans la liste « à surveiller ».
+
+### Ce que l'appariement ne saura pas faire
+
+- un composant que l'avis désigne autrement que par une écriture déclarée est manqué — c'est le prix
+  du déterminisme, et la raison d'être des `alias` ;
+- un avis ne nomme parfois que l'éditeur (« les produits IBM ») quand le composant touché n'est
+  détaillé que sur la page de l'avis, que ce chemin ne lit pas ;
+- la criticité vaut pour l'avis entier, pas pour le composant : un avis qui liste une RCE sur un
+  module et un déni de service sur un autre est annoncé à la RCE.
+
+Dans tous les cas, les avis restent liés dans l'email et lisibles en un clic. Le tri déterministe
+range et hiérarchise, il ne remplace pas la lecture de l'avis.
+
 ## Le journal d'une catégorie
 
 Écrit à la fermeture de chaque catégorie, **avant** l'email et le marquage comme lu, à côté de son
@@ -434,6 +595,9 @@ sélection, et même après une erreur en cours de route (`"statut": "interrompu
 le cas où il sert le plus. Une catégorie **sans aucun article**, elle, n'en a pas : elle n'a rien
 lu, rien noté, rien dépensé, et le journal ne dirait que des zéros là où son marqueur
 `.no-article` dit déjà tout.
+
+Une catégorie routée hors du pipeline LLM écrit le même fichier avec un `parametres` et un `statut`
+qui lui sont propres : voir [Ce que le journal en garde](#ce-que-le-journal-en-garde).
 
 ### Comment le coût est rattaché à une catégorie
 
@@ -828,6 +992,8 @@ flowchart LR
     DIG --> AU[audio.py]
     DIG --> MA[external/mailer.py]
     DIG --> RL[runlog.py<br/>journal .log.json]
+    DIG --> CF[certfr/<br/>appariement déterministe]
+    CF --> STK[certfr/stack.json<br/>composants surveillés]
     DIG --> SC[LLMProvider<br/>scorer]
     SU --> LLMP[LLMProvider<br/>digest]
     AU --> TTS[LLMProvider<br/>voix]

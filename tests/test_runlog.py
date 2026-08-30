@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import pricing, runlog
+from rssresume import certfr, pricing, runlog
 from rssresume.audio import AudioGenerator
 from rssresume.digest import DigestService
 from rssresume.llm.openai import OpenAIProvider
@@ -515,6 +515,102 @@ class PipelineTests(unittest.TestCase):
         resultat = journaux["tech.log.json"]["resultat"]
         self.assertEqual(5, resultat["seuil_applique"])
         self.assertEqual(7, journaux["tech.log.json"]["parametres"]["seuil"])
+
+
+class CertfrJournalTests(unittest.TestCase):
+    """Le journal d'une catégorie déterministe : rien de facturé, et rien de menteur.
+
+    Le journal sert à deux choses ici, et aucune n'est le coût : dire contre quelle
+    liste de composants la journée a été appariée, et rester relisible par
+    `--send-only`. C'est ce dernier point qui impose la forme — `retenu`, `rang_digest`,
+    et un `score` à `null` pour qu'aucun avis n'entre par erreur dans la liste de veille.
+    """
+
+    CATEGORIE = "1 - Alertes et avis CERT-FR ANSSI"
+    SLUG = "1-alertes-et-avis-cert-fr-anssi.log.json"
+
+    def _avis(self, titre, contenu="", item_id="avis-1"):
+        return Article(
+            item_id=item_id,
+            category=self.CATEGORIE,
+            title=titre,
+            url=f"https://www.cert.ssi.gouv.fr/avis/{item_id}/",
+            published_at=dt.datetime(2026, 8, 26, 6, 0, tzinfo=dt.timezone.utc),
+            feed_title="CERT-FR - Avis de securite",
+            content_text=contenu,
+        )
+
+    def _run(self, articles):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir),
+                categories=[self.CATEGORIE],
+                certfr_categories=[self.CATEGORIE],
+            )
+            DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({self.CATEGORIE: articles}),
+                scorer=FakeScorer(),
+                summary_generator=mock.Mock(),
+                audio_generator=mock.Mock(),
+                email_sender=FakeEmailSender(),
+                certfr_service=certfr.CertfrService(
+                    certfr.Stack([certfr.Composant("Keycloak", ["RH-SSO"])])
+                ),
+            ).run(DAY, send_email=False, write_tags=False, mark_read=False)
+            chemin = pathlib.Path(tmpdir) / DAY.isoformat() / self.SLUG
+            return json.loads(chemin.read_text(encoding="utf-8"))
+
+    def test_a_deterministic_category_bills_nothing(self):
+        """Zéro appel et zéro dollar : c'est le signal recherché, pas un journal amputé."""
+        journal = self._run([self._avis("Multiples vulnérabilités dans Keycloak")])
+
+        self.assertEqual(0.0, journal["couts"]["total"])
+        self.assertEqual([], journal["couts"]["appels"])
+        self.assertTrue(journal["couts"]["tarification_complete"])
+
+    def test_the_settings_describe_the_stack_instead_of_a_threshold(self):
+        """Un seuil et une empreinte de prompt n'ont aucun sens sans scoring."""
+        journal = self._run([self._avis("Multiples vulnérabilités dans Keycloak")])
+
+        parametres = journal["parametres"]
+        self.assertEqual(runlog.TRAITEMENT_DETERMINISTE, parametres["traitement"])
+        self.assertEqual(1, parametres["composants"])
+        self.assertTrue(parametres["empreinte_stack"])
+        self.assertNotIn("seuil", parametres)
+        self.assertNotIn("empreinte_scoring", parametres)
+
+    def test_the_status_says_the_category_was_not_judged(self):
+        """Sans statut à part, une journée sans appariement se lirait comme un seuil trop haut."""
+        journal = self._run([self._avis("Multiples vulnérabilités dans Google Chrome")])
+
+        self.assertEqual("deterministe", journal["resultat"]["statut"])
+        self.assertEqual(1, journal["resultat"]["articles"])
+        self.assertEqual(0, journal["resultat"]["retenus"])
+        self.assertIsNone(journal["resultat"]["audio"])
+
+    def test_the_matched_advisories_carry_what_the_replay_needs(self):
+        journal = self._run(
+            [
+                self._avis("Multiples vulnérabilités dans Google Chrome"),
+                self._avis("Multiples vulnérabilités dans RH-SSO", item_id="avis-2"),
+            ]
+        )
+
+        apparie = next(e for e in journal["articles"] if e["item_id"] == "avis-2")
+        ecarte = next(e for e in journal["articles"] if e["item_id"] == "avis-1")
+        self.assertTrue(apparie["retenu"])
+        self.assertEqual(1, apparie["rang_digest"])
+        self.assertFalse(ecarte["retenu"])
+        # Le score reste nul : `_a_surveiller` exige un entier dans la fourchette 4-6,
+        # donc aucun avis ne peut entrer par accident dans la liste de veille.
+        self.assertIsNone(apparie["score"])
+        self.assertIsNone(ecarte["score"])
+
+    def test_the_journal_carries_the_sentence_the_email_shows(self):
+        journal = self._run([self._avis("Multiples vulnérabilités dans Keycloak")])
+
+        self.assertIn("touche la stack : Keycloak", journal["resume"])
 
 
 if __name__ == "__main__":

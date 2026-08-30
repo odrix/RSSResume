@@ -12,6 +12,7 @@ from rssresume.config import (
     DEFAULT_ARTICLE_CHAR_LIMIT,
     DEFAULT_TIMEZONE,
     ENV_ARTICLE_CHAR_LIMIT,
+    ENV_CERTFR_CATEGORIES,
     ENV_MAIL_TRANSPORT,
     ENV_RESEND_API_KEY,
     ENV_TIMEZONE,
@@ -128,6 +129,65 @@ class AppConfigTests(unittest.TestCase):
     def test_from_env_reads_an_injected_profile(self):
         """Le profil est résolu une fois au démarrage, pas à chaque prompt."""
         self.assertEqual("Vigneronne en Anjou.", AppConfig.from_env().profil)
+
+
+class CertfrCategoriesTests(unittest.TestCase):
+    """Les catégories routées hors du pipeline LLM, vers le traitement déterministe."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_nothing_is_routed_by_default(self):
+        """Le routage est explicite : aucune catégorie n'y tombe parce qu'elle s'appelle CERT-FR."""
+        config = AppConfig.from_env()
+
+        self.assertEqual([], config.certfr_categories)
+        self.assertFalse(config.est_deterministe("1 - Alertes et avis CERT-FR ANSSI"))
+
+    @mock.patch.dict(
+        os.environ,
+        {**BASE_ENV, ENV_CERTFR_CATEGORIES: " 1 - Alertes et avis CERT-FR ANSSI , Veille CVE "},
+        clear=True,
+    )
+    def test_from_env_parses_the_routed_category_list(self):
+        config = AppConfig.from_env()
+
+        self.assertEqual(
+            ["1 - Alertes et avis CERT-FR ANSSI", "Veille CVE"], config.certfr_categories
+        )
+        self.assertTrue(config.est_deterministe("1 - Alertes et avis CERT-FR ANSSI"))
+        self.assertFalse(config.est_deterministe("2 - Cybersecurite technique"))
+
+    @mock.patch.dict(
+        os.environ,
+        {**BASE_ENV, ENV_CERTFR_CATEGORIES: "1 - alertes et avis cert-fr anssi"},
+        clear=True,
+    )
+    def test_the_comparison_drops_the_accents_as_well_as_the_case(self):
+        """Le libellé réel porte des accents ; la variable les perd à chaque copier-coller.
+
+        `.env.local` contient déjà un `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans accents :
+        une catégorie qu'on croit routée et qui ne l'est pas repasse par le LLM tous les
+        matins, sans que rien ne le signale.
+        """
+        self.assertTrue(
+            AppConfig.from_env().est_deterministe("1 - Alertes et avis CERT-FR ANSSI")
+        )
+
+    @mock.patch.dict(
+        os.environ, {**BASE_ENV, ENV_CERTFR_CATEGORIES: "Alertes CERT-FR=7"}, clear=True
+    )
+    def test_an_entry_written_like_a_threshold_fails_at_startup(self):
+        """La faute vient de la variable voisine, qui, elle, prend « Catégorie=score »."""
+        with self.assertRaises(ValueError) as raised:
+            AppConfig.from_env()
+
+        self.assertIn(ENV_CERTFR_CATEGORIES, str(raised.exception))
+
+    @mock.patch.dict(
+        os.environ, {**BASE_ENV, ENV_CERTFR_CATEGORIES: "Alertes CERT-FR, ---"}, clear=True
+    )
+    def test_an_entry_without_a_single_word_fails_at_startup(self):
+        with self.assertRaises(ValueError):
+            AppConfig.from_env()
 
 
 class TimezoneTests(unittest.TestCase):

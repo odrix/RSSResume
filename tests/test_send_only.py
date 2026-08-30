@@ -171,6 +171,78 @@ class SendOnlyTests(unittest.TestCase):
             self.assertEqual([], sender.envois)
 
 
+def ecrire_journee_certfr(racine):
+    """Le journal d'une catégorie déterministe, tel que `runlog` l'écrit : sans audio,
+    sans score, avec sa phrase et ses avis appariés."""
+    day_dir = pathlib.Path(racine) / JOUR.isoformat()
+    day_dir.mkdir(parents=True)
+    journal = {
+        "categorie": "1 - Alertes et avis CERT-FR ANSSI",
+        "date": JOUR.isoformat(),
+        "parametres": {"traitement": "certfr", "composants": 4, "empreinte_stack": "abc123def456"},
+        "resume": "3 avis CERT-FR aujourd'hui, 1 touche la stack : Keycloak — "
+        "exécution de code arbitraire à distance.",
+        "resultat": {"statut": "deterministe", "articles": 3, "retenus": 1, "audio": None},
+        "couts": {"devise": "USD", "total": 0.0, "appels": []},
+        "articles": [
+            {
+                "item_id": "avis-1",
+                "titre": "Multiples vulnérabilités dans Keycloak (29 août 2026)",
+                "flux": "CERT-FR - Avis de securite",
+                "url": "https://www.cert.ssi.gouv.fr/avis/avis-1/",
+                "publie_le": "2026-08-29T06:00:00+02:00",
+                "score": None,
+                "retenu": True,
+                "rang_digest": 1,
+            },
+            {
+                "item_id": "avis-2",
+                "titre": "Multiples vulnérabilités dans Google Chrome (29 août 2026)",
+                "flux": "CERT-FR - Avis de securite",
+                "url": "https://www.cert.ssi.gouv.fr/avis/avis-2/",
+                "score": None,
+                "retenu": False,
+                "rang_digest": None,
+            },
+        ],
+    }
+    (day_dir / "1-alertes-et-avis-cert-fr-anssi.log.json").write_text(
+        json.dumps(journal, ensure_ascii=False), encoding="utf-8"
+    )
+    return day_dir
+
+
+class SendOnlyCertfrTests(unittest.TestCase):
+    """Un journal déterministe se relit comme les autres, sans traitement particulier.
+
+    C'est la contrainte qui a dicté la forme du journal : même nom de fichier, un
+    `resume`, et `retenu` + `rang_digest` sur les avis appariés. Sans eux, le renvoi
+    d'une journée CERT-FR arriverait avec une section vide de tout lien.
+    """
+
+    def test_the_deterministic_journal_replays_the_same_email(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ecrire_journee_certfr(tmpdir)
+            config = AppConfig(
+                **{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)}
+            )
+            sender = FakeSender()
+
+            with mock.patch.object(cli.mail, "sender", return_value=sender):
+                code = cli.send_only(config, JOUR)
+
+            self.assertEqual(0, code)
+            envoi, = sender.envois
+            self.assertIn("1 touche la stack : Keycloak", envoi["body"])
+            self.assertIn("https://www.cert.ssi.gouv.fr/avis/avis-1/", envoi["body"])
+            # L'avis qui ne touche rien n'entre dans aucune des deux listes : son score
+            # est nul, donc hors de la fourchette de veille.
+            self.assertNotIn("https://www.cert.ssi.gouv.fr/avis/avis-2/", envoi["body"])
+            # Aucun audio : ni pièce jointe, ni temps d'écoute annoncé.
+            self.assertEqual([], envoi["attachments"])
+            self.assertNotIn("d'écoute", envoi["subject"])
+
+
 class SendOnlyArgumentsTests(unittest.TestCase):
     """Le renvoi court-circuite l'assemblage : aucun fournisseur n'est construit."""
 
