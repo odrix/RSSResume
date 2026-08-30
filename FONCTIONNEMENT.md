@@ -334,6 +334,7 @@ Vendredi 28 août 2026, saint Augustin. 1988…  <- introduction : le jour de l'
 │ • Avis du CERT-FR sur une RCE — CERT-FR  │
 │ À SURVEILLER                             │  <- les notés 4 à 6, non retenus
 │ • Rapport de tendances — Le Monde Info.  │
+│ Pièce jointe : 2-cybersecurite.mp3       │  <- quel mp3 va avec cette section
 └──────────────────────────────────────────┘
 
 2 catégories · 12 articles retenus · 17 à surveiller
@@ -374,6 +375,12 @@ peuvent donc pas être hallucinées. Une liste vide n'ajoute aucun en-tête.
 taire revenait à jeter la moitié de ce qu'une journée coûte. Ils n'entrent pas dans l'audio pour
 autant : un titre et un lien, rien de plus. C'est dans une catégorie sans aucun retenu qu'ils
 servent le plus.
+
+**Chaque section nomme son fichier audio.** Le message porte un mp3 par catégorie, tous dans le
+même bandeau de pièces jointes, et rien ne disait lequel allait avec quoi — il fallait rapprocher
+un slug d'un titre de catégorie soi-même. Le nom seul, jamais un lien : aucun client mail n'ouvre
+une pièce jointe depuis le corps du message (`cid:` sert à incorporer une image, pas à déclencher
+une ouverture), et un lien inerte se lit comme un lien cassé.
 
 **Le temps d'écoute** est mesuré sur le fichier audio, pas estimé depuis le texte
 (`tools/duration.py` : en-tête `wave` pour le `.wav`, parcours des trames pour le `.mp3`). Une

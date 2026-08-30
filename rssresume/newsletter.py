@@ -63,6 +63,10 @@ NOTE_PIED = ""
 #: Nom affiché en titre de la lettre, avant la date.
 TITRE = "Veille"
 
+#: L'étiquette qui annonce le fichier audio d'une catégorie. Le même mot que celui du
+#: client mail : c'est sous ce nom que le lecteur va le chercher en bas du message.
+PIECE_JOINTE = "Pièce jointe :"
+
 
 def quantieme(day: dt.date) -> str:
     """`1er` le premier du mois, le nombre nu les autres jours."""
@@ -113,6 +117,11 @@ class Section:
     audio_path: pathlib.Path | None = None
     #: Durée mesurée de l'audio, `None` si le fichier manque ou n'est pas lisible.
     secondes: float | None = None
+    #: Vrai quand la catégorie a vraiment été racontée. Faux pour celle qui n'avait
+    #: aucun article, et pour celle dont rien n'a passé le seuil : leur `summary_text`
+    #: est une phrase d'explication, pas un résumé. C'est ce qui distingue les deux
+    #: nombres du sous-titre.
+    racontee: bool = False
 
     @classmethod
     def from_digest(cls, digest: CategoryDigest) -> "Section":
@@ -126,12 +135,30 @@ class Section:
             # où l'audio est certainement écrit, aussi bien après une exécution qu'au
             # renvoi d'une journée passée.
             secondes=duration.seconds(digest.audio_path),
+            # Sur `selected` et non sur l'audio : un fichier effacé depuis ne doit pas
+            # faire passer une catégorie racontée pour une catégorie vide. C'est aussi
+            # ce que la relecture d'un journal reconstruit, article par article.
+            racontee=bool(digest.selected),
         )
 
     @property
     def ecoute(self) -> str | None:
         """Le temps d'écoute affiché, `None` pour une catégorie qui n'a rien à dire."""
         return duree(self.secondes)
+
+    @property
+    def audio_name(self) -> str | None:
+        """Le nom du fichier joint, `None` quand la catégorie n'en a pas.
+
+        Le message porte un mp3 par catégorie, tous dans le même bandeau de pièces
+        jointes, et rien ne disait lequel allait avec quoi : il fallait rapprocher un
+        slug d'un titre de catégorie soi-même. Le nommer dans la section fait ce
+        rapprochement, et se lit dans les deux sens — de la section vers le fichier
+        comme du fichier vers la section.
+
+        Le nom seul, sans le chemin : c'est ainsi que le client mail l'affiche.
+        """
+        return self.audio_path.name if self.audio_path else None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -176,18 +203,18 @@ class Lettre:
 
     @property
     def subject(self) -> str:
-        """L'objet : la date, puis ce que la lettre coûte à lire.
+        """L'objet : la date, et le temps que la lettre coûte à écouter.
 
-        Le nombre de catégories et le temps d'écoute sont dans l'objet parce que c'est
-        là qu'ils servent — dans la liste des messages, avant de l'ouvrir, quand on
-        décide si on a le temps maintenant.
+        Le temps d'écoute est là parce que c'est là qu'il sert — dans la liste des
+        messages, avant d'ouvrir, quand on décide si on a le temps maintenant. Le
+        décompte des catégories, lui, n'y est pas : il ne change pas cette décision, et
+        un objet chargé se fait couper par le client avant d'être lu. Il reste dans le
+        sous-titre, où on le lit une fois la lettre ouverte.
         """
         if not self.sections:
             return f"{TITRE} du {date_courte(self.day)} — aucun article"
         total = duree(self.total_secondes)
-        return f"{TITRE} du {date_courte(self.day)} — {self._decompte}" + (
-            f", {total} d'écoute" if total else ""
-        )
+        return f"{TITRE} du {date_courte(self.day)}" + (f" — {total} d'écoute" if total else "")
 
     @property
     def attachments(self) -> list[pathlib.Path]:
@@ -202,9 +229,21 @@ class Lettre:
         return sum(mesurees) if mesurees else None
 
     @property
+    def racontees(self) -> int:
+        """Le nombre de catégories qui ont vraiment quelque chose à raconter."""
+        return sum(1 for section in self.sections if section.racontee)
+
+    @property
     def _decompte(self) -> str:
-        nombre = len(self.sections)
-        return f"{nombre} catégorie{'s' if nombre > 1 else ''}"
+        """`4/5 catégories` : ce qui est raconté, sur ce qui a été relevé.
+
+        Les deux nombres et pas seulement le second : une journée où deux catégories
+        sur six ont produit un résumé n'est pas la même qu'une journée pleine, et le
+        seul total le cachait. L'écart se lit d'un coup d'œil, et c'est lui qui dit
+        s'il faut aller regarder un seuil.
+        """
+        total = len(self.sections)
+        return f"{self.racontees}/{total} catégorie{'s' if total > 1 else ''}"
 
     @property
     def _detail_ecoute(self) -> str:
@@ -221,8 +260,8 @@ class Lettre:
         return self._decompte + (f" · {total} d'écoute" if total else "")
 
     @property
-    def _introduction(self) -> str:
-        """Le jour de l'envoi, sa fête, puis le fait historique quand il y en a un.
+    def _ouverture(self) -> str:
+        """La première ligne de l'introduction : le jour de l'envoi, et sa fête.
 
         La fête est en apposition derrière la date — « Vendredi 28 août 2026, saint
         Augustin. » — parce que c'est ainsi qu'une page de calendrier se lit, et que la
@@ -230,9 +269,24 @@ class Lettre:
         """
         jour = self.sent_on or self.day
         fete = (self.ephemeride.fete if self.ephemeride else "").strip()
-        ouverture = date_longue(jour).capitalize() + (f", {fete}." if fete else ".")
-        texte = (self.ephemeride.texte if self.ephemeride else "").strip()
-        return f"{ouverture} {texte}" if texte else ouverture
+        return date_longue(jour).capitalize() + (f", {fete}." if fete else ".")
+
+    @property
+    def _fait(self) -> str:
+        """La seconde ligne : ce qui s'est passé à cette date. Vide s'il n'y a rien."""
+        return (self.ephemeride.texte if self.ephemeride else "").strip()
+
+    @property
+    def _introduction(self) -> list[str]:
+        """L'introduction, une ligne par idée, et la coupure décidée ici.
+
+        Deux lignes et non un paragraphe : d'un seul tenant, la date, la fête et le
+        fait se suivaient sans respiration et le retour à la ligne tombait au hasard de
+        la largeur — au milieu de la date sur un téléphone. En les séparant, la seule
+        coupure imposée est celle qu'on a choisie ; les lignes peuvent encore se replier
+        sur un écran étroit, mais chacune dans son coin.
+        """
+        return [ligne for ligne in (self._ouverture, self._fait) if ligne]
 
     @property
     def _pied(self) -> list[str]:
@@ -265,15 +319,18 @@ class Lettre:
         reproduire la mise en page. Un client texte n'a pas besoin d'un dessin, il a
         besoin que les liens soient sur leur propre ligne et que les titres se voient.
         """
+        # L'introduction garde ses deux lignes ici aussi : c'est la même coupure que
+        # celle du HTML, et un client texte n'a pas de largeur connue non plus.
+        introduction = "\n".join(self._introduction)
         if not self.sections:
             return (
                 f"{TITRE.upper()} DU {date_courte(self.day).upper()}\n\n"
-                f"{self._introduction}\n\nAucun article trouvé pour le {self.day.isoformat()}.\n"
+                f"{introduction}\n\nAucun article trouvé pour le {self.day.isoformat()}.\n"
             )
         blocs = [
             f"{TITRE.upper()} DU {date_courte(self.day).upper()}",
             self._sous_titre + (f"\n{self._detail_ecoute}" if self._detail_ecoute else ""),
-            self._introduction,
+            introduction,
         ]
         blocs.extend(self._section_texte(section) for section in self.sections)
         # Le pied est un bloc et non des blocs : ses lignes se suivent, là où les
@@ -296,6 +353,9 @@ class Lettre:
             if liens:
                 lignes.extend(["", entete])
                 lignes.extend(f"- {lien.title} ({lien.source})\n  {lien.url}" for lien in liens)
+        if section.audio_name:
+            # En dernier : c'est une référence, pas du contenu. Elle ferme la section.
+            lignes.extend(["", f"{PIECE_JOINTE} {section.audio_name}"])
         return "\n".join(lignes)
 
     # -- rendu HTML ----------------------------------------------------------
@@ -314,17 +374,23 @@ class Lettre:
         return _DOCUMENT.format(
             titre=_e(f"{TITRE} du {date_courte(self.day)}"),
             entete=self._entete_html(),
-            introduction=_e(self._introduction),
+            introduction=self._introduction_html(),
             sections=corps,
             pied="<br>".join(_e(ligne) for ligne in self._pied),
         )
 
     def _entete_html(self) -> str:
-        """Titre, sous-titre, et le détail des durées — en info-bulle et en pastilles.
+        """Le titre au-dessus de la boîte, le sous-titre et les durées dedans.
 
-        Les deux, et non l'un ou l'autre : l'info-bulle ne survit ni au téléphone ni à
-        la plupart des clients mail, les pastilles se lisent partout. L'attribut `title`
-        est le supplément de ceux qui survolent, pas le support de l'information.
+        Le titre est sorti du bandeau : posé sur le fond de la page, en encre sombre, il
+        se lit comme le nom du message et non comme le premier élément d'un encart. Le
+        bandeau ne porte plus que ce qui décrit la livraison du jour — combien de
+        catégories parlent, et pour combien de temps d'écoute.
+
+        Le détail des durées est à la fois en info-bulle et en pastilles, et pas l'un ou
+        l'autre : `title` ne survit ni au téléphone ni à la plupart des clients mail,
+        les pastilles se lisent partout. L'attribut est le supplément de ceux qui
+        survolent, jamais le support de l'information.
         """
         detail = self._detail_ecoute
         infobulle = f' title="{_e(detail)}"' if detail else ""
@@ -342,6 +408,25 @@ class Lettre:
             else "",
         )
 
+    def _introduction_html(self) -> str:
+        """L'introduction, une ligne par bloc, et la date rendue insécable.
+
+        Les espaces de la date sont remplacées par des espaces insécables : sur un
+        téléphone, « Vendredi 28 août 2026 » coupé entre le mois et l'année se lit
+        comme une erreur de composition. La fête, elle, reste sécable — « sainte Thérèse
+        de l'Enfant-Jésus » déborderait un écran étroit si on la liait tout entière.
+        """
+        lignes = []
+        for rang, ligne in enumerate(self._introduction):
+            corps = _e(ligne)
+            if rang == 0:
+                # La première ligne commence par la date : on ne lie que jusqu'à la
+                # virgule qui introduit la fête, s'il y en a une.
+                date, virgule, reste = corps.partition(",")
+                corps = date.replace(" ", "&nbsp;") + virgule + reste
+            lignes.append(_INTRODUCTION_LIGNE.format(corps=corps, style=_INTRO_STYLES[rang > 0]))
+        return "".join(lignes)
+
     @classmethod
     def _section_html(cls, section: Section) -> str:
         badge = (
@@ -357,6 +442,12 @@ class Lettre:
             resume=_resume_html(section.summary_text, section.links),
             liens=cls._liens_html("À lire", section.links, "#1a4fa0")
             + cls._liens_html("À surveiller", section.watchlist, "#6b7280"),
+            # Pas un lien : aucun client mail n'ouvre une pièce jointe depuis le corps
+            # du message, et un lien inerte se lit comme un lien cassé. Le nom seul
+            # suffit à faire le rapprochement avec le bandeau des pièces jointes.
+            audio=_AUDIO.format(etiquette=_e(PIECE_JOINTE), fichier=_e(section.audio_name))
+            if section.audio_name
+            else "",
         )
 
     @staticmethod
@@ -488,6 +579,16 @@ _LISTE = (
     "</div>"
 )
 
+#: Le fichier audio de la catégorie, en pied de section. Le nom en chasse fixe : c'est
+#: une référence à retrouver à l'identique dans le bandeau des pièces jointes, pas une
+#: phrase à lire. Un filet léger le détache du contenu sans ouvrir une nouvelle section.
+_AUDIO = (
+    '<div style="margin:18px 0 0;padding-top:13px;border-top:1px solid #eef1f6;'
+    'font-size:12px;color:#9ca3af;">{etiquette} '
+    '<span style="font-family:ui-monospace,SFMono-Regular,Consolas,monospace;'
+    'color:#6b7280;">{fichier}</span></div>'
+)
+
 _SECTION = """
       <tr><td style="padding:0 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -496,17 +597,30 @@ _SECTION = """
             <h2 style="margin:0 0 14px;font-size:17px;font-weight:600;color:#0f1b33;">
               {categorie}{badge}
             </h2>
-            {resume}{liens}
+            {resume}{liens}{audio}
           </td></tr>
         </table>
       </td></tr>"""
 
+#: Les deux lignes de l'introduction. La première porte la date et la fête, en encre
+#: pleine ; la seconde le fait, en retrait et en italique. Deux blocs et non un `<br>` :
+#: la marge se règle alors entre eux, et chacun se replie pour son compte.
+_INTRO_STYLES = {
+    False: "margin:0 0 5px;font-size:15px;line-height:1.5;color:#2b3648;font-weight:600;",
+    True: "margin:0;font-size:15px;line-height:1.6;color:#5a6478;font-style:italic;",
+}
+
+_INTRODUCTION_LIGNE = '<p style="{style}">{corps}</p>'
+
 _ENTETE = """
-      <tr><td style="background:#0f1b33;border-radius:10px;padding:26px 26px 24px;">
-        <h1 style="margin:0;font-size:23px;font-weight:600;color:#ffffff;letter-spacing:-0.2px;">
+      <tr><td style="padding:0 2px 16px;">
+        <h1 style="margin:0;font-size:26px;font-weight:600;color:#0f1b33;
+                   letter-spacing:-0.3px;line-height:1.2;">
           {titre}
         </h1>
-        <div{infobulle} style="margin:7px 0 0;font-size:14px;color:#9fb2d6;">{sous_titre}</div>
+      </td></tr>
+      <tr><td style="background:#0f1b33;border-radius:10px;padding:18px 22px;">
+        <div{infobulle} style="margin:0;font-size:14px;color:#c3d1ea;">{sous_titre}</div>
         {pastilles}
       </td></tr>"""
 
@@ -526,11 +640,7 @@ _DOCUMENT = """<!DOCTYPE html>
            style="width:100%;max-width:640px;font-family:-apple-system,BlinkMacSystemFont,
                   'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 {entete}
-      <tr><td style="padding:20px 4px 22px;">
-        <p style="margin:0;font-size:15px;line-height:1.62;color:#42506b;font-style:italic;">
-          {introduction}
-        </p>
-      </td></tr>
+      <tr><td style="padding:20px 4px 22px;">{introduction}</td></tr>
 {sections}
       <tr><td style="padding:22px 6px 0;border-top:1px solid #dde3ec;">
         <p style="margin:0;font-size:12px;line-height:1.75;color:#8a93a5;">{pied}</p>

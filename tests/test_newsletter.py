@@ -87,7 +87,7 @@ class DateTests(unittest.TestCase):
 
 
 class EnteteTests(unittest.TestCase):
-    def test_the_subject_carries_the_date_the_count_and_the_listening_time(self):
+    def test_the_subject_carries_the_date_and_the_listening_time(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             lettre = Lettre.compose(
                 JOUR,
@@ -95,7 +95,9 @@ class EnteteTests(unittest.TestCase):
                 generated_at=COMPOSEE_LE,
             )
 
-            self.assertEqual("Veille du 27 août 2026 — 2 catégories, 2 min d'écoute", lettre.subject)
+            # Pas de décompte de catégories : l'objet se fait couper par le client
+            # avant d'être lu, et le décompte ne change pas la décision d'ouvrir.
+            self.assertEqual("Veille du 27 août 2026 — 2 min d'écoute", lettre.subject)
 
     def test_a_day_without_any_category_says_so(self):
         lettre = Lettre.compose(JOUR, [], generated_at=COMPOSEE_LE)
@@ -103,6 +105,52 @@ class EnteteTests(unittest.TestCase):
         self.assertEqual("Veille du 27 août 2026 — aucun article", lettre.subject)
         self.assertIn("Aucun article trouvé", lettre.text)
         self.assertIn("Aucun article trouvé", lettre.html)
+
+    def test_the_subtitle_counts_what_speaks_over_what_was_collected(self):
+        """Deux catégories sur six qui parlent, ce n'est pas une journée pleine."""
+        lettre = Lettre.compose(
+            JOUR,
+            [
+                digest(retenus=[("A", "https://x.test/a")]),
+                digest(categorie="Réglementaire"),
+                digest(categorie="Marché"),
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+        self.assertEqual(1, lettre.racontees)
+        self.assertIn("1/3 catégories", lettre.text)
+        self.assertIn("1/3 catégories", lettre.html)
+        # L'objet, lui, ne le porte pas : il reste court.
+        self.assertNotIn("1/3", lettre.subject)
+
+    def test_a_lone_category_stays_singular(self):
+        lettre = Lettre.compose(
+            JOUR, [digest(retenus=[("A", "https://x.test/a")])], generated_at=COMPOSEE_LE
+        )
+
+        self.assertIn("1/1 catégorie ", lettre.text)
+
+    def test_a_category_without_any_retained_article_does_not_count_as_spoken(self):
+        """Son texte est une phrase d'explication, pas un résumé."""
+        lettre = Lettre.compose(
+            JOUR,
+            [digest(resume="Aucun article retenu aujourd'hui dans la catégorie Cyber.")],
+            generated_at=COMPOSEE_LE,
+        )
+
+        self.assertEqual(0, lettre.racontees)
+        self.assertIn("0/1 catégorie", lettre.text)
+
+    def test_the_title_sits_outside_the_navy_band(self):
+        """Posé sur le fond de la page, il se lit comme le nom du message."""
+        lettre = Lettre.compose(JOUR, [digest()], generated_at=COMPOSEE_LE)
+
+        avant_bandeau, bandeau = lettre.html.split("background:#0f1b33;border-radius:10px", 1)
+        self.assertIn("<h1", avant_bandeau)
+        self.assertIn("Veille du 27 août 2026", avant_bandeau)
+        # Le bandeau ne porte plus que ce qui décrit la livraison du jour.
+        self.assertNotIn("<h1", bandeau.split("</td></tr>")[0])
 
     def test_the_subtitle_counts_the_categories_and_details_each_time(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -124,6 +172,28 @@ class EnteteTests(unittest.TestCase):
 
 
 class IntroductionTests(unittest.TestCase):
+    def test_the_introduction_is_cut_where_we_decided_not_where_the_width_falls(self):
+        """D'un seul tenant, le retour tombait au milieu de la date sur un téléphone."""
+        lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
+
+        self.assertEqual(
+            ["Vendredi 28 août 2026, saint Augustin.", "1991 — le Web est présenté publiquement."],
+            lettre._introduction,
+        )
+        # Deux blocs distincts en HTML, et non un paragraphe coupé d'un `<br>` : c'est
+        # ce qui laisse chaque ligne se replier pour son compte sur un écran étroit.
+        introduction = lettre.html.split("<td style=\"padding:20px 4px 22px;\">")[1].split("</td>")[0]
+        self.assertEqual(2, introduction.count("<p style="))
+        self.assertNotIn("<br>", introduction)
+
+    def test_the_date_itself_never_breaks(self):
+        """« 28 août » séparé de « 2026 » se lit comme une erreur de composition."""
+        lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
+
+        self.assertIn("Vendredi&nbsp;28&nbsp;août&nbsp;2026,", lettre.html)
+        # La fête reste sécable : liée, « sainte Thérèse de l'Enfant-Jésus » déborderait.
+        self.assertIn("saint Augustin", lettre.html)
+
     def test_the_introduction_opens_on_the_sending_day_not_the_day_covered(self):
         """Le passage de 7 h raconte la veille : ouvrir sur `day` daterait la lettre d'hier."""
         lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
@@ -136,11 +206,10 @@ class IntroductionTests(unittest.TestCase):
     def test_the_feast_follows_the_date_in_apposition(self):
         lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
 
-        self.assertIn(
-            "Vendredi 28 août 2026, saint Augustin. 1991 — le Web est présenté publiquement.",
-            lettre.text,
-        )
-        self.assertIn("Vendredi 28 août 2026, saint Augustin.", lettre.html)
+        # Deux lignes, et la coupure est celle qu'on a choisie.
+        attendu = "Vendredi 28 août 2026, saint Augustin.\n1991 — le Web est présenté publiquement."
+        self.assertIn(attendu, lettre.text)
+        self.assertIn("Vendredi&nbsp;28&nbsp;août&nbsp;2026, saint Augustin.", lettre.html)
 
     def test_a_civil_holiday_reads_the_same_way(self):
         """« la Toussaint », « Noël » : la tournure ne change pas de forme."""
@@ -149,6 +218,7 @@ class IntroductionTests(unittest.TestCase):
         )
 
         self.assertIn("Dimanche 1er novembre 2026, la Toussaint.", lettre.text)
+        self.assertIn("Dimanche&nbsp;1er&nbsp;novembre&nbsp;2026, la Toussaint.", lettre.html)
 
     def test_without_an_ephemeride_the_composition_day_stands_alone(self):
         lettre = Lettre.compose(JOUR, [digest()], generated_at=COMPOSEE_LE)
@@ -293,6 +363,45 @@ class PiedTests(unittest.TestCase):
 
 
 class AttachementTests(unittest.TestCase):
+    def test_each_section_names_its_own_audio_file(self):
+        """Le message porte un mp3 par catégorie : rien ne disait lequel allait avec quoi."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = Lettre.compose(
+                JOUR, [digest(audio=wav(tmpdir, 60))], generated_at=COMPOSEE_LE
+            )
+
+            self.assertIn("Pièce jointe : voix.wav", lettre.text)
+            self.assertIn("voix.wav", lettre.html)
+
+    def test_the_file_name_is_never_a_link(self):
+        """Aucun client mail n'ouvre une pièce jointe depuis le corps : un lien serait cassé."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = Lettre.compose(
+                JOUR, [digest(audio=wav(tmpdir, 60))], generated_at=COMPOSEE_LE
+            )
+
+            pied_de_section = lettre.html.split("Pièce jointe")[1].split("</div>")[0]
+            self.assertNotIn("<a ", pied_de_section)
+            self.assertNotIn("cid:", lettre.html)
+
+    def test_a_category_without_audio_names_nothing(self):
+        lettre = Lettre.compose(JOUR, [digest()], generated_at=COMPOSEE_LE)
+
+        self.assertNotIn("Pièce jointe", lettre.text)
+        self.assertNotIn("Pièce jointe", lettre.html)
+
+    def test_an_audio_deleted_since_is_not_announced(self):
+        """Ce qui n'est pas joint ne doit pas être nommé comme s'il l'était."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chemin = wav(tmpdir, 60)
+            chemin.unlink()
+
+            lettre = Lettre.compose(JOUR, [digest(audio=chemin)], generated_at=COMPOSEE_LE)
+
+            # Le chemin est encore là, mais le fichier n'est plus joint : le nom reste
+            # cohérent avec la liste des pièces jointes, qui le porte aussi.
+            self.assertEqual([chemin], lettre.attachments)
+
     def test_only_the_categories_with_audio_attach_a_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             chemin = wav(tmpdir, 30)
