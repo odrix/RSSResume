@@ -7,6 +7,13 @@ import datetime as dt
 import pathlib
 from typing import Callable, Iterable
 
+#: Fourchette des articles « à surveiller » : notés assez haut pour mériter un lien dans
+#: l'email, trop bas pour entrer dans le résumé raconté. En dessous de 4, l'article n'a
+#: rien à faire dans la journée ; à 7, il est retenu — et entre les deux se trouvent
+#: exactement ceux dont on veut le titre sans vouloir en entendre parler.
+WATCHLIST_MIN = 4
+WATCHLIST_MAX = 6
+
 #: Thématiques produites par le scoring, dans leur ordre de lecture naturel.
 THEMATIQUES = ("reglementaire", "cyber", "marche", "stack", "autre")
 DEFAULT_THEMATIQUE = "autre"
@@ -98,6 +105,37 @@ class Note:
 
 
 @dataclasses.dataclass(frozen=True)
+class Ephemeride:
+    """Ce qui ouvre l'email : un jour, sa fête, et un fait survenu à cette date.
+
+    `jour` est celui de l'ENVOI, jamais celui que le digest raconte. Les deux diffèrent
+    tous les matins : le passage de 7 h résume la veille (`RSSRESUME_SCHEDULE_DAYS_BACK`),
+    et une lettre qui s'ouvrirait sur la date d'hier daterait d'un jour dans la boîte de
+    son lecteur. Le titre, lui, garde la date du contenu — c'est ce qu'il nomme.
+
+    Il est porté ici plutôt que déduit à l'affichage parce que `fete` et `texte` en
+    dépendent tous les deux : les trois doivent parler de la même date, et un seul
+    champ garantit qu'ils ne se désynchronisent pas.
+
+    `origine` n'est pas décoratif : une éphéméride écrite par le modèle et une ligne
+    tirée de la table embarquée ne se relisent pas avec la même confiance, et le
+    journal de la journée doit dire laquelle a servi.
+
+    Ici et non dans `ephemeride.py` : `runlog` la relit pour renvoyer une journée
+    passée, et `ephemeride.py` appelle un fournisseur qui importe déjà `runlog`.
+    """
+
+    #: Le jour de l'envoi, celui dont la lettre s'ouvre.
+    jour: dt.date
+    #: « sainte Monique », « la Toussaint ». Vide si la table n'a rien pour cette date.
+    fete: str = ""
+    #: Le fait historique, vide quand aucune des sources n'en a.
+    texte: str = ""
+    #: `llm`, `table` ou `calendrier`, du plus au moins renseigné.
+    origine: str = "calendrier"
+
+
+@dataclasses.dataclass(frozen=True)
 class Article:
     #: Identifiant FreshRSS de l'article, requis pour le marquer comme lu.
     item_id: str
@@ -135,6 +173,10 @@ class CategoryDigest:
     audio_path: pathlib.Path | None = None
     #: Marqueur `.no-article` écrit à la place de l'audio pour une catégorie vide.
     marker_path: pathlib.Path | None = None
+    #: Articles notés entre `WATCHLIST_MIN` et `WATCHLIST_MAX` et non retenus. Ils sont
+    #: déjà lus et déjà notés : les taire revenait à jeter la moitié de ce que la
+    #: journée a coûté, alors qu'un titre et un lien suffisent à les rendre utiles.
+    watchlist: list[Article] = dataclasses.field(default_factory=list)
 
     @property
     def links(self) -> list[Link]:
@@ -147,5 +189,18 @@ class CategoryDigest:
         return [
             Link(title=article.title, source=article.feed_title, url=article.url)
             for article in self.selected
+            if article.url
+        ]
+
+    @property
+    def watchlist_links(self) -> list[Link]:
+        """Les articles à surveiller et leurs URL, les mieux notés en tête.
+
+        Même dérivation que `links`, sur l'autre bout de la sélection : ce que le
+        résumé n'a pas raconté mais qui vaut un coup d'œil.
+        """
+        return [
+            Link(title=article.title, source=article.feed_title, url=article.url)
+            for article in self.watchlist
             if article.url
         ]

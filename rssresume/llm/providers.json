@@ -34,6 +34,14 @@
         "temperature": 0.4,
         "max_tokens": 8192,
         "effort": "medium"
+      },
+      "ephemeride": {
+        "_pourquoi": "Une phrase par journee, mais une phrase factuelle et datee : c'est de la memoire, pas de la redaction. Meme modele que l'article, effort minimal, temperature basse — on ne veut aucune invention.",
+        "_pourquoi_2048": "Plafond large pour un texte d'une ligne : chez un modele raisonnant il couvre le raisonnement. Une troncature ferait simplement descendre sur la table embarquee, sans casser la journee.",
+        "model": "gpt-5.6-luna",
+        "temperature": 0.2,
+        "max_tokens": 2048,
+        "effort": "low"
       }
     },
     "tts": {
@@ -127,6 +135,11 @@
         "model": "mistral-medium-latest",
         "temperature": 0.4,
         "max_tokens": 8192
+      },
+      "ephemeride": {
+        "model": "mistral-medium-latest",
+        "temperature": 0.2,
+        "max_tokens": 512
       }
     },
     "tts": {

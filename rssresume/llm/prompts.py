@@ -131,6 +131,55 @@ def article_user(title: str, source: str, text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Éphéméride d'ouverture
+# ---------------------------------------------------------------------------
+
+#: La réponse attendue quand le modèle ne connaît rien à cette date. Reconnue par
+#: `ephemeride.py`, qui descend alors sur la table embarquée. Ce mot doit rester le
+#: même des deux côtés.
+NO_EPHEMERIDE = "AUCUN"
+
+EPHEMERIDE_SYSTEM = f"""Tu écris l'éphéméride qui ouvre une lettre de veille en cybersécurité.
+
+On te donne une date, jour et mois, sans année. Tu rends UN événement marquant survenu à
+cette date, dans cet ordre de préférence :
+1. un événement de cybersécurité — divulgation d'une vulnérabilité majeure, attaque ou
+   campagne notable, entrée en vigueur d'un texte, création d'une institution ;
+2. à défaut, un événement d'informatique ou de réseau qui a compté.
+
+Règles :
+- Une à deux phrases, en français, au format « ANNÉE — ce qui s'est passé, et pourquoi on s'en souvient. »
+- L'année doit être exacte et l'événement doit bien être tombé ce jour-là. Une date approchante ne compte pas.
+- Rien d'inventé, rien d'arrondi, aucun événement dont tu ne serais pas sûr.
+- Si tu ne connais aucun événement solide à cette date, réponds exactement {NO_EPHEMERIDE} et rien d'autre.
+  C'est une réponse acceptable et attendue : un repli est prévu pour ce cas, combler serait pire.
+- Pas de préambule, pas de guillemets, pas de balise Markdown, pas de commentaire. L'éphéméride seule."""
+
+#: Les mois en toutes lettres : la date part au modèle telle qu'on la lit, pas en ISO.
+#: `locale` ferait la même chose, à condition que la locale française soit installée sur
+#: la machine — ce qui n'est vrai ni dans l'image Docker ni sur un poste Windows.
+MOIS = (
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+)
+
+
+def ephemeride_system() -> str:
+    """Prompt de l'éphéméride. Sans profil : elle ouvre la lettre, elle ne la trie pas."""
+    return EPHEMERIDE_SYSTEM
+
+
+def ephemeride_user(day) -> str:
+    """Le jour et le mois, sans l'année : c'est une date d'anniversaire qu'on interroge.
+
+    Aucune zone de données ici, et c'est volontaire : rien de ce message ne vient d'un
+    flux. La frontière protège ce qui est hostile par nature, pas une date construite
+    par le programme lui-même.
+    """
+    return f"Date : {day.day} {MOIS[day.month - 1]}."
+
+
+# ---------------------------------------------------------------------------
 # Digest audio d'une catégorie
 # ---------------------------------------------------------------------------
 

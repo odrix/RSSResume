@@ -108,12 +108,16 @@ class DigestServiceTests(unittest.TestCase):
                 email_sender=email_sender,
             ).run(DAY)
 
-            body = email_sender.messages[0][1]
+            subject, body, _, html = email_sender.messages[0]
 
-            self.assertIn("Sources :", body)
-            self.assertIn("- Nouveau modèle (AI Feed) : https://example.com/article", body)
+            self.assertIn("À lire :", body)
+            self.assertIn("Nouveau modèle (AI Feed)", body)
+            self.assertIn("https://example.com/article", body)
             # La catégorie sans article n'ajoute pas de bloc de liens vide.
-            self.assertEqual(1, body.count("Sources :"))
+            self.assertEqual(1, body.count("À lire :"))
+            # Le même lien est cliquable dans la version mise en page.
+            self.assertIn('href="https://example.com/article"', html)
+            self.assertIn("Veille du 23 août 2026", subject)
 
     def test_run_writes_one_directory_per_day(self):
         with tempfile.TemporaryDirectory() as tmpdir:

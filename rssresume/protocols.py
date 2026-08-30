@@ -6,7 +6,7 @@ import datetime as dt
 import pathlib
 from typing import Iterable, Protocol
 
-from rssresume.models import Article, Note
+from rssresume.models import Article, Ephemeride, Note
 
 
 class FreshRSSClientProtocol(Protocol):
@@ -56,9 +56,33 @@ class AudioGeneratorProtocol(Protocol):
         ...
 
 
+class EphemerideServiceProtocol(Protocol):
+    """Ce que `DigestService` attend de l'éphéméride : une phrase pour cette date.
+
+    Jamais `None` : le service sait toujours quoi rendre, quitte à descendre sur le
+    calendrier. L'introduction de l'email n'a donc pas de cas « pas d'éphéméride » à
+    traiter, ce qui est exactement la raison d'être du repli.
+    """
+
+    def of(self, day: dt.date) -> Ephemeride:
+        ...
+
+
 class EmailSenderProtocol(Protocol):
     def is_configured(self) -> bool:
         ...
 
-    def send(self, subject: str, body: str, attachments: Iterable[pathlib.Path]) -> None:
+    def send(
+        self,
+        subject: str,
+        body: str,
+        attachments: Iterable[pathlib.Path],
+        html: str | None = None,
+    ) -> None:
+        """Envoie le message. `body` est le texte, `html` la version mise en page.
+
+        Les deux, et pas l'un ou l'autre : le HTML porte la mise en page, le texte reste
+        la seule version qu'un client en texte seul saura afficher. Un `html` à `None`
+        envoie un message de texte pur, comme avant.
+        """
         ...

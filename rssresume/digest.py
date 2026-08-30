@@ -1,4 +1,11 @@
-"""Orchestration : sélection des catégories, écriture des fichiers, envoi de l'email."""
+"""Orchestration : sélection des catégories, écriture des fichiers, envoi de l'email.
+
+Ce module décide ce que la journée contient ; il ne décide plus de quoi elle a l'air.
+La mise en forme de l'email est passée dans `newsletter.py` le jour où l'email a eu un
+titre, un sous-titre et un pied de page : elle sert deux chemins — la journée qu'on
+vient de produire et celle qu'on renvoie de ses journaux — et elle en avait déjà deux
+copies ici, qui commençaient à diverger.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +14,24 @@ import pathlib
 
 from rssresume import runlog
 from rssresume.config import AppConfig
+from rssresume.ephemeride import EphemerideService
 from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
 from rssresume.llm import providers
-from rssresume.models import Article, CategoryDigest, Note, Selection, SelectionRule
+from rssresume.models import (
+    WATCHLIST_MAX,
+    WATCHLIST_MIN,
+    Article,
+    CategoryDigest,
+    Ephemeride,
+    Note,
+    Selection,
+    SelectionRule,
+)
+from rssresume.newsletter import Lettre
 from rssresume.protocols import (
     AudioGeneratorProtocol,
     EmailSenderProtocol,
+    EphemerideServiceProtocol,
     FreshRSSClientProtocol,
     ScorerProtocol,
     SummaryGeneratorProtocol,
@@ -21,44 +40,6 @@ from rssresume.tools import console
 from rssresume.tools.text import no_article_message, no_selection_message, slugify
 
 NO_ARTICLE_SUFFIX = ".no-article"
-BODY_SEPARATOR = "\n\n"
-#: En-tête du bloc de liens ajouté sous chaque résumé, dans l'email seulement.
-LINKS_HEADER = "Sources :"
-
-
-def email_subject(day: dt.date) -> str:
-    return f"Résumé RSS du {day.isoformat()}"
-
-
-def email_body(day: dt.date, digests: list[CategoryDigest]) -> str:
-    """Les sections des catégories, à la suite.
-
-    Fonctions de module et non méthodes : le renvoi d'une journée déjà produite
-    (`cli.send_only`) compose le même email à partir des journaux relus, et deux façons
-    de l'écrire finiraient par ne plus dire pareil.
-    """
-    corps = BODY_SEPARATOR.join(email_section(digest) for digest in digests)
-    return corps or f"Aucun article trouvé pour le {day.isoformat()}."
-
-
-def email_section(digest: CategoryDigest) -> str:
-    """Le résumé de la catégorie, suivi des liens de ses articles retenus.
-
-    L'audio ne porte aucun lien — une URL lue à voix haute est inutilisable, et une
-    URL dans le contexte du modèle est une URL qu'il peut inventer. L'email, lui, est
-    le seul endroit où retrouver l'article derrière un sujet entendu : les liens y
-    figurent, dans l'ordre où le résumé les a racontés.
-    """
-    if not digest.links:
-        return digest.summary_text
-    lignes = [digest.summary_text, "", LINKS_HEADER]
-    lignes.extend(f"- {link.title} ({link.source}) : {link.url}" for link in digest.links)
-    return "\n".join(lignes)
-
-
-def email_attachments(digests: list[CategoryDigest]) -> list[pathlib.Path]:
-    return [digest.audio_path for digest in digests if digest.audio_path]
-
 
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
 SCORING_EXCERPT_LENGTH = 400
@@ -73,12 +54,16 @@ class DigestService:
         audio_generator: AudioGeneratorProtocol,
         email_sender: EmailSenderProtocol,
         scorer: ScorerProtocol | None = None,
+        ephemeride_service: EphemerideServiceProtocol | None = None,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
         self._summary_generator = summary_generator
         self._audio_generator = audio_generator
         self._email_sender = email_sender
+        #: Sans service injecté, celui qui n'appelle personne : table embarquée et
+        #: calendrier. L'email a toujours son introduction, même monté à la main.
+        self._ephemeride_service = ephemeride_service or EphemerideService()
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
@@ -93,22 +78,34 @@ class DigestService:
         day_dir = self._day_dir(day)
         console.log(f"RSSResume : digest du {day.isoformat()} vers {day_dir}")
 
-        categories = self._select_categories()
-        console.log(f"{len(categories)} catégorie(s) à traiter : {', '.join(categories) or '(aucune)'}")
+        # Le journal de la journée enveloppe ceux des catégories : l'appel de
+        # l'éphéméride est le seul qui ne se rattache à aucune d'elles, et sans ce
+        # scope il ne serait compté nulle part.
+        with runlog.day_scope(day, day_dir) as journal:
+            # Le jour de l'ENVOI, pas `day` : le passage de 7 h raconte la veille
+            # (`RSSRESUME_SCHEDULE_DAYS_BACK`), et l'introduction doit s'ouvrir sur la
+            # date à laquelle la lettre arrive, avec la fête de ce jour-là.
+            ephemeride = self._ephemeride_service.of(self._aujourdhui())
+            journal.set_ephemeride(ephemeride)
 
-        if not write_tags:
-            console.log("Tags FreshRSS (scores, digest) : ignorés (--no-tags)")
+            categories = self._select_categories()
+            console.log(f"{len(categories)} catégorie(s) à traiter : {', '.join(categories) or '(aucune)'}")
 
-        # Les tags sont écrits catégorie par catégorie : un échec en cours de route
-        # ne fait pas perdre les scores déjà calculés, qui seraient repayés au passage suivant.
-        digests = [self._build_digest(category, day, day_dir, write_tags) for category in categories]
+            if not write_tags:
+                console.log("Tags FreshRSS (scores, digest) : ignorés (--no-tags)")
+
+            # Les tags sont écrits catégorie par catégorie : un échec en cours de route
+            # ne fait pas perdre les scores déjà calculés, qui seraient repayés au passage suivant.
+            digests = [
+                self._build_digest(category, day, day_dir, write_tags) for category in categories
+            ]
 
         if not send_email:
             console.log("Email : ignoré (--no-email)")
         elif not self._email_sender.is_configured():
             console.log("Email : ignoré (configuration SMTP incomplète)")
         else:
-            self._send_email(day, digests)
+            self._send_email(day, digests, ephemeride)
 
         if mark_read:
             # Après livraison seulement : un échec d'envoi ne doit pas perdre les articles.
@@ -131,6 +128,14 @@ class DigestService:
             f"{audios} fichier(s) audio, {vides} catégorie(s) sans article"
             + (f", {sans_selection} sans article retenu" if sans_selection else "")
         )
+
+    def _aujourdhui(self) -> dt.date:
+        """La date du jour dans le fuseau configuré, c'est-à-dire celle de l'envoi.
+
+        Dans le fuseau et non celui de la machine : l'horloge d'un conteneur est en UTC,
+        et à 1 h du matin à Paris elle est encore la veille.
+        """
+        return dt.datetime.now(self._config.timezone).date()
 
     def _day_dir(self, day: dt.date) -> pathlib.Path:
         """Un sous-répertoire par journée, au format yyyy-MM-dd."""
@@ -239,6 +244,9 @@ class DigestService:
                 new_notes=new_notes,
                 stale_item_ids=stale,
                 marker_path=marker_path,
+                # C'est ici que la liste de veille sert le plus : la catégorie n'a rien
+                # à raconter, mais elle a lu des articles, et certains valent un lien.
+                watchlist=self._watchlist(articles, selected, notes),
             )
 
         summary_text = self._summary_generator.summarize(category, selected, notes)
@@ -259,7 +267,30 @@ class DigestService:
             new_notes=new_notes,
             stale_item_ids=stale,
             audio_path=audio_path,
+            watchlist=self._watchlist(articles, selected, notes),
         )
+
+    @classmethod
+    def _watchlist(
+        cls, articles: list[Article], selected: list[Article], notes: dict[str, Note]
+    ) -> list[Article]:
+        """Les articles lus, notés dans la fourchette de veille, et non retenus.
+
+        Ils sont déjà payés : lus, notés, écartés. Les taire revenait à jeter la moitié
+        de ce que la journée coûte, alors qu'un titre et un lien suffisent à les rendre
+        utiles — c'est exactement la zone où l'on veut savoir sans vouloir écouter.
+
+        Dérivés du score et non d'un second passage du modèle : la fourchette est une
+        règle d'affichage, pas un jugement de plus.
+        """
+        retenus = {article.item_id for article in selected}
+        candidats = [
+            article
+            for article in articles
+            if article.item_id not in retenus
+            and WATCHLIST_MIN <= cls._score_of(article, notes) <= WATCHLIST_MAX
+        ]
+        return sorted(candidats, key=lambda article: cls._score_of(article, notes), reverse=True)
 
     @staticmethod
     def _write_marker(day_dir: pathlib.Path, slug: str, content: str = "") -> pathlib.Path:
@@ -439,25 +470,20 @@ class DigestService:
         if item_ids:
             self._freshrss_client.mark_digested(item_ids)
 
-    def _send_email(self, day: dt.date, digests: list[CategoryDigest]) -> None:
-        body = BODY_SEPARATOR.join(self._email_section(digest) for digest in digests)
-        self._email_sender.send(
-            subject=f"Résumé RSS du {day.isoformat()}",
-            body=body or f"Aucun article trouvé pour le {day.isoformat()}.",
-            attachments=[digest.audio_path for digest in digests if digest.audio_path],
-        )
-
-    @staticmethod
-    def _email_section(digest: CategoryDigest) -> str:
-        """Le résumé de la catégorie, suivi des liens de ses articles retenus.
+    def _send_email(
+        self, day: dt.date, digests: list[CategoryDigest], ephemeride: Ephemeride | None = None
+    ) -> None:
+        """Compose la lettre et la confie à l'expéditeur, sous ses deux formes.
 
         L'audio ne porte aucun lien — une URL lue à voix haute est inutilisable, et une
-        URL dans le contexte du modèle est une URL qu'il peut inventer. L'email, lui, est
-        le seul endroit où retrouver l'article derrière un sujet entendu : les liens y
-        figurent, dans l'ordre où le résumé les a racontés.
+        URL dans le contexte du modèle est une URL qu'il peut inventer. L'email est donc
+        le seul endroit où retrouver l'article derrière un sujet entendu, et c'est
+        `newsletter.Lettre` qui décide comment il les présente.
         """
-        if not digest.links:
-            return digest.summary_text
-        lignes = [digest.summary_text, "", LINKS_HEADER]
-        lignes.extend(f"- {link.title} ({link.source}) : {link.url}" for link in digest.links)
-        return "\n".join(lignes)
+        lettre = Lettre.compose(day, digests, ephemeride)
+        self._email_sender.send(
+            subject=lettre.subject,
+            body=lettre.text,
+            attachments=lettre.attachments,
+            html=lettre.html,
+        )

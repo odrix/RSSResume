@@ -21,8 +21,10 @@ import pathlib
 SCORING = "scoring"
 ARTICLE = "article"
 DIGEST = "digest"
+#: L'éphéméride d'ouverture : un appel par journée, pas un par catégorie.
+EPHEMERIDE = "ephemeride"
 TTS = "tts"
-ACTIONS = (SCORING, ARTICLE, DIGEST, TTS)
+ACTIONS = (SCORING, ARTICLE, DIGEST, EPHEMERIDE, TTS)
 
 #: Le fournisseur retenu quand rien ne le dit.
 DEFAULT_PROVIDER = "openai"
@@ -225,6 +227,15 @@ def describe() -> dict:
             entree["modele"] = reglages.voice.model
             entree["voix"] = reglages.voice.voice
         else:
-            entree["modele"] = reglages.call(action).model
+            try:
+                entree["modele"] = reglages.call(action).model
+            except ProviderError:
+                # Un fichier externe (`RSSRESUME_PROVIDERS_FILE`) peut décrire un
+                # fournisseur qui ignore une action ajoutée depuis. Le journal le dit
+                # au lieu de faire échouer la journée sur sa propre description.
+                entree["modele"] = None
+                entree["actif"] = False
+            vu[action] = entree
+            continue
         vu[action] = entree
     return vu

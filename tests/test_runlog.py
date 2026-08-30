@@ -342,7 +342,8 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("minimum_retenus", parametres)
         # Qui fait quoi : le journal fixe le fournisseur et le modèle de chaque action.
         self.assertEqual(
-            set(("scoring", "article", "digest", "tts")), set(parametres["fournisseurs"])
+            set(("scoring", "article", "digest", "ephemeride", "tts")),
+            set(parametres["fournisseurs"]),
         )
         self.assertTrue(parametres["fournisseurs"]["digest"]["modele"])
         self.assertTrue(parametres["fournisseurs"]["tts"]["voix"])

@@ -81,14 +81,21 @@ class FakeAudioGenerator:
 
 
 class FakeEmailSender:
+    """Retient ce qu'on lui a demandé d'envoyer, les deux rendus compris.
+
+    Le HTML est rangé en quatrième position et non à la place du texte : les tests qui
+    lisent `messages[0][1]` jugent la version texte, qui reste celle que tout client
+    sait afficher.
+    """
+
     def __init__(self):
         self.messages = []
 
     def is_configured(self):
         return True
 
-    def send(self, subject, body, attachments):
-        self.messages.append((subject, body, list(attachments)))
+    def send(self, subject, body, attachments, html=None):
+        self.messages.append((subject, body, list(attachments), html))
 
 
 def make_config(output_dir):

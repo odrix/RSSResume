@@ -48,7 +48,13 @@ class ResendEmailSender:
             self._config.resend_api_key and self._config.smtp_from and self._config.smtp_to
         )
 
-    def send(self, subject: str, body: str, attachments: Iterable[pathlib.Path]) -> None:
+    def send(
+        self,
+        subject: str,
+        body: str,
+        attachments: Iterable[pathlib.Path],
+        html: str | None = None,
+    ) -> None:
         if not self.is_configured():
             raise RuntimeError("Resend configuration is incomplete.")
 
@@ -58,14 +64,22 @@ class ResendEmailSender:
             f"Email : envoi à {destinataires} via Resend "
             f"({len(attachments)} pièce(s) jointe(s))"
         )
-        identifiant = self._post(self._payload(subject, body, attachments))
+        identifiant = self._post(self._payload(subject, body, attachments, html))
         console.log(f"Email : envoyé{f' ({identifiant})' if identifiant else ''}")
 
-    def _payload(self, subject: str, body: str, attachments: list[pathlib.Path]) -> dict:
+    def _payload(
+        self,
+        subject: str,
+        body: str,
+        attachments: list[pathlib.Path],
+        html: str | None = None,
+    ) -> dict:
         """Le message tel que Resend l'attend, pièces jointes en base64.
 
         Pas de `Date` ni de `Message-ID` à poser ici, contrairement au SMTP : c'est
-        Resend qui compose le message final et les ajoute.
+        Resend qui compose le message final et les ajoute. Il assemble aussi le
+        `multipart/alternative` dès que `text` et `html` sont là tous les deux — c'est
+        pourquoi l'ordre des clés n'a, ici, aucune importance.
         """
         payload = {
             "from": self._config.smtp_from,
@@ -73,6 +87,8 @@ class ResendEmailSender:
             "subject": subject,
             "text": body,
         }
+        if html:
+            payload["html"] = html
         if attachments:
             payload["attachments"] = [self._attachment(chemin) for chemin in attachments]
         return payload

@@ -11,6 +11,10 @@ le fixe, catégorie par catégorie, à côté de l'audio du jour :
 Une catégorie sans article du jour n'écrit aucun journal : elle ne lit rien, ne note
 rien et ne dépense rien, et son marqueur `.no-article` dit déjà tout ce qu'il y a à dire.
 
+À côté d'eux, un `journee.json` porte ce qui n'appartient à aucune catégorie : l'
+éphéméride qui ouvre l'email, et l'appel qui l'a produite. Lui aussi n'est écrit que
+s'il a quelque chose à transporter.
+
 Le journal actif est un état de module : les appels partent du fond d'un `LLMProvider`,
 qui n'a aucune raison de savoir quelle catégorie est en cours. Le
 pipeline est séquentiel — une catégorie à la fois — et ce module l'est donc aussi.
@@ -28,13 +32,27 @@ import pathlib
 from typing import Any, Iterator
 
 from rssresume import pricing
-from rssresume.models import Article, CategoryDigest, Note
+from rssresume.models import (
+    WATCHLIST_MAX,
+    WATCHLIST_MIN,
+    Article,
+    CategoryDigest,
+    Ephemeride,
+    Note,
+)
 
 #: Extension du journal, à côté du `.mp3` ou du `.no-article` de la même catégorie.
 LOG_SUFFIX = ".log.json"
 
-#: Les trois postes de dépense demandés, dans l'ordre où ils sont engagés.
-TYPOLOGIES = ("scoring", "resume", "tts")
+#: Le journal de la journée, à côté de ceux des catégories. Sans le suffixe `.log.json`,
+#: et c'est délibéré : `read_day` ramasse les journaux de catégorie au glob, et un
+#: fichier de journée qui répondrait au même motif se relirait comme une catégorie vide.
+DAY_LOG_NAME = "journee.json"
+
+#: Les postes de dépense, dans l'ordre où ils sont engagés. L'éphéméride est le seul
+#: qui ne soit pas payé par catégorie : un appel pour la journée entière, et il apparaît
+#: donc dans le journal de la journée, jamais dans celui d'une catégorie.
+TYPOLOGIES = ("scoring", "resume", "ephemeride", "tts")
 
 #: Action (au sens de `providers.ACTIONS`) rangée sous son poste de dépense. Le résumé
 #: par article et le digest de catégorie sont deux façons de résumer : même poste.
@@ -42,6 +60,7 @@ TYPOLOGIE_PAR_LABEL = {
     "scoring": "scoring",
     "article": "resume",
     "digest": "resume",
+    "ephemeride": "ephemeride",
     "tts": "tts",
 }
 TYPOLOGIE_PAR_DEFAUT = "resume"
@@ -77,6 +96,7 @@ def _digest_relu(journal: dict, day_dir: pathlib.Path) -> CategoryDigest:
         articles=[],
         summary_text=journal.get("resume") or "",
         selected=[_article_relu(entree, journal) for entree in _retenus(journal)],
+        watchlist=[_article_relu(entree, journal) for entree in _a_surveiller(journal)],
         # Un journal peut nommer un audio que l'on a supprimé depuis : l'email part
         # alors sans lui plutôt que d'échouer à la lecture d'un fichier absent.
         audio_path=chemin if chemin and chemin.is_file() else None,
@@ -87,6 +107,24 @@ def _retenus(journal: dict) -> list[dict]:
     """Les articles retenus, dans l'ordre où le résumé les a racontés."""
     retenus = [entree for entree in journal.get("articles") or [] if entree.get("retenu")]
     return sorted(retenus, key=lambda entree: entree.get("rang_digest") or 0)
+
+
+def _a_surveiller(journal: dict) -> list[dict]:
+    """Les articles de la liste de veille, les mieux notés en tête.
+
+    Recalculés du journal plutôt que stockés à côté : le score de chaque article y est
+    déjà, et la fourchette est une règle d'affichage. Un journal écrit avant cette
+    règle se relit donc avec sa liste de veille, sans avoir rien à convertir — et
+    changer la fourchette n'oblige pas à réécrire les journées passées.
+    """
+    candidats = [
+        entree
+        for entree in journal.get("articles") or []
+        if not entree.get("retenu")
+        and isinstance(entree.get("score"), int)
+        and WATCHLIST_MIN <= entree["score"] <= WATCHLIST_MAX
+    ]
+    return sorted(candidats, key=lambda entree: entree["score"], reverse=True)
 
 
 def _article_relu(entree: dict, journal: dict) -> Article:
@@ -155,33 +193,17 @@ class Call:
         return entree
 
 
-class CategoryJournal:
-    """Le journal d'une catégorie, du premier article lu au fichier écrit."""
+class Journal:
+    """Ce que tout journal tient : les appels au fournisseur et ce qu'ils ont coûté.
 
-    def __init__(
-        self,
-        category: str,
-        slug: str,
-        day: dt.date,
-        day_dir: pathlib.Path,
-        parametres: dict[str, Any] | None = None,
-    ):
-        self.category = category
-        self.slug = slug
-        self.day = day
-        self.day_dir = day_dir
-        self.parametres = parametres or {}
+    Extrait de `CategoryJournal` le jour où l'éphéméride a eu besoin d'être facturée à
+    la journée et non à une catégorie. Deux journaux, la même comptabilité — la
+    dupliquer aurait fait deux tables de coûts qui finissent par ne plus s'additionner
+    de la même façon.
+    """
+
+    def __init__(self):
         self.calls: list[Call] = []
-        self.articles: list[Article] = []
-        self.notes: dict[str, Note] = {}
-        self.new_notes: dict[str, Note] = {}
-        self.selected: list[Article] = []
-        #: Le seuil réellement appliqué à la journée, repli compris. `None` tant que la
-        #: sélection n'a pas eu lieu — une catégorie interrompue avant, notamment.
-        self.seuil_applique: int | None = None
-        self.digest: CategoryDigest | None = None
-
-    # -- alimentation ------------------------------------------------------
 
     def record_chat(self, label: str, model: str, usage: dict | None) -> None:
         """Enregistre une complétion à partir du bloc `usage` de la réponse."""
@@ -223,6 +245,129 @@ class CategoryJournal:
                 detail={"voix": voice} if voice else {},
             )
         )
+
+    def _couts(self) -> dict:
+        sans_tarif = sorted({call.model for call in self.calls if call.cost is None})
+        return {
+            "devise": pricing.CURRENCY,
+            "total": _total(self.calls),
+            # Sans ce drapeau, un total à `null` ne dirait pas POURQUOI il manque.
+            "tarification_complete": not sans_tarif,
+            "modeles_sans_tarif": sans_tarif,
+            "par_typologie": {typologie: self._somme(typologie) for typologie in TYPOLOGIES},
+            "appels": [call.as_json() for call in self.calls],
+        }
+
+    def _somme(self, typologie: str) -> dict:
+        calls = [call for call in self.calls if call.typologie == typologie]
+        somme = {
+            "appels": len(calls),
+            "tokens_entree": sum(call.input_tokens for call in calls),
+            "tokens_sortie": sum(call.output_tokens for call in calls),
+            "tokens_raisonnement": sum(call.reasoning_tokens for call in calls),
+            "cout": _total(calls),
+            "modeles": sorted({call.model for call in calls}),
+        }
+        caracteres = sum(call.characters for call in calls)
+        if caracteres:
+            somme["caracteres"] = caracteres
+        return somme
+
+
+class DayJournal(Journal):
+    """Le journal de la journée : ce qui n'appartient à aucune catégorie.
+
+    Une seule chose y figure aujourd'hui — l'éphéméride d'ouverture, et l'appel qui l'a
+    produite. C'est peu, mais c'est ce qui permet à `--send-only` de renvoyer un email
+    identique à l'original : sans ce fichier, le renvoi devrait soit repayer l'appel,
+    soit ouvrir la lettre sur une autre phrase que celle qui est partie la première fois.
+
+    Il est aussi le journal actif hors de toute catégorie : un appel passé entre deux
+    catégories s'y range, au lieu d'être perdu comme il l'était avant.
+    """
+
+    def __init__(self, day: dt.date, day_dir: pathlib.Path):
+        super().__init__()
+        self.day = day
+        self.day_dir = day_dir
+        self.ephemeride: Ephemeride | None = None
+
+    def set_ephemeride(self, ephemeride: Ephemeride | None) -> None:
+        self.ephemeride = ephemeride
+
+    @property
+    def path(self) -> pathlib.Path:
+        return self.day_dir / DAY_LOG_NAME
+
+    @property
+    def worth_writing(self) -> bool:
+        """Faux pour une journée qui n'a rien à dire d'elle-même.
+
+        Une éphéméride tirée du calendrier ne vaut pas un fichier : elle se recalcule à
+        l'identique à partir de la seule date, et l'écrire ferait un journal qui ne
+        transporte rien. Celle du modèle, elle, ne se retrouve pas sans la repayer.
+        """
+        return bool(self.calls) or (
+            self.ephemeride is not None and self.ephemeride.origine != "calendrier"
+        )
+
+    def write(self) -> pathlib.Path | None:
+        if not self.worth_writing:
+            return None
+        path = self.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(self.as_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return path
+
+    def as_json(self) -> dict:
+        return {
+            "date": self.day.isoformat(),
+            "genere_le": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            # `jour` est celui de l'envoi, pas celui du journal : c'est ce qui permet
+            # au renvoi de savoir si cette éphéméride parle encore du bon jour.
+            "ephemeride": (
+                {
+                    "jour": self.ephemeride.jour.isoformat(),
+                    "fete": self.ephemeride.fete,
+                    "texte": self.ephemeride.texte,
+                    "origine": self.ephemeride.origine,
+                }
+                if self.ephemeride
+                else None
+            ),
+            "couts": self._couts(),
+        }
+
+
+class CategoryJournal(Journal):
+    """Le journal d'une catégorie, du premier article lu au fichier écrit."""
+
+    def __init__(
+        self,
+        category: str,
+        slug: str,
+        day: dt.date,
+        day_dir: pathlib.Path,
+        parametres: dict[str, Any] | None = None,
+    ):
+        super().__init__()
+        self.category = category
+        self.slug = slug
+        self.day = day
+        self.day_dir = day_dir
+        self.parametres = parametres or {}
+        self.articles: list[Article] = []
+        self.notes: dict[str, Note] = {}
+        self.new_notes: dict[str, Note] = {}
+        self.selected: list[Article] = []
+        #: Le seuil réellement appliqué à la journée, repli compris. `None` tant que la
+        #: sélection n'a pas eu lieu — une catégorie interrompue avant, notamment.
+        self.seuil_applique: int | None = None
+        self.digest: CategoryDigest | None = None
+
+    # -- alimentation ------------------------------------------------------
 
     def set_seuil_applique(self, seuil: int) -> None:
         """Le seuil qui a réellement trié la journée : celui de la catégorie, ou son repli.
@@ -312,33 +457,6 @@ class CategoryJournal:
             return "aucun-article-retenu"
         return "audio" if self.digest.audio_path else "sans-audio"
 
-    def _couts(self) -> dict:
-        sans_tarif = sorted({call.model for call in self.calls if call.cost is None})
-        return {
-            "devise": pricing.CURRENCY,
-            "total": _total(self.calls),
-            # Sans ce drapeau, un total à `null` ne dirait pas POURQUOI il manque.
-            "tarification_complete": not sans_tarif,
-            "modeles_sans_tarif": sans_tarif,
-            "par_typologie": {typologie: self._somme(typologie) for typologie in TYPOLOGIES},
-            "appels": [call.as_json() for call in self.calls],
-        }
-
-    def _somme(self, typologie: str) -> dict:
-        calls = [call for call in self.calls if call.typologie == typologie]
-        somme = {
-            "appels": len(calls),
-            "tokens_entree": sum(call.input_tokens for call in calls),
-            "tokens_sortie": sum(call.output_tokens for call in calls),
-            "tokens_raisonnement": sum(call.reasoning_tokens for call in calls),
-            "cout": _total(calls),
-            "modeles": sorted({call.model for call in calls}),
-        }
-        caracteres = sum(call.characters for call in calls)
-        if caracteres:
-            somme["caracteres"] = caracteres
-        return somme
-
     def _articles(self) -> list[dict]:
         """Tous les articles lus, les mieux notés en tête, retenus comme écartés.
 
@@ -379,11 +497,60 @@ class CategoryJournal:
 
 
 #: Journal de la catégorie en cours, `None` hors de tout `category_scope`.
-_actif: CategoryJournal | None = None
+_actif: Journal | None = None
 
 
-def active() -> CategoryJournal | None:
+def active() -> Journal | None:
     return _actif
+
+
+@contextlib.contextmanager
+def day_scope(day: dt.date, day_dir: pathlib.Path) -> Iterator[DayJournal]:
+    """Ouvre le journal de la journée, et l'écrit à la sortie — même sur exception.
+
+    Il enveloppe les `category_scope`, qui prennent la main chacun à leur tour et la
+    lui rendent. Un appel passé hors de toute catégorie — l'éphéméride d'ouverture —
+    se range donc ici, là où il n'était compté nulle part avant.
+    """
+    global _actif
+    precedent = _actif
+    journal = DayJournal(day, day_dir)
+    _actif = journal
+    try:
+        yield journal
+    finally:
+        _actif = precedent
+        journal.write()
+
+
+def read_ephemeride(day_dir: pathlib.Path) -> Ephemeride | None:
+    """L'éphéméride écrite par une journée passée, `None` si elle n'en a pas laissé.
+
+    `None` n'est pas une anomalie : une journée dont l'éphéméride venait du calendrier
+    n'a rien écrit, puisqu'elle se recalcule. C'est à l'appelant de redescendre sur ce
+    repli — voir `ephemeride.calendrier`.
+    """
+    path = day_dir / DAY_LOG_NAME
+    try:
+        journal = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    bloc = journal.get("ephemeride") or {}
+    texte = (bloc.get("texte") or "").strip()
+    if not texte:
+        return None
+    try:
+        jour = dt.date.fromisoformat(bloc["jour"])
+    except (KeyError, TypeError, ValueError):
+        # Journal écrit avant que le jour d'envoi y figure : sans lui, impossible de
+        # savoir de quelle date cette éphéméride parle. L'appelant la remplacera.
+        return None
+    return Ephemeride(
+        jour=jour,
+        fete=bloc.get("fete") or "",
+        texte=texte,
+        origine=bloc.get("origine") or "table",
+    )
 
 
 @contextlib.contextmanager

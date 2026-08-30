@@ -313,22 +313,95 @@ survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre 
 Un seul email pour toutes les catégories, les fichiers audio en pièces jointes. Sans `SMTP_HOST`
 ni `SMTP_TO`, l'étape est sautée sans erreur.
 
-**Les liens sont ici, et seulement ici.** Sous le résumé de chaque catégorie, l'email liste ses
-articles retenus avec leur URL, dans l'ordre où le résumé les a racontés :
+La composition vit dans `newsletter.py` — `Lettre.compose(jour, digests, éphéméride)` — et non
+dans `digest.py`. Elle sert deux chemins : la journée qu'on vient de produire, et celle qu'on
+renvoie de ses journaux (`--send-only`). Deux façons d'écrire le même email finissaient par ne
+plus dire pareil.
+
+**Deux rendus, un seul message.** Le HTML porte la mise en page, le texte reste la version qu'un
+client en texte seul saura afficher. Les deux partent dans le même `multipart/alternative`, avec
+les audios en `multipart/mixed` par-dessus.
 
 ```
-<le résumé de la catégorie, sans aucune URL>
+Veille du 27 août 2026                        <- titre : la journée RACONTÉE
+2 catégories · 21 min d'écoute                <- sous-titre
+[Cyber · 5 min] [Réglementaire · 3 min]       <- le détail, en pastilles et en info-bulle
+Vendredi 28 août 2026, saint Augustin. 1988…  <- introduction : le jour de l'ENVOI
 
-Sources :
-- Avis du CERT-FR sur une RCE (CERT-FR) : https://cert.ssi.gouv.fr/avis/…
-- Nouveau référentiel SecNumCloud (ANSSI) : https://…
+┌ Cybersécurité technique          [5 min] ┐
+│ Une faille touche Traefik, corrigée…     │  <- « Traefik » est cliquable (HTML)
+│ À LIRE                                   │  <- les articles retenus
+│ • Avis du CERT-FR sur une RCE — CERT-FR  │
+│ À SURVEILLER                             │  <- les notés 4 à 6, non retenus
+│ • Rapport de tendances — Le Monde Info.  │
+└──────────────────────────────────────────┘
+
+2 catégories · 12 articles retenus · 17 à surveiller
+1 résumé audio en pièce jointe. Composée le 30/08/2026 à 07:30.
 ```
 
-La répartition est volontaire : l'audio n'a pas de liens — une URL lue à voix haute est
+**Les liens sont posés dans le texte, en HTML** (`ancres.py`). Pour chaque article retenu, on
+cherche dans le résumé le groupe de mots le plus distinctif de son titre — un nom propre, un
+identifiant de vulnérabilité — et on le rend cliquable là où le résumé en parle. « Une faille
+critique touche **Traefik** » mène à l'avis du CERT-FR sans qu'on ait à descendre jusqu'à la liste.
+
+Rien n'est demandé au modèle et **le texte du résumé n'est pas modifié d'un caractère** : c'est un
+appariement fait après coup, sur ce qui est déjà écrit. La synthèse vocale lit donc exactement le
+même texte, et l'URL vient de la sélection — un lien mal placé reste un lien juste.
+
+Trois garde-fous, parce qu'un lien qui mène au mauvais article est pire que pas de lien :
+
+- les mots banals sont écartés (début de phrase en français, casse de titre en anglais) ;
+- les sigles du domaine aussi — `RCE`, `CVE`, `DDoS` nomment une classe de problème, jamais un
+  article. Un identifiant complet comme `CVE-2021-44228`, lui, est la meilleure ancre qui soit ;
+- l'ancre la plus longue l'emporte, et le placement se fait sur le résumé **entier** : un article
+  dont le premier paragraphe ne dit qu'un mot vague et le troisième le nom propre s'ancre sur le
+  nom propre.
+
+L'appariement est au mieux, jamais garanti — un article dont le résumé ne reprend aucun nom propre
+ne s'ancre nulle part. C'est pourquoi les listes restent sous le texte : elles, ne ratent personne.
+Seuls les articles **retenus** sont ancrés ; ceux de la liste de veille n'ont pas été racontés,
+donc n'ont aucun mot à quoi s'accrocher.
+
+**Les liens sont dans l'email, et seulement là.** L'audio n'a pas de liens — une URL lue à voix haute est
 inutilisable —, l'email en a, parce que c'est le seul endroit où retrouver l'article derrière un
-sujet entendu. Ces liens viennent de `CategoryDigest.links`, **dérivé de la sélection** et non
-d'un texte produit par le modèle : ils ne peuvent donc pas être hallucinés. Une catégorie sans
-sélection n'ajoute aucun bloc.
+sujet entendu. Les deux listes viennent de `CategoryDigest.links` et `.watchlist_links`,
+**dérivées de la sélection et des scores**, et non d'un texte produit par le modèle : elles ne
+peuvent donc pas être hallucinées. Une liste vide n'ajoute aucun en-tête.
+
+**La liste « à surveiller »** est la bande des scores 4 à 6 non retenus (`WATCHLIST_MIN` et
+`WATCHLIST_MAX`, dans `models.py`). Ces articles sont déjà payés — lus, notés, écartés — et les
+taire revenait à jeter la moitié de ce qu'une journée coûte. Ils n'entrent pas dans l'audio pour
+autant : un titre et un lien, rien de plus. C'est dans une catégorie sans aucun retenu qu'ils
+servent le plus.
+
+**Le temps d'écoute** est mesuré sur le fichier audio, pas estimé depuis le texte
+(`tools/duration.py` : en-tête `wave` pour le `.wav`, parcours des trames pour le `.mp3`). Une
+durée qu'on n'a pas su lire ne s'affiche pas — `None` et non « 0 min ».
+
+**Deux dates, et elles ne sont pas interchangeables.** Le titre et l'objet nomment la journée que
+la lettre RACONTE ; l'introduction ouvre sur le jour de l'ENVOI. Les deux diffèrent tous les
+matins, puisque le passage de 7 h résume la veille (`RSSRESUME_SCHEDULE_DAYS_BACK`) : ouvrir sur la
+date du digest faisait arriver dans la boîte une lettre datée de l'avant-veille.
+
+**L'éphéméride** porte donc sur le jour de l'envoi. Elle est faite de deux morceaux :
+
+- **la fête**, tirée de `ephemeride/fetes.py` — une table fixe de 366 entrées, le calendrier des postes. Une
+  donnée qui ne bouge pas d'une année sur l'autre n'a rien à faire dans un prompt : elle ne coûte
+  rien, ne peut pas être inventée, et rend la même chose au renvoi qu'à l'envoi. Elle est écrite en
+  apposition — « Vendredi 28 août 2026, saint Augustin. » —, tournure qui marche aussi bien pour un
+  saint que pour la Toussaint ou Noël. Corriger une date se fait dans `FETES`, et nulle part ailleurs. Le paquet `ephemeride/` sépare
+  d'ailleurs les données du procédé pour cette raison : `fetes` et `histoire` sont des tables qu'on
+  corrige souvent, `service` est le procédé qu'on relit rarement ;
+- **le fait historique**, qui descend trois marches : le modèle (`ephemeride` dans `providers.json`,
+  un appel par journée), puis la table de `ephemeride/histoire.py`, puis le calendrier, qui ne peut
+  pas échouer. Le modèle répond `AUCUN` plutôt que de combler quand il ne sait rien de cette date.
+
+Celle qui a servi est écrite dans `output/<jour>/journee.json`, **avec le jour qu'elle décrit**.
+`--send-only` la réutilise si elle parle bien du jour du renvoi — le cas courant, quand l'envoi a
+échoué le matin et qu'on relance une heure plus tard. Renvoyée trois jours plus tard, elle daterait
+la lettre du mauvais jour et annoncerait la fête d'un autre : elle est alors recalculée sur la
+table et le calendrier, sans aucun appel, comme le promet `--send-only`.
 
 ### 8. Marquage comme lu
 

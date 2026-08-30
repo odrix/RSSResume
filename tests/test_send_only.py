@@ -26,8 +26,15 @@ class FakeSender:
     def is_configured(self):
         return self._configured
 
-    def send(self, subject, body, attachments):
-        self.envois.append({"subject": subject, "body": body, "attachments": list(attachments)})
+    def send(self, subject, body, attachments, html=None):
+        self.envois.append(
+            {
+                "subject": subject,
+                "body": body,
+                "attachments": list(attachments),
+                "html": html,
+            }
+        )
 
 
 def ecrire_journee(racine, avec_audio=True, resume="Le résumé de Tech."):
@@ -129,11 +136,16 @@ class SendOnlyTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             envoi, = sender.envois
-            self.assertIn(JOUR.isoformat(), envoi["subject"])
+            # L'objet porte la date en toutes lettres depuis que la lettre a un titre :
+            # c'est ce qu'on lit dans une liste de messages, pas un horodatage ISO.
+            self.assertIn("29 août 2026", envoi["subject"])
             self.assertIn("Le résumé de Tech.", envoi["body"])
             self.assertIn("https://exemple.test/a", envoi["body"])
+            # L'article écarté n'a pas de score dans ce journal : hors de la fourchette
+            # de veille, il n'entre dans aucune des deux listes.
             self.assertNotIn("https://exemple.test/c", envoi["body"])
             self.assertEqual([day_dir / "1-tech.mp3"], envoi["attachments"])
+            self.assertIn("<html", envoi["html"])
 
     def test_a_day_without_logs_sends_nothing_and_says_so(self):
         with tempfile.TemporaryDirectory() as tmpdir:

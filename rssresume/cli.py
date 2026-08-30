@@ -5,18 +5,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 
-from rssresume import llm, runlog
+from rssresume import ephemeride, llm, runlog
 from rssresume.audio import AudioGenerator
 from rssresume.config import AppConfig
-from rssresume.digest import (
-    DigestService,
-    email_attachments,
-    email_body,
-    email_subject,
-)
+from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
 from rssresume.external import mail
+from rssresume.newsletter import Lettre
 from rssresume.summaries import SummaryGenerator
 from rssresume.tools import console
 
@@ -40,6 +36,9 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
         ),
         audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
         email_sender=mail.sender(config),
+        ephemeride_service=ephemeride.EphemerideService(
+            llm.for_action(providers.EPHEMERIDE)
+        ),
     )
 
 
@@ -103,10 +102,19 @@ def send_only(config: AppConfig, day: dt.date) -> int:
         f"Renvoi de l'email du {day.isoformat()} depuis {day_dir} : "
         f"{len(digests)} catégorie(s), aucun appel IA"
     )
+    # L'introduction s'ouvre sur AUJOURD'HUI — le jour où la lettre arrive — et non sur
+    # la journée qu'elle raconte. Celle du journal ne resert donc que si l'on renvoie le
+    # jour même, ce qui est le cas courant ; sinon elle est recalculée localement, sans
+    # aucun appel, comme le promet `--send-only`.
+    envoi = dt.datetime.now(config.timezone).date()
+    lettre = Lettre.compose(
+        day, digests, ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi)
+    )
     sender.send(
-        subject=email_subject(day),
-        body=email_body(day, digests),
-        attachments=email_attachments(digests),
+        subject=lettre.subject,
+        body=lettre.text,
+        attachments=lettre.attachments,
+        html=lettre.html,
     )
     return 0
 

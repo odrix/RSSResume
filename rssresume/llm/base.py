@@ -1,9 +1,9 @@
 """Le contrat que remplit un fournisseur de LLM, et la fabrique qui en rend un.
 
-Un `LLMProvider` reçoit ses réglages au constructeur et sait faire quatre choses :
-noter des articles, résumer un article, écrire le digest d'une catégorie, dire un
-texte. Ce sont ces quatre opérations que le reste du projet appelle — jamais un
-endpoint, jamais un payload.
+Un `LLMProvider` reçoit ses réglages au constructeur et sait faire cinq choses :
+noter des articles, résumer un article, écrire le digest d'une catégorie, rendre
+l'éphéméride d'une date, dire un texte. Ce sont ces cinq opérations que le reste du
+projet appelle — jamais un endpoint, jamais un payload.
 
 La classe de base fait tout ce qui ne dépend pas du fournisseur : assembler les
 prompts, découper le lot de notation, relire les réponses, tenir la comptabilité.
@@ -22,7 +22,16 @@ import urllib.request
 
 from rssresume import runlog
 from rssresume.llm import processing, prompts, providers
-from rssresume.llm.providers import ARTICLE, DIGEST, SCORING, TTS, Call, Settings, Voice
+from rssresume.llm.providers import (
+    ARTICLE,
+    DIGEST,
+    EPHEMERIDE,
+    SCORING,
+    TTS,
+    Call,
+    Settings,
+    Voice,
+)
 from rssresume.tools import console, http
 
 logger = logging.getLogger(__name__)
@@ -145,6 +154,15 @@ class LLMProvider:
             prompts.digest_system(profil),
             prompts.digest_user(category, articles, language),
         )
+
+    def write_ephemeride(self, day) -> str:
+        """L'événement du domaine survenu à cette date, ou `AUCUN` si le modèle n'en sait rien.
+
+        Un appel par journée, et non par catégorie : il ouvre la lettre entière. La
+        réponse n'est pas relue ici — c'est `ephemeride.py` qui décide si elle est
+        exploitable, et vers quoi descendre sinon.
+        """
+        return self._chat(EPHEMERIDE, prompts.ephemeride_system(), prompts.ephemeride_user(day))
 
     def speak(self, text: str) -> bytes:
         """Synthèse vocale ; renvoie les octets audio, quel que soit l'emballage reçu."""
