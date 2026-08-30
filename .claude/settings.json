@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe -m unittest *)",
+      "Bash(python -m unittest *)",
+      "Bash(nslookup *)"
+    ]
+  }
+}
