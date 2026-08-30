@@ -8,12 +8,7 @@ et le composant que seul le corps de l'avis nomme.
 """
 
 import datetime as dt
-import json
-import os
-import pathlib
-import tempfile
 import unittest
-from unittest import mock
 
 from rssresume import certfr
 from rssresume.models import Article
@@ -266,73 +261,53 @@ class PhraseTests(unittest.TestCase):
         self.assertIn("aucun composant n'est déclaré", revue.phrase)
 
 
-class StackChargementTests(unittest.TestCase):
-    """Le fichier de composants : livré vide, surchargeable, et jamais ignoré en silence."""
+class StackDeclareeTests(unittest.TestCase):
+    """La forme d'une entrée déclarée. Sa lecture depuis le document est dans `test_profil`."""
 
-    @mock.patch.dict(os.environ, {}, clear=True)
-    def test_the_builtin_file_declares_no_component(self):
-        """Les exemples livrés sont commentés : un exemple qui apparierait un vrai avis
-        serait un faux positif livré par défaut, le jour de l'installation."""
-        self.assertTrue(certfr.charger().vide)
+    def test_nothing_declared_leaves_an_empty_stack(self):
+        """L'état du jour de l'installation : rien n'est apparié, et la phrase le dit."""
+        self.assertTrue(certfr.Stack.declaree(None).vide)
+        self.assertTrue(certfr.Stack.declaree([]).vide)
 
-    def _avec_fichier(self, contenu, nom="stack.json"):
-        """Écrit un fichier de composants et rend la stack chargée avec lui."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            chemin = pathlib.Path(tmpdir) / nom
-            chemin.write_text(contenu, encoding="utf-8")
-            with mock.patch.dict(
-                os.environ, {certfr.ENV_STACK_FILE: str(chemin)}, clear=True
-            ):
-                return certfr.charger()
+    def test_a_string_declares_a_component_without_alias(self):
+        declaree = certfr.Stack.declaree(["Traefik"])
 
-    def test_an_external_file_declares_the_real_components(self):
-        chargee = self._avec_fichier(
-            json.dumps({"Keycloak": {"alias": ["RH-SSO"]}}, ensure_ascii=False)
+        self.assertEqual(1, len(declaree))
+        self.assertEqual(
+            ("Traefik",), declaree.concernes("Multiples vulnérabilités dans Traefik")
         )
 
-        self.assertEqual(1, len(chargee))
-        self.assertEqual(("Keycloak",), chargee.concernes("Vulnérabilité dans RH-SSO"))
+    def test_an_object_declares_the_other_spellings(self):
+        declaree = certfr.Stack.declaree([{"nom": "Keycloak", "alias": ["RH-SSO"]}])
 
-    def test_an_external_file_may_declare_a_component_without_alias(self):
-        chargee = self._avec_fichier(json.dumps({"Traefik": {}}))
+        self.assertEqual(("Keycloak",), declaree.concernes("Vulnérabilité dans RH-SSO"))
 
-        self.assertEqual(("Traefik",), chargee.concernes("Multiples vulnérabilités dans Traefik"))
+    def test_both_forms_declare_the_same_stack(self):
+        """L'empreinte porte sur ce qui est déclaré, pas sur la façon de l'écrire."""
+        self.assertEqual(
+            certfr.Stack.declaree(["Traefik"]).empreinte,
+            certfr.Stack.declaree([{"nom": "Traefik"}]).empreinte,
+        )
 
-    @mock.patch.dict(
-        os.environ, {certfr.ENV_STACK_FILE: "chemin/qui/nexiste/pas.json"}, clear=True
-    )
-    def test_an_announced_but_unreadable_file_fails_at_startup(self):
-        """Retomber sur la liste livrée ferait conclure sereinement que rien ne nous touche."""
-        with self.assertRaises(certfr.StackError) as leve:
-            certfr.charger()
-
-        self.assertIn(certfr.ENV_STACK_FILE, str(leve.exception))
-
-    def test_an_announced_but_empty_file_fails_at_startup(self):
+    def test_something_that_is_not_a_list_fails_at_startup(self):
+        """La forme d'avant — un objet nom par nom — ne passe pas pour une liste vide."""
         with self.assertRaises(certfr.StackError):
-            self._avec_fichier("   \n", nom="vide.json")
+            certfr.Stack.declaree({"Keycloak": {"alias": ["RH-SSO"]}})
 
-    def test_an_invalid_json_fails_at_startup(self):
-        with self.assertRaises(certfr.StackError):
-            self._avec_fichier("{ceci n'est pas du JSON", nom="casse.json")
-
-    def test_a_malformed_entry_fails_at_startup(self):
+    def test_an_entry_without_a_name_fails_at_startup(self):
         """Un composant sauté ne se remarque pas : il manque juste le seul avis attendu."""
+        with self.assertRaises(certfr.StackError):
+            certfr.Stack.declaree([{"alias": ["RH-SSO"]}])
+
+    def test_a_malformed_alias_list_fails_at_startup(self):
         with self.assertRaises(certfr.StackError) as leve:
-            self._avec_fichier(json.dumps({"Keycloak": ["RH-SSO"]}), nom="forme.json")
+            certfr.Stack.declaree([{"nom": "Keycloak", "alias": "RH-SSO"}])
 
         self.assertIn("Keycloak", str(leve.exception))
 
     def test_a_component_that_nothing_could_match_fails_at_startup(self):
         with self.assertRaises(certfr.StackError):
-            self._avec_fichier(json.dumps({"---": {"alias": []}}), nom="muet.json")
-
-    def test_comment_keys_are_not_components(self):
-        chargee = self._avec_fichier(
-            json.dumps({"_exemples": {"PostgreSQL": {}}, "Traefik": {}}), nom="commente.json"
-        )
-
-        self.assertEqual(1, len(chargee))
+            certfr.Stack.declaree(["---"])
 
     def test_the_fingerprint_changes_with_the_declared_list(self):
         """Deux journaux dont elle diffère n'ont pas été appariés contre la même stack."""

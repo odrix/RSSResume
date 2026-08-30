@@ -1,8 +1,11 @@
 """Configuration de l'application, lue depuis l'environnement.
 
 Ce qui concerne les fournisseurs de LLM n'est plus ici : leurs réglages vivent dans
-`llm/providers.json`, leur choix et leurs clés dans `llm/providers.py`. Il ne reste donc que
-ce qui est propre à cette installation — FreshRSS, les catégories, le seuil, le SMTP.
+`llm/providers.json`, leur choix et leurs clés dans `llm/providers.py`. Ce qui est propre à
+la personne non plus — profil de pertinence, stack surveillée, destinataire du digest sont
+dans un document unique que `profil.py` lit (`RSSRESUME_PROFILE_FILE`). Il ne reste donc ici
+que ce qui est propre à cette installation : FreshRSS, les catégories, le seuil, le transport
+du courrier.
 """
 
 from __future__ import annotations
@@ -13,8 +16,9 @@ import os
 import pathlib
 import zoneinfo
 
+from rssresume.certfr.stack import Stack
 from rssresume.models import SelectionRule
-from rssresume.profil import load_profil
+from rssresume.profil import CLE_EMAIL, ENV_PROFIL_FILE, load_profil
 from rssresume.tools.text import casefold_ascii, words
 
 #: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
@@ -44,6 +48,12 @@ DEFAULT_MAIL_TRANSPORT = MAIL_TRANSPORT_SMTP
 
 #: La clé d'API de Resend, nommée d'après le service comme celles des fournisseurs de LLM.
 ENV_RESEND_API_KEY = "RESEND_API_KEY"
+
+#: Le destinataire du digest se lisait ici ; il est passé dans le document de profil,
+#: avec le reste de ce qui est personnel. La variable est **refusée** et non ignorée :
+#: laissée en place dans un environnement déjà déployé, elle ferait croire qu'un
+#: destinataire est configuré, et le digest ne partirait plus sans que rien ne le dise.
+ENV_SMTP_TO = "SMTP_TO"
 
 #: Catégories routées vers le traitement déterministe des avis CERT-FR (`rssresume/certfr/`)
 #: au lieu du scoring, du résumé et de la synthèse vocale. Le routage est explicite et non
@@ -170,6 +180,9 @@ class AppConfig:
     smtp_username: str | None
     smtp_password: str | None
     smtp_from: str | None
+    #: Les destinataires du digest, déclarés dans le document de profil : à qui la
+    #: lettre est adressée est une donnée de la personne, pas un réglage de transport.
+    #: Le nom reste celui de l'en-tête d'un email, que les deux transports écrivent.
     smtp_to: list[str]
     smtp_use_tls: bool
     smtp_use_ssl: bool
@@ -182,6 +195,11 @@ class AppConfig:
     #: CERT-FR. Les libellés sont gardés tels qu'ils ont été écrits — c'est
     #: `est_deterministe` qui les replie pour comparer, et le journal n'a rien à y lire.
     certfr_categories: list[str] = dataclasses.field(default_factory=list)
+    #: Les composants surveillés, déclarés dans le même document que le profil et lus au
+    #: même moment : un document fautif fait échouer le lancement, pas la catégorie
+    #: d'avis d'un matin. Vide par défaut — c'est l'état de qui vient d'installer l'outil,
+    #: et la phrase du digest le dit.
+    stack: Stack = dataclasses.field(default_factory=Stack)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -200,6 +218,16 @@ class AppConfig:
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
+        if _env(ENV_SMTP_TO):
+            raise ValueError(
+                f"{ENV_SMTP_TO} n'est plus lu : le destinataire du digest se déclare à la "
+                f"clé « {CLE_EMAIL} » du document de profil ({ENV_PROFIL_FILE}), avec le "
+                "profil de pertinence et la stack. Retirer la variable de l'environnement."
+            )
+
+        #: Tout ce qui est personnel vient d'un seul document, lu une seule fois.
+        personne = load_profil()
+
         return cls(
             freshrss_base_url=base_url,
             freshrss_username=username,
@@ -209,7 +237,8 @@ class AppConfig:
             excluded_categories=_split_csv(_env("RSSRESUME_EXCLUDED_CATEGORIES")),
             summary_language=_env("RSSRESUME_SUMMARY_LANGUAGE", "fr") or "fr",
             timezone=load_timezone(_env(ENV_TIMEZONE)),
-            profil=load_profil(),
+            profil=personne.texte,
+            stack=personne.stack,
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             category_thresholds=_split_thresholds(
                 _env("RSSRESUME_CATEGORY_THRESHOLDS"), "RSSRESUME_CATEGORY_THRESHOLDS"
@@ -226,7 +255,7 @@ class AppConfig:
             smtp_username=_env("SMTP_USERNAME"),
             smtp_password=_env("SMTP_PASSWORD"),
             smtp_from=_env("SMTP_FROM"),
-            smtp_to=_split_csv(_env("SMTP_TO")),
+            smtp_to=list(personne.emails),
             smtp_use_tls=(_env("SMTP_USE_TLS", "true") or "").lower() == "true",
             smtp_use_ssl=(_env("SMTP_USE_SSL", "false") or "").lower() == "true",
             mail_transport=load_mail_transport(_env(ENV_MAIL_TRANSPORT)),

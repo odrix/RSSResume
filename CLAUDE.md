@@ -24,7 +24,7 @@ ni pytest installé. La commande, depuis la racine :
 .venv/Scripts/python.exe -m unittest discover -s tests -p "test*.py"
 ```
 
-Environ 1,5 s pour la suite entière (407 tests au 2026-08-30). Il n'y a donc jamais de
+Environ 2 s pour la suite entière (510 tests au 2026-08-30). Il n'y a donc jamais de
 raison de n'en lancer qu'une partie.
 
 - Une tâche n'est pas finie tant que la suite n'est pas verte. Annoncer le nombre de tests.
@@ -68,6 +68,9 @@ inactif tant que ce n'est pas fait.
   les fournisseurs sont choisis et les collaborateurs injectés.
 - [digest.py](rssresume/digest.py) — `DigestService` : ce que la journée contient. Pas de
   quoi elle a l'air.
+- [profil.py](rssresume/profil.py) — le document unique de la personne, hors du dépôt
+  (`input/`, gitignoré) : profil de pertinence, stack surveillée, destinataire du digest.
+  Rien de personnel ne se déclare ailleurs, et surtout pas dans l'environnement.
 - [newsletter.py](rssresume/newsletter.py) — `Lettre` : la mise en forme de l'email, partagée
   par la production du jour et le renvoi `--send-only`.
 - [llm/](rssresume/llm/) — `base.py` le contrat et le transport, `openai.py` / `mistral.py`

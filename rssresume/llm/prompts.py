@@ -108,12 +108,12 @@ Règles :
 
 def scoring_system(profil: str | None = None) -> str:
     """Prompt de scoring, profil de pertinence inclus."""
-    return f"{SCORING_INTRO}{load_profil(profil)}\n\n{SCORING_RULES}\n\n{INJECTION_GUARD}"
+    return f"{SCORING_INTRO}{load_profil(profil).texte}\n\n{SCORING_RULES}\n\n{INJECTION_GUARD}"
 
 
 def article_system(profil: str | None = None) -> str:
     """Prompt de résumé d'un article, profil de pertinence inclus."""
-    return f"{ARTICLE_INTRO}{load_profil(profil)}\n\n{ARTICLE_RULES}\n\n{INJECTION_GUARD}"
+    return f"{ARTICLE_INTRO}{load_profil(profil).texte}\n\n{ARTICLE_RULES}\n\n{INJECTION_GUARD}"
 
 
 def scoring_user(payload: list[dict]) -> str:
@@ -212,7 +212,7 @@ DIGEST_RULES = (
 
 def digest_system(profil: str | None = None) -> str:
     """Prompt système du digest audio, profil de pertinence inclus."""
-    return f"{DIGEST_INTRO}{load_profil(profil)}\n\n{DIGEST_RULES}\n\n{INJECTION_GUARD}"
+    return f"{DIGEST_INTRO}{load_profil(profil).texte}\n\n{DIGEST_RULES}\n\n{INJECTION_GUARD}"
 
 STYLE_INSTRUCTION = (
     "Écris en prose continue, d'un sujet au suivant avec des transitions naturelles. "

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from rssresume.certfr.stack import Stack, charger
+from rssresume.certfr.stack import Stack
 from rssresume.models import Article
 from rssresume.tools.text import contains_words, words
 
@@ -175,11 +175,12 @@ class CertfrService:
     ne parle à personne : aucun réseau, aucun modèle, aucun coût.
 
     La stack est injectée au constructeur, comme partout ailleurs ici ; sans argument,
-    c'est celle du fichier livré, surchargée par `RSSRESUME_STACK_FILE`.
+    elle est vide, et le service le dit plutôt que d'apparier contre rien en silence.
+    C'est le document de profil qui la déclare, et `cli.build_service` qui la passe.
     """
 
     def __init__(self, stack: Stack | None = None):
-        self._stack = charger() if stack is None else stack
+        self._stack = stack if stack is not None else Stack()
 
     @property
     def stack(self) -> Stack:

@@ -139,8 +139,9 @@ Variables optionnelles :
 - `RSSRESUME_TIMEZONE=Europe/Paris` — fuseau dans lequel une journée commence et finit.
   En UTC, un article publié à 1 h du matin à Paris en heure d'été tombe dans la veille,
   donc dans une journée déjà livrée : il n'apparaît dans aucun digest
-- `RSSRESUME_PROFILE` — profil de pertinence, en clair (voir ci-dessous)
-- `RSSRESUME_PROFILE_FILE=profil.txt` — le même, dans un fichier
+- `RSSRESUME_PROFILE_FILE=input/moi/profile.json` — le document de la personne : profil de
+  pertinence, stack surveillée, destinataire du digest (voir ci-dessous)
+- `RSSRESUME_PROFILE` — le profil seul, en clair, quand il n'y a rien d'autre à déclarer
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
 - `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5` — seuil propre à une catégorie, sous
   la forme `Catégorie=score`, plusieurs entrées séparées par des virgules
@@ -154,8 +155,6 @@ Variables optionnelles :
 - `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
 - `RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI` — catégories routées
   vers le traitement déterministe, sans aucun appel IA (voir ci-dessous)
-- `RSSRESUME_STACK_FILE=stack.json` — liste de composants externe, fusionnée par-dessus
-  `rssresume/certfr/stack.json`
 
 ### Les avis CERT-FR, sans IA
 
@@ -186,18 +185,17 @@ libellé est comparé sans tenir compte de la casse **ni des accents** — le li
 porte, une variable d'environnement les perd volontiers en route, et une catégorie qu'on croit
 routée et qui ne l'est pas repasse par le LLM tous les matins sans que rien ne le dise.
 
-**La liste des composants est à remplir.** Elle vit dans
-[certfr/stack.json](rssresume/certfr/stack.json), livré vide : les entrées d'exemple sont dans
-un bloc `_exemples` que la lecture ignore, un exemple qui apparierait un vrai avis serait un
-faux positif livré par défaut. Une entrée par composant, la clé étant le nom canonique — celui
-qui sera écrit dans la phrase — et `alias` les autres écritures rencontrées :
+**La liste des composants est à remplir**, à la clé `stack` du document de profil : rien n'est
+livré, un exemple qui apparierait un vrai avis serait un faux positif offert le jour de
+l'installation. Une entrée par composant — une **chaîne** pour le cas courant, un **objet**
+quand les avis emploient plusieurs écritures, `nom` étant celui qui sera écrit dans la phrase :
 
 ```json
-{
-  "Keycloak":    {"alias": ["Red Hat Single Sign-On", "RH-SSO"]},
-  "noyau Linux": {"alias": ["Linux kernel"]},
-  "Traefik":     {}
-}
+"stack": [
+  "Traefik",
+  {"nom": "Keycloak", "alias": ["Red Hat Single Sign-On", "RH-SSO"]},
+  {"nom": "noyau Linux", "alias": ["Linux kernel"]}
+]
 ```
 
 L'appariement porte sur des **mots entiers**, casse et accents ignorés : « Go » ne reconnaît
@@ -214,10 +212,10 @@ reconnu, la phrase le dit (« impact non précisé par l'avis ») plutôt que de
 une faille bénigne. Rien n'est déduit, rien n'est inventé — sur un avis de sécurité, une
 information fabriquée est pire que pas d'information.
 
-`RSSRESUME_STACK_FILE` désigne un fichier fusionné par-dessus, clé à clé : de quoi tenir la
-vraie liste hors du dépôt, et le seul moyen de la changer en conteneur sans rebuild, le fichier
-livré étant dans l'image. Comme le fichier de profil, un fichier annoncé mais illisible ou vide
-fait échouer le lancement.
+La liste n'a pas de variable d'environnement à elle : ce qu'on exploite est aussi personnel que
+ce qu'on veut lire, et se déclare au même endroit — le document que `RSSRESUME_PROFILE_FILE`
+désigne, hors du dépôt. Elle est lue au lancement, avec le profil : une entrée fautive fait
+échouer le démarrage plutôt que la catégorie d'avis d'un matin.
 
 ### Fournisseurs de LLM
 
@@ -281,12 +279,14 @@ Un échec sur `sock.connect()` — donc après la résolution DNS — sur les tr
 un filtrage réseau. Le 443 sort forcément, lui : c'est déjà par là que passent FreshRSS
 et les fournisseurs de LLM. D'où `resend`, qui emprunte le même chemin qu'eux.
 
-`SMTP_FROM` et `SMTP_TO` valent pour les deux transports : l'expéditeur et les
-destinataires ne changent pas de nature parce que le chemin change. Le reste ne sert
-qu'au transport `smtp`.
+`SMTP_FROM` vaut pour les deux transports : l'expéditeur ne change pas de nature parce que
+le chemin change. Le reste ne sert qu'au transport `smtp`. Le **destinataire**, lui, n'est
+plus une variable : il se déclare à la clé `email` du document de profil. `SMTP_TO` n'est
+plus lue et **fait échouer le lancement** tant qu'elle traîne dans l'environnement —
+ignorée, elle laisserait croire à un destinataire configuré et le digest ne partirait plus
+sans que rien ne le dise.
 
 - `SMTP_FROM`
-- `SMTP_TO=dest@example.com`
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -382,24 +382,43 @@ Dans le conteneur, la sortie est dans le volume et non dans `output` :
 docker exec -it <conteneur> python -m rssresume --send-only --date 2026-08-29
 ```
 
-### Changer de profil de pertinence
+### Le document de la personne
 
-Le profil est le **seul** élément personnel du système : c'est lui qui décide ce qui monte
-au-dessus du seuil, ce qui est raconté et sous quel angle. Les trois prompts l'utilisent —
-notation, résumé d'article, digest audio. Ouvrir l'outil à quelqu'un d'autre, c'est changer ce
-texte, et rien d'autre.
+Le profil de pertinence décide ce qui monte au-dessus du seuil, ce qui est raconté et sous quel
+angle : les trois prompts l'utilisent — notation, résumé d'article, digest audio. La stack décide
+quels avis CERT-FR font lever la tête. L'adresse décide où tout cela arrive. Les trois sont
+personnelles, et **ne vont pas dans le dépôt** : elles tiennent dans un document unique, sous
+`input/`, gitignoré.
 
 ```bash
-RSSRESUME_PROFILE="Sage-femme libérale. Veille : santé publique, nomenclature, matériel."
-# ou, pour un profil long ou versionné à part :
-RSSRESUME_PROFILE_FILE=profil.txt
+RSSRESUME_PROFILE_FILE=input/moi/profile.json
 ```
 
-Sans l'une ni l'autre, `DEFAULT_PROFIL` de [profil.py](rssresume/profil.py) s'applique. Le profil
-est résolu **une fois au démarrage** : un fichier annoncé mais illisible fait échouer le lancement
-plutôt que de retomber en silence sur un autre profil. Et comme l'empreinte de scoring inclut le
-profil, en changer renote automatiquement les articles concernés : aucun score calculé contre
-l'ancien profil ne survit.
+```json
+{
+  "_note": "les clés inconnues servent à annoter, elles n'entrent nulle part",
+  "profil": "CTO d'un SaaS B2B…\n\nAxes de veille pertinents :\n- reglementaire : …",
+  "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
+  "email": "moi@example.com"
+}
+```
+
+Seule `profil` est exigée. `stack` absente, aucun avis n'est apparié et le digest le dit ;
+`email` absente, aucun email ne part. `email` accepte une adresse ou une liste d'adresses.
+
+Le fichier est lu comme un **objet JSON** s'il commence par une accolade, comme du texte brut
+sinon — l'accolade décide, pas l'extension, qui n'est qu'une promesse que rien ne vérifie. Pour un
+profil seul, sans stack ni destinataire, `RSSRESUME_PROFILE` suffit et tient sur une ligne.
+
+Sans document ni variable, `DEFAULT_PROFIL` de [profil.py](rssresume/profil.py) s'applique : un
+profil générique de professionnel de la tech, qui ne nomme ni produit, ni marché, ni équipe.
+
+Le document est résolu **une fois au démarrage** : annoncé mais illisible, vide, au JSON cassé,
+sans texte à la clé `profil`, avec une entrée de stack fautive ou une adresse qui n'en est pas
+une, il fait échouer le lancement plutôt que de retomber en silence sur un autre profil. Et comme l'empreinte de scoring inclut le profil, en changer renote
+automatiquement les articles concernés : aucun score calculé contre l'ancien profil ne survit —
+sortir un profil du code vers un fichier ne coûte donc rien tant que le texte est repris à
+l'identique.
 
 ### Mettre au point le prompt de scoring
 
@@ -476,6 +495,23 @@ possède pas — et la sortie du jour n'atterrirait pas dans le volume.
 Une valeur sur plusieurs lignes ne survit pas au format `.env` : pour un profil long,
 `RSSRESUME_PROFILE_FILE` et un fichier monté, plutôt que `RSSRESUME_PROFILE`.
 
+`input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
+`rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone. Le document
+s'y monte — un seul fichier, profil, stack et destinataire compris — et la variable pointe sur le
+chemin monté :
+
+```yaml
+volumes:
+  - ./input/moi:/config:ro
+```
+
+```bash
+RSSRESUME_PROFILE_FILE=/config/profile.json
+```
+
+Un chemin qui ne mène à rien fait échouer le lancement — un conteneur qui ne démarre pas se voit,
+un matin de digest noté contre le mauvais profil non.
+
 Les logs de Dokploy montrent l'heure du prochain passage, puis le suivi d'exécution du
 digest. Pour rejouer une journée à la main, sans attendre l'heure :
 
@@ -494,15 +530,14 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `config.py` | configuration lue depuis l'environnement |
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |
-| `profil.py` | profil de pertinence : le défaut, et son injection depuis l'extérieur |
+| `profil.py` | le document de la personne : profil de pertinence, stack, destinataire |
 | `digest.py` | orchestration du digest quotidien |
 | `summaries.py` | résumé d'une catégorie : celui du fournisseur, ou le repli extractif |
 | `audio.py` | synthèse vocale (fournisseur configuré, ou `espeak`) |
 | `pricing.py` | lecture de la grille de tarifs et calcul du coût d'un appel |
 | `runlog.py` | journal `<categorie>.log.json` : articles, scores et coûts par catégorie |
 | **`certfr/`** | **la catégorie qui ne passe par aucun modèle** |
-| `certfr/stack.json` | la liste des composants surveillés — à remplir, livrée vide |
-| `certfr/stack.py` | lecture de cette liste, et appariement d'un texte d'avis sur elle |
+| `certfr/stack.py` | ce qu'est un composant surveillé, et l'appariement d'un texte d'avis |
 | `certfr/service.py` | tri d'une journée d'avis : criticité, classement, phrase produite |
 | **`external/`** | **les systèmes que l'on ne contrôle pas** |
 | `external/freshrss.py` | client de l'API Google Reader de FreshRSS (lecture, tags, marquage comme lu) |

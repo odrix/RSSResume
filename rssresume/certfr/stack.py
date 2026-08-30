@@ -1,10 +1,13 @@
-"""La liste des composants surveillés, et la façon de les repérer dans un texte.
+"""Les composants surveillés, et la façon de les repérer dans un texte.
 
-Les données sont dans `stack.json`, le procédé ici : la liste se corrige à chaque
-changement d'infrastructure, la façon de l'apparier ne bouge presque jamais. C'est le
-même découpage que `ephemeride/`, pour la même raison.
+La liste, elle, vient du document de la personne — `profil.py`, clé `stack` — et pas
+d'ici : ce qu'on exploite se tient hors du dépôt, avec le profil de pertinence et le
+destinataire du digest. Ce module ne porte que le procédé, qui ne bouge presque jamais
+là où la liste se corrige à chaque changement d'infrastructure. C'est le même découpage
+que `ephemeride/`, pour la même raison.
 
-    charger().concernes("Multiples vulnérabilités dans Keycloak")  -> ("Keycloak",)
+    Stack.declaree(["Keycloak"]).concernes("Multiples vulnérabilités dans Keycloak")
+    -> ("Keycloak",)
 
 L'appariement est volontairement pauvre : une suite de mots contigus, casse et accents
 retirés. Rien de flou, rien d'approché. Un avis de sécurité mal apparié est pire qu'un
@@ -14,25 +17,18 @@ suivante on ne lit plus la phrase.
 
 from __future__ import annotations
 
-import copy
-import functools
 import hashlib
 import json
-import os
-import pathlib
 from typing import Iterable
 
 from rssresume.tools.text import contains_words, words
 
-#: Fichier externe fusionné par-dessus celui qui est livré, pour tenir la vraie liste
-#: hors du dépôt. Annoncé mais illisible, il fait échouer le lancement.
-ENV_STACK_FILE = "RSSRESUME_STACK_FILE"
-
-BUILTIN_PATH = pathlib.Path(__file__).with_name("stack.json")
+#: La clé qui porte la liste dans le document de profil.
+CLE_STACK = "stack"
 
 
 class StackError(RuntimeError):
-    """Liste de composants illisible, vide, ou dont une entrée n'a pas la bonne forme."""
+    """Liste de composants dont une entrée n'a pas la bonne forme."""
 
 
 class Composant:
@@ -72,12 +68,34 @@ class Stack:
     def __init__(self, composants: Iterable[Composant] = ()):
         self._composants = tuple(composants)
 
+    @classmethod
+    def declaree(cls, entrees: object) -> "Stack":
+        """La stack telle que le document de profil la déclare, sous la clé `stack`.
+
+        Une entrée est une **chaîne** — le nom canonique, sans alias, le cas courant —
+        ou un **objet** `{"nom": …, "alias": […]}` quand les avis emploient plusieurs
+        écritures. Absente, la clé donne une stack vide : c'est l'état de départ de
+        quiconque installe l'outil, et le digest le dit en toutes lettres.
+
+        Une entrée fautive lève au lieu d'être sautée. Un composant sauté ne se remarque
+        pas : la journée se déroule, la phrase se rédige, et il manque simplement le seul
+        avis qu'on attendait.
+        """
+        if entrees is None:
+            return cls()
+        if not isinstance(entrees, list):
+            raise StackError(
+                f"« {CLE_STACK} » : liste attendue, de la forme "
+                '["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}].'
+            )
+        return cls(_composant(entree) for entree in entrees)
+
     def __len__(self) -> int:
         return len(self._composants)
 
     @property
     def vide(self) -> bool:
-        """Vrai tant que personne n'a rempli `stack.json`.
+        """Vrai tant que personne n'a déclaré de composant.
 
         Le cas mérite d'être nommé : une stack vide n'apparie rien, et le digest doit
         le dire au lieu d'annoncer sereinement que la journée ne nous concerne pas.
@@ -91,7 +109,8 @@ class Stack:
         Le pendant de `empreinte_scoring` pour une catégorie déterministe : deux
         journaux dont elle diffère n'ont pas été appariés contre la même stack, et une
         journée qui ne signalait rien s'explique alors sans avoir à retrouver le fichier
-        de l'époque.
+        de l'époque. Elle porte sur ce qui est déclaré, non sur la façon de l'écrire :
+        « Traefik » et `{"nom": "Traefik"}` sont la même stack.
         """
         graine = json.dumps(
             {composant.nom: list(composant.alias) for composant in self._composants},
@@ -108,76 +127,30 @@ class Stack:
         )
 
 
-def charger() -> Stack:
-    """La stack surveillée : le fichier livré, complété par `RSSRESUME_STACK_FILE`."""
-    return _stack((os.getenv(ENV_STACK_FILE) or "").strip() or None)
-
-
-@functools.lru_cache(maxsize=8)
-def _stack(external: str | None) -> Stack:
-    """Stack construite une fois par chemin externe : elle ne bouge pas en cours d'exécution."""
-    table = _lire(BUILTIN_PATH, "Liste de composants livrée")
-    if external:
-        table = _fusionner(table, _lire(pathlib.Path(external), ENV_STACK_FILE))
-    return Stack(_composants(table))
-
-
-def _lire(path: pathlib.Path, annonce: str) -> dict:
-    """Le contenu utile d'un fichier de composants. Illisible ou vide : on lève.
-
-    Retomber en silence sur la liste livrée ferait apparier une journée entière d'avis
-    contre une stack qui n'est pas celle qu'on croit, et le digest conclurait tranquillement
-    que rien ne nous touche. Même arbitrage que le fichier de profil.
-    """
-    try:
-        contenu = path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise StackError(f"{annonce} : fichier illisible ({path}) : {exc}") from exc
-    if not contenu:
-        raise StackError(f"{annonce} : fichier vide ({path})")
-    try:
-        parsed = json.loads(contenu)
-    except json.JSONDecodeError as exc:
-        raise StackError(f"{annonce} : JSON invalide ({path}) : {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise StackError(f"{annonce} : objet JSON attendu ({path})")
-    # Les clés qui commencent par `_` sont des commentaires et des exemples, pas des
-    # composants : c'est ce qui permet au fichier livré de se documenter lui-même.
-    return {nom: bloc for nom, bloc in parsed.items() if not str(nom).startswith("_")}
-
-
-def _fusionner(base: dict, overlay: dict) -> dict:
-    """Fusion en profondeur : un fichier externe ne redéclare que ce qu'il change."""
-    merged = copy.deepcopy(base)
-    for key, value in overlay.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _fusionner(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _composants(table: dict) -> list[Composant]:
-    """Les entrées relues en objets, une forme fautive levant plutôt que d'être sautée.
-
-    Un composant sauté ne se remarque pas : la journée se déroule, la phrase se rédige,
-    et il manque simplement le seul avis qu'on attendait. La forme est donc exigée.
-    """
-    composants = []
-    for nom, bloc in table.items():
-        if not isinstance(bloc, dict):
+def _composant(entree: object) -> Composant:
+    """Une entrée de la liste relue en objet, sa forme étant exigée."""
+    if isinstance(entree, str):
+        composant = Composant(entree)
+    elif isinstance(entree, dict):
+        nom = entree.get("nom")
+        if not isinstance(nom, str) or not nom.strip():
             raise StackError(
-                f"Composant « {nom} » : objet attendu, de la forme "
-                '{"alias": ["autre ecriture"]}.'
+                f"« {CLE_STACK} » : une entrée sans « nom » — la clé porte le nom "
+                "canonique, celui qui sera écrit dans la phrase du digest."
             )
-        alias = bloc.get("alias") or []
+        alias = entree.get("alias") or []
         if not isinstance(alias, list) or any(not isinstance(item, str) for item in alias):
             raise StackError(f"Composant « {nom} » : « alias » doit être une liste de chaînes.")
-        composant = Composant(str(nom), alias)
-        if not composant.reconnaissable:
-            raise StackError(
-                f"Composant « {nom} » : ni le nom ni les alias ne portent de lettre ou de "
-                "chiffre, rien ne pourrait l'apparier."
-            )
-        composants.append(composant)
-    return composants
+        composant = Composant(nom, alias)
+    else:
+        raise StackError(
+            f"« {CLE_STACK} » : une entrée est une chaîne — « Traefik » — ou un objet "
+            '{"nom": "Keycloak", "alias": ["RH-SSO"]}.'
+        )
+
+    if not composant.reconnaissable:
+        raise StackError(
+            f"Composant « {composant.nom} » : ni le nom ni les alias ne portent de lettre "
+            "ou de chiffre, rien ne pourrait l'apparier."
+        )
+    return composant

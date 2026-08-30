@@ -84,7 +84,7 @@ Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés 
 
 | Motif | Source dans le code | Transformation |
 | --- | --- | --- |
-| `{profil}` | `profil.load_profil()` | identique au scoring |
+| `{profil}` | `profil.load_profil().texte` | identique au scoring |
 | `{categorie}` | nom FreshRSS de la catégorie | brut, entre apostrophes simples |
 | `{langue}` | `RSSRESUME_SUMMARY_LANGUAGE` | défaut `fr` |
 | `{palier de profondeur}` | `depth_instruction(len(articles))` | une des trois phrases du tableau ci-dessous, selon le **nombre d'articles retenus** |

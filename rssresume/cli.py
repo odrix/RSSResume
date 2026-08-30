@@ -41,8 +41,8 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
         ),
         # Sans fournisseur, et c'est tout l'intérêt : les catégories que
         # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de
-        # composants est lue ici, au lancement, comme le profil de pertinence.
-        certfr_service=certfr.CertfrService(),
+        # composants vient du document de profil, lue au lancement avec lui.
+        certfr_service=certfr.CertfrService(config.stack),
     )
 
 

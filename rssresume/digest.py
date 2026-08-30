@@ -67,11 +67,10 @@ class DigestService:
         #: Sans service injecté, celui qui n'appelle personne : table embarquée et
         #: calendrier. L'email a toujours son introduction, même monté à la main.
         self._ephemeride_service = ephemeride_service or EphemerideService()
-        #: Le tri déterministe des avis CERT-FR, avec la liste de composants livrée à
-        #: défaut. Construit toujours, sollicité seulement par les catégories que
-        #: `RSSRESUME_CERTFR_CATEGORIES` route — mais construit ici et non à la première
-        #: d'entre elles, pour qu'un fichier de stack fautif fasse échouer le lancement
-        #: plutôt que la troisième catégorie d'un matin.
+        #: Le tri déterministe des avis CERT-FR, avec une stack vide à défaut — c'est
+        #: `cli.build_service` qui lui passe celle du document de profil. Construit
+        #: toujours, sollicité seulement par les catégories que
+        #: `RSSRESUME_CERTFR_CATEGORIES` route.
         self._certfr_service = certfr_service or CertfrService()
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.

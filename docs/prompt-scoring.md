@@ -92,7 +92,7 @@ quels et non en `é`).
 
 | Motif | Source dans le code | Transformation |
 | --- | --- | --- |
-| `{profil}` | `profil.load_profil()` | `RSSRESUME_PROFILE` > `RSSRESUME_PROFILE_FILE` > `DEFAULT_PROFIL`. Inséré tel quel |
+| `{profil}` | `profil.load_profil().texte` | `RSSRESUME_PROFILE` > `RSSRESUME_PROFILE_FILE` (clé `profil` du document) > `DEFAULT_PROFIL`. Inséré tel quel |
 | `{nombre d'articles du lot}` | `len(payload)` | 40 au maximum ; c'est le nombre d'articles **du lot**, pas de la catégorie |
 | `{rang}` | position dans le lot | `"1"`, `"2"`… **jamais l'`item_id` FreshRSS** : une chaîne comme `tag:google.com,2005:reader/item/000659ce0338ac4f` revenait recopiée de travers assez souvent pour faire échouer tout le lot |
 | `{titre de l'article}` | `Article.title` | brut |

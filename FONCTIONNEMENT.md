@@ -9,7 +9,7 @@ Pour l'installation et les commandes, voir [README.md](README.md).
 flowchart TD
     A[FreshRSS<br/>API Google Reader] -->|articles du jour + leurs tags| R{Catégorie routée ?<br/>RSSRESUME_CERTFR_CATEGORIES}
 
-    R -->|oui| S["CertfrService<br/>appariement sur stack.json<br/>zéro appel IA"]
+    R -->|oui| S["CertfrService<br/>appariement sur la stack déclarée<br/>zéro appel IA"]
     S --> J
     R -->|non| B{Scoring<br/>nécessaire ?}
 
@@ -323,8 +323,8 @@ survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre 
 
 ### 7. Email
 
-Un seul email pour toutes les catégories, les fichiers audio en pièces jointes. Sans `SMTP_HOST`
-ni `SMTP_TO`, l'étape est sautée sans erreur.
+Un seul email pour toutes les catégories, les fichiers audio en pièces jointes. Sans `SMTP_HOST`,
+ou sans destinataire à la clé `email` du document de profil, l'étape est sautée sans erreur.
 
 La composition vit dans `newsletter.py` — `Lettre.compose(jour, digests, éphéméride)` — et non
 dans `digest.py`. Elle sert deux chemins : la journée qu'on vient de produire, et celle qu'on
@@ -475,7 +475,7 @@ retenir.
 
 ### L'appariement
 
-Le titre **et** la description, sur la liste de [certfr/stack.json](rssresume/certfr/stack.json) :
+Le titre **et** la description, sur la liste déclarée à la clé `stack` du document de profil :
 le titre nomme le produit dans la quasi-totalité des avis, mais « Multiples vulnérabilités dans les
 produits IBM » ne nomme le composant réellement touché que dans son texte.
 
@@ -485,19 +485,20 @@ réussit sur la chaîne et se trompe sur le produit. Un composant qui ressort to
 son nom est court rend la phrase entière inutile en trois matins. Corollaire dans l'autre sens :
 « Apache Tomcat » ne se reconnaît pas dans un avis qui cite Apache d'un côté et Tomcat de l'autre.
 
-La liste est livrée **vide** : ses entrées d'exemple sont dans un bloc `_exemples` que la lecture
-ignore, comme toute clé préfixée d'un `_`. Un exemple qui apparierait un vrai avis serait un faux
-positif livré par défaut, le jour de l'installation. Tant qu'elle est vide, la phrase le dit :
+**Rien n'est livré.** Le dépôt ne porte aucun composant : un exemple qui apparierait un vrai avis
+serait un faux positif offert le jour de l'installation, et ce qu'on exploite n'a pas plus à être
+publié que ce qu'on veut lire. Tant que la clé `stack` est absente ou vide, la phrase le dit :
 
 ```
 5 avis CERT-FR aujourd'hui, sans appariement : aucun composant n'est déclaré dans la liste de la stack.
 ```
 
-`RSSRESUME_STACK_FILE` désigne un fichier fusionné par-dessus, clé à clé — la vraie liste hors du
-dépôt, et le seul moyen de la changer en conteneur sans rebuild. Un fichier annoncé mais illisible
-ou vide **fait échouer le lancement** : retomber en silence sur la liste livrée ferait apparier une
-journée entière contre une stack qui n'est pas celle qu'on croit, et le digest conclurait
-tranquillement que rien ne nous touche. Même arbitrage que le fichier de profil.
+La liste n'a donc pas de variable d'environnement à elle : elle est lue **avec le profil**, dans le
+même document et au même moment. Une entrée fautive — ni chaîne ni objet, sans `nom`, `alias` qui
+n'est pas une liste de chaînes, ou nom que rien ne pourrait apparier — **fait échouer le
+lancement** : un composant sauté en silence ferait apparier une journée entière contre une stack
+qui n'est pas celle qu'on croit, et le digest conclurait tranquillement que rien ne nous touche.
+Même arbitrage que le texte du profil.
 
 ### La criticité, et d'où elle sort
 
@@ -656,20 +657,32 @@ Deux garde-fous :
   (`gpt-4o-mini-tts`), il est déduit du texte à quatre caractères par token, et l'appel porte
   `"cout_estime": true`.
 
-## Le profil de pertinence
+## Le document de la personne
 
-Un seul texte, dans [profil.py](rssresume/profil.py), utilisé par les **trois** prompts : noter,
-résumer un article, dicter le digest audio. C'est lui qui définit ce qu'est une information pour
-cet auditeur — le reste du système n'est que de la plomberie autour.
+Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil.py) le lit :
 
-Il est donc **injectable de l'extérieur**, dans cet ordre de priorité :
+| Clé | Ce qu'elle décide | Où elle arrive |
+| --- | --- | --- |
+| `profil` | ce qui mérite d'être noté, raconté, et sous quel angle | les **trois** prompts : noter, résumer un article, dicter le digest |
+| `stack` | quels avis CERT-FR font lever la tête | `CertfrService`, sans le moindre appel IA |
+| `email` | où le digest arrive | `AppConfig.smtp_to`, pour les deux transports |
+
+Seule `profil` est exigée. Le texte de pertinence est ce qui définit ce qu'est une information
+pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
+sont personnelles au même titre, et c'est tout ce qui les réunit ici.
+
+Le défaut du dépôt est **générique** : quelqu'un dans la tech, sans produit ni marché ni équipe
+nommés. Un document réel dit trop de choses sur celui qui l'écrit pour être publié ; il se tient
+dans `input/`, gitignoré.
+
+Le profil est **injectable de l'extérieur**, dans cet ordre de priorité :
 
 | Source | Usage |
 | --- | --- |
 | argument explicite (`score_articles(..., profil=…)`, `AppConfig.profil`) | appel programmatique, tests |
-| `RSSRESUME_PROFILE` | un profil court, en clair |
-| `RSSRESUME_PROFILE_FILE` | un profil long, ou versionné à part du dépôt |
-| `DEFAULT_PROFIL` | le profil par défaut du dépôt |
+| `RSSRESUME_PROFILE` | un profil court, en clair. Ne porte que lui : ni stack, ni destinataire |
+| `RSSRESUME_PROFILE_FILE` | le document, tenu hors du dépôt : `input/`, gitignoré |
+| `DEFAULT_PROFIL` | le profil par défaut du dépôt, générique et anonyme |
 
 Trois conséquences de conception :
 
@@ -679,10 +692,21 @@ Trois conséquences de conception :
 - **L'assemblage est une concaténation, jamais un `format`.** Le prompt de scoring contient des
   accolades — le format JSON attendu — et un profil venu de l'extérieur peut en contenir aussi.
 - **Un fichier de profil illisible lève une erreur.** Retomber en silence sur le profil par défaut
-  ferait noter toute une journée contre le mauvais critère sans que personne ne le voie.
+  ferait noter toute une journée contre le mauvais critère sans que personne ne le voie. Le
+  fichier est lu comme un objet JSON `{"profil": "…"}` s'il commence par une accolade, comme du
+  texte brut sinon : c'est le contenu qui décide, pas l'extension, qui n'est qu'une promesse que
+  rien ne vérifie. Un JSON reconnu puis fautif — cassé, ou sans texte à la clé `profil` — lève
+  donc lui aussi, au lieu d'être servi comme du texte : le prompt de scoring recevrait la
+  ponctuation du fichier en guise de critère de pertinence.
 
-Le profil de l'application est résolu **une fois**, dans `AppConfig.from_env()` : un chemin de
-fichier fautif fait échouer le lancement, pas la troisième catégorie.
+Le document est résolu **une fois**, dans `AppConfig.from_env()` : un chemin fautif fait échouer le
+lancement, pas la troisième catégorie. Les trois clés en sortent ensemble — `config.profil`,
+`config.stack`, `config.smtp_to` — et `cli.build_service()` les distribue aux collaborateurs qui
+les attendent, comme le reste.
+
+`SMTP_TO` portait le destinataire jusqu'ici. La variable est désormais **refusée** et non ignorée :
+laissée dans un environnement déjà déployé, elle ferait croire qu'un destinataire est configuré, et
+le digest cesserait de partir sans que rien ne le dise.
 
 ## Le cache de scoring
 
@@ -993,7 +1017,7 @@ flowchart LR
     DIG --> MA[external/mailer.py]
     DIG --> RL[runlog.py<br/>journal .log.json]
     DIG --> CF[certfr/<br/>appariement déterministe]
-    CF --> STK[certfr/stack.json<br/>composants surveillés]
+    CF --> STK[certfr/stack.py<br/>appariement sur les composants déclarés]
     DIG --> SC[LLMProvider<br/>scorer]
     SU --> LLMP[LLMProvider<br/>digest]
     AU --> TTS[LLMProvider<br/>voix]

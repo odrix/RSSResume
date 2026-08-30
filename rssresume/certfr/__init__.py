@@ -14,11 +14,11 @@ lui fait sauter le scoring, le résumé et la synthèse vocale d'un bloc.
 
 Le paquet sépare les données du procédé, comme `ephemeride/` :
 
-- `stack` : la liste des composants surveillés — un JSON à remplir — et l'appariement ;
+- `stack` : ce qu'est un composant surveillé, et l'appariement ;
 - `service` : la lecture d'une journée, le classement par impact, et la phrase produite.
 
-Ce module ne réexporte que la façade. Ajouter un composant se fait dans `stack.json`, et
-n'oblige à relire ni l'un ni l'autre.
+Ce module ne réexporte que la façade. Ajouter un composant se fait dans le document de
+profil, hors du dépôt, et n'oblige à relire ni l'un ni l'autre.
 """
 
 from rssresume.certfr import service, stack
@@ -31,19 +31,11 @@ from rssresume.certfr.service import (
     Revue,
     criticite_de,
 )
-from rssresume.certfr.stack import (
-    BUILTIN_PATH,
-    ENV_STACK_FILE,
-    Composant,
-    Stack,
-    StackError,
-    charger,
-)
+from rssresume.certfr.stack import CLE_STACK, Composant, Stack, StackError
 
 __all__ = [
-    "BUILTIN_PATH",
+    "CLE_STACK",
     "ECHELLE",
-    "ENV_STACK_FILE",
     "INDETERMINEE",
     "Avis",
     "CertfrService",
@@ -52,7 +44,6 @@ __all__ = [
     "Revue",
     "Stack",
     "StackError",
-    "charger",
     "criticite_de",
     "service",
     "stack",

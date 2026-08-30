@@ -3,8 +3,10 @@
 Tout ce qui concerne les fournisseurs de LLM est passé dans `test_providers.py`.
 """
 
+import json
 import os
 import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
@@ -15,12 +17,13 @@ from rssresume.config import (
     ENV_CERTFR_CATEGORIES,
     ENV_MAIL_TRANSPORT,
     ENV_RESEND_API_KEY,
+    ENV_SMTP_TO,
     ENV_TIMEZONE,
     MAIL_TRANSPORT_RESEND,
     MAIL_TRANSPORT_SMTP,
     AppConfig,
 )
-from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL
+from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL, ENV_PROFIL_FILE
 
 BASE_ENV = {
     "FRESHRSS_BASE_URL": "https://example.com",
@@ -129,6 +132,47 @@ class AppConfigTests(unittest.TestCase):
     def test_from_env_reads_an_injected_profile(self):
         """Le profil est résolu une fois au démarrage, pas à chaque prompt."""
         self.assertEqual("Vigneronne en Anjou.", AppConfig.from_env().profil)
+
+
+class DocumentDeProfilTests(unittest.TestCase):
+    """Un seul document apporte le profil, la stack et le destinataire du digest."""
+
+    def _config(self, document):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fichier = pathlib.Path(tmpdir) / "profile.json"
+            fichier.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            env = {**BASE_ENV, ENV_PROFIL_FILE: str(fichier)}
+
+            with mock.patch.dict(os.environ, env, clear=True):
+                return AppConfig.from_env()
+
+    def test_the_document_carries_the_profile_the_stack_and_the_recipient(self):
+        config = self._config(
+            {
+                "profil": "Vigneronne en Anjou.",
+                "stack": ["Traefik"],
+                "email": "moi@example.com",
+            }
+        )
+
+        self.assertEqual("Vigneronne en Anjou.", config.profil)
+        self.assertEqual(("Traefik",), config.stack.concernes("Vulnérabilité dans Traefik"))
+        self.assertEqual(["moi@example.com"], config.smtp_to)
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_without_a_document_the_stack_is_empty_and_nobody_is_written_to(self):
+        config = AppConfig.from_env()
+
+        self.assertTrue(config.stack.vide)
+        self.assertEqual([], config.smtp_to)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_SMTP_TO: "dest@example.com"}, clear=True)
+    def test_the_old_smtp_to_variable_is_refused(self):
+        """Laissée en place, elle ferait croire à un destinataire et le digest ne partirait plus."""
+        with self.assertRaises(ValueError) as leve:
+            AppConfig.from_env()
+
+        self.assertIn(ENV_SMTP_TO, str(leve.exception))
 
 
 class CertfrCategoriesTests(unittest.TestCase):
