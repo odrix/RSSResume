@@ -171,6 +171,64 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
 
         self.assertEqual(["item-0", "item-1"], [a.item_id for a in digests[0].selected])
 
+    def test_at_equal_best_score_the_first_group_stays_ahead(self):
+        """Le tri des groupes est stable : deux groupes ex aequo gardent l'ordre du score."""
+        articles = [make_article(f"item-{i}") for i in range(4)]
+        notes = [
+            self.note("item-0", 9, "cyber"),
+            self.note("item-1", 9, "reglementaire"),
+            self.note("item-2", 8, "reglementaire"),
+            self.note("item-3", 7, "cyber"),
+        ]
+
+        _, _, digests = self._run(articles, notes)
+
+        # Les deux groupes ouvrent à 9 : c'est cyber, arrivé le premier, qui passe devant.
+        # L'ordre vient des scores du jour, jamais d'une liste de thématiques figée.
+        self.assertEqual(
+            ["item-0", "item-3", "item-1", "item-2"],
+            [a.item_id for a in digests[0].selected],
+        )
+
+    def test_the_autre_theme_is_placed_like_any_other(self):
+        """« autre » n'est pas reléguée : elle est classée sur son meilleur article, comme les autres."""
+        articles = [make_article(f"item-{i}") for i in range(3)]
+        notes = [
+            self.note("item-0", 9, "autre"),
+            self.note("item-1", 8, "reglementaire"),
+            self.note("item-2", 7, "autre"),
+        ]
+
+        _, _, digests = self._run(articles, notes)
+
+        self.assertEqual(
+            ["item-0", "item-2", "item-1"], [a.item_id for a in digests[0].selected]
+        )
+
+    def test_an_article_without_a_note_falls_into_the_autre_group(self):
+        """Un article entré sans note se range, faute de thématique, avec les « autre ».
+
+        Le repli à zéro est le seul chemin qui les laisse entrer malgré tout. `_note_of`
+        leur prête une note neutre, dont la thématique par défaut est « autre » : le
+        regroupement n'a aucun cas particulier à connaître, et ne lève pas.
+        """
+        articles = [make_article(f"item-{i}") for i in range(3)]
+        notes = [
+            self.note("item-0", 9, "cyber"),
+            {"id": "item-1", "score": 0, "thematique": "autre", "angle": "", "notee": False},
+            self.note("item-2", 8, "cyber"),
+        ]
+
+        _, _, digests = self._run(
+            articles,
+            notes,
+            config_overrides={"min_digest_items": 5, "fallback_threshold": 0},
+        )
+
+        self.assertEqual(
+            ["item-0", "item-2", "item-1"], [a.item_id for a in digests[0].selected]
+        )
+
     def test_thematique_and_angle_reach_the_summarizer(self):
         """Ils sont payés par le scoring : les jeter privait le résumé de son contexte."""
         articles = [make_article("item-1")]
@@ -457,6 +515,40 @@ class DegradedScoringTests(PipelineHarness, unittest.TestCase):
         self.assertEqual({}, client.scored)
         self.assertEqual([], digests[0].selected)
         self.assertIsNone(digests[0].audio_path)
+
+
+class NoScorerGroupingTests(unittest.TestCase):
+    """Aucune API de scoring : tout entre sans note, et le regroupement doit tenir.
+
+    C'est le seul chemin où `_grouped_by_theme` ne reçoit que des notes neutres. Il ne
+    forme alors qu'un groupe, et ne doit surtout pas réordonner ce que la journée a lu.
+    """
+
+    def _run(self, articles):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["Tech"])
+            return DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                summary_generator=mock.Mock(summarize=mock.Mock(return_value="résumé")),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+            ).run(DAY, send_email=False)
+
+    def test_every_article_lands_in_the_same_group_in_the_order_read(self):
+        articles = [make_article(f"item-{i}") for i in range(3)]
+
+        digests = self._run(articles)
+
+        self.assertEqual(
+            ["item-0", "item-1", "item-2"], [a.item_id for a in digests[0].selected]
+        )
+
+    def test_the_category_is_still_summarized_and_voiced(self):
+        """Sans seuil ni note, la journée sort quand même : c'est le repli sans clé d'API."""
+        digests = self._run([make_article("item-1")])
+
+        self.assertIsNotNone(digests[0].audio_path)
 
 
 class NoSelectionMarkerTests(unittest.TestCase):

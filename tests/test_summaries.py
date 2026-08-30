@@ -190,6 +190,18 @@ class PromptTests(PromptCase):
         self.assertIn("reglementaire", prompt)
         self.assertIn("Le champ « angle »", prompt)
 
+    def test_prompt_keeps_the_thematic_order_it_receives(self):
+        """Le regroupement est fait par le code : le modèle ne doit ni le défaire ni l'annoncer."""
+        prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber", "Un angle.")})
+
+        self.assertIn("Les articles arrivent regroupés par thématique", prompt)
+        self.assertIn("garde cet ordre", prompt)
+        self.assertIn("une transition d'une poignée de mots", prompt)
+        # Écart assumé : les thématiques s'enchaînent, elles ne s'annoncent pas — ni en
+        # rubrique au fil du texte, ni en plan dans la phrase d'ouverture.
+        self.assertIn("sans les annoncer comme une rubrique", prompt)
+        self.assertIn("pas d'annonce du plan", prompt)
+
     def test_a_cached_note_carries_no_angle(self):
         """Un score relu des tags revient sans angle : le champ est simplement omis."""
         prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber")})

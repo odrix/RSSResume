@@ -66,7 +66,7 @@ prompt que "angle" explique pourquoi l'article compte pour ce profil et doit ori
 Adapte le modèle CategoryDigest si nécessaire, et les tests de digest et summaries.
 ```
 
-### 5. Regrouper le digest par thématique plutôt que par score
+### 5. Regrouper le digest par thématique plutôt que par score ✅
 
 `_select` trie par score décroissant, donc l'audio saute du réglementaire au cyber sans transition.
 Une fois `thematique` disponible (item 4), le regroupement est gratuit et rend l'écoute suivable.
@@ -77,6 +77,20 @@ structurer le résumé PAR THÉMATIQUE (reglementaire, cyber, marche, stack), da
 sautant les thématiques sans article. À l'intérieur d'une thématique, le plus important d'abord.
 Le paragraphe d'introduction doit annoncer les thématiques couvertes du jour.
 ```
+
+**Deux écarts assumés au texte ci-dessus**, actés à la relecture :
+
+1. **L'ordre des thématiques est dynamique, pas fixe.** `digest.py::_grouped_by_theme` classe
+   chaque groupe sur son meilleur article ; à l'intérieur d'un groupe, le score décroissant.
+   Un ordre figé ferait ouvrir le digest sur une routine réglementaire le jour où une faille
+   critique tombe. À meilleur score égal, le tri est stable : le groupe apparu le premier
+   reste devant. `THEMATIQUES` dans `models.py` ne sert qu'à valider ce que rend le modèle,
+   jamais à ordonner.
+2. **L'ouverture n'annonce pas les rubriques.** `OPENING_INSTRUCTION` exige une seule phrase
+   courte qui juge la journée, et interdit l'annonce du plan ; `ORDER_INSTRUCTION` demande
+   d'enchaîner une thématique à la suivante par une transition de quelques mots, sans les
+   nommer comme des rubriques. Le texte est lu à voix haute : un sommaire énoncé au micro
+   coûte du temps d'écoute et hache l'entrée en matière.
 
 ### 6. Passer en prose plutôt qu'en puces pour l'audio
 
