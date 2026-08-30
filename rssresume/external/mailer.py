@@ -14,6 +14,13 @@ from rssresume.tools import console
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
+#: Délai d'ouverture de la connexion SMTP. Sans lui, `smtplib` laisse le noyau décider :
+#: un port sortant filtré — ce que font par défaut beaucoup d'hébergeurs sur 25, 465 et
+#: 587 — ne se voit qu'au bout de deux minutes d'attente muette, et sous la forme d'un
+#: `TimeoutError(110)` qui ne dit pas d'où il vient. Trente secondes suffisent à un
+#: serveur qui répond, et rendent la panne lisible tout de suite.
+CONNECT_TIMEOUT = 30
+
 
 class EmailSender:
     def __init__(self, config: AppConfig):
@@ -83,5 +90,5 @@ class EmailSender:
 
     def _connect(self) -> smtplib.SMTP:
         if self._config.smtp_use_ssl:
-            return smtplib.SMTP_SSL(self._config.smtp_host, self._config.smtp_port)
-        return smtplib.SMTP(self._config.smtp_host, self._config.smtp_port)
+            return smtplib.SMTP_SSL(self._config.smtp_host, self._config.smtp_port, timeout=CONNECT_TIMEOUT)
+        return smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=CONNECT_TIMEOUT)

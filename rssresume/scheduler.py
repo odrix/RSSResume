@@ -139,7 +139,7 @@ def run_forever(
         try:
             run(["--date", jour.isoformat()])
         except Exception as exc:  # noqa: BLE001 — un matin perdu, pas tous les suivants
-            console.log(f"Échec du digest du {jour.isoformat()} : {exc!r}")
+            console.error(f"Échec du digest du {jour.isoformat()} : {exc!r}")
         curseur = passage
         if restants is not None:
             restants -= 1

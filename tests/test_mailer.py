@@ -1,8 +1,11 @@
 import email.utils
+import smtplib
 import tempfile
 import unittest
+from unittest import mock
 
 from rssresume.config import AppConfig
+from rssresume.external import mailer
 from rssresume.external.mailer import EmailSender
 from support import make_config
 
@@ -28,6 +31,15 @@ class EmailSenderTests(unittest.TestCase):
             self.assertTrue(email.utils.parsedate_to_datetime(message["Date"]))
             self.assertRegex(message["Message-ID"], r"^<.+@.+>$")
             self.assertTrue(message["Message-ID"].endswith(config.smtp_from.split("@")[-1] + ">"))
+
+    def test_connection_is_bounded_by_a_timeout(self):
+        """Sans délai, un port sortant filtré ne se voit qu'après deux minutes muettes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig(**{**make_config(tmpdir).__dict__, "smtp_use_ssl": True})
+            with mock.patch.object(smtplib, "SMTP_SSL") as ssl_client:
+                EmailSender(config)._connect()
+
+            self.assertEqual(ssl_client.call_args.kwargs["timeout"], mailer.CONNECT_TIMEOUT)
 
 
 if __name__ == "__main__":

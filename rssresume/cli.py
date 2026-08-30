@@ -11,7 +11,7 @@ from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
-from rssresume.external.mailer import EmailSender
+from rssresume.external import mail
 from rssresume.summaries import SummaryGenerator
 from rssresume.tools import console
 
@@ -34,7 +34,7 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
             char_limit=config.article_char_limit,
         ),
         audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
-        email_sender=EmailSender(config),
+        email_sender=mail.sender(config),
     )
 
 

@@ -23,6 +23,7 @@ from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.external.mailer import EmailSender
+from rssresume.external.mailer_resend import ResendEmailSender
 from rssresume.models import Article, CategoryDigest
 from rssresume.summaries import SummaryGenerator
 
@@ -34,6 +35,7 @@ __all__ = [
     "DigestService",
     "EmailSender",
     "FreshRSSClient",
+    "ResendEmailSender",
     "SummaryGenerator",
     "build_service",
     "main",

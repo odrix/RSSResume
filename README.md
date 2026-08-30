@@ -191,14 +191,44 @@ Les consignes de diction d'OpenAI (`instructions` du bloc `tts`) y ont leur plac
 rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas — son
 `/v1/audio/speech` n'a pas de champ pour elles, tout se joue dans le choix de la voix.
 
+### Envoi de l'email
+
+Le digest part par SMTP, ou par l'API HTTPS de Resend. Deux implémentations du même
+contrat, que `RSSRESUME_MAIL_TRANSPORT` départage :
+
+- `RSSRESUME_MAIL_TRANSPORT=smtp` (défaut) — le chemin naturel ;
+- `RSSRESUME_MAIL_TRANSPORT=resend` — quand l'hébergeur filtre les ports SMTP en sortie.
+
+Beaucoup d'hébergeurs de VPS ferment 25, 465 et 587 en sortie pour ne pas héberger de
+spam. La panne est muette : la connexion expire sur un `TimeoutError(110)` sans que rien
+ne soit mal réglé, et l'envoi se distingue mal d'un problème d'identifiants. Un test
+depuis le conteneur tranche en dix secondes, et la trace dit tout :
+
+```bash
+python -c "import socket; socket.create_connection(('smtp.example.com',587),10)"
+```
+
+Un échec sur `sock.connect()` — donc après la résolution DNS — sur les trois ports, c'est
+un filtrage réseau. Le 443 sort forcément, lui : c'est déjà par là que passent FreshRSS
+et les fournisseurs de LLM. D'où `resend`, qui emprunte le même chemin qu'eux.
+
+`SMTP_FROM` et `SMTP_TO` valent pour les deux transports : l'expéditeur et les
+destinataires ne changent pas de nature parce que le chemin change. Le reste ne sert
+qu'au transport `smtp`.
+
+- `SMTP_FROM`
+- `SMTP_TO=dest@example.com`
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
-- `SMTP_FROM`
-- `SMTP_TO=dest@example.com`
 - `SMTP_USE_TLS=true`
 - `SMTP_USE_SSL=false`
+- `RESEND_API_KEY` — requise par le transport `resend` seulement.
+
+Resend n'accepte d'expéditeur que sur un domaine vérifié chez lui, vérification qui passe
+par des enregistrements DNS : un domaine qui ne résout pas ne peut pas l'être. Le compte
+de test `onboarding@resend.dev` fait exception, mais n'écrit qu'au propriétaire du compte.
 
 ## Dépendances
 

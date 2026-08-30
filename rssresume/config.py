@@ -30,6 +30,20 @@ DEFAULT_TIMEZONE = "Europe/Paris"
 ENV_ARTICLE_CHAR_LIMIT = "RSSRESUME_ARTICLE_CHAR_LIMIT"
 DEFAULT_ARTICLE_CHAR_LIMIT = 8000
 
+#: Par où part le digest. Le SMTP est le chemin naturel, mais beaucoup d'hébergeurs
+#: filtrent 25, 465 et 587 en sortie : `resend` passe alors par le 443, qui sort
+#: forcément. Les noms sont déclarés ici, et non dans `external/mail.py` qui les fait
+#: correspondre à leur implémentation, pour qu'un réglage fautif fasse échouer le
+#: lancement — un conteneur qui ne démarre pas se voit, un matin sans digest non.
+ENV_MAIL_TRANSPORT = "RSSRESUME_MAIL_TRANSPORT"
+MAIL_TRANSPORT_SMTP = "smtp"
+MAIL_TRANSPORT_RESEND = "resend"
+MAIL_TRANSPORTS = (MAIL_TRANSPORT_SMTP, MAIL_TRANSPORT_RESEND)
+DEFAULT_MAIL_TRANSPORT = MAIL_TRANSPORT_SMTP
+
+#: La clé d'API de Resend, nommée d'après le service comme celles des fournisseurs de LLM.
+ENV_RESEND_API_KEY = "RESEND_API_KEY"
+
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
     """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
@@ -46,6 +60,21 @@ def load_timezone(name: str | None = None) -> dt.tzinfo:
             f"(par exemple {DEFAULT_TIMEZONE}) et, sur un système sans base de fuseaux — "
             "Windows en tête — que le paquet `tzdata` est installé."
         ) from exc
+
+
+def load_mail_transport(name: str | None = None) -> str:
+    """Le transport nommé, validé au lancement : un nom inconnu ne doit pas attendre.
+
+    Une faute de frappe qu'on laisserait passer retomberait silencieusement sur le SMTP,
+    c'est-à-dire sur le chemin que l'on cherchait précisément à éviter.
+    """
+    transport = (name or DEFAULT_MAIL_TRANSPORT).strip().lower() or DEFAULT_MAIL_TRANSPORT
+    if transport not in MAIL_TRANSPORTS:
+        raise ValueError(
+            f"{ENV_MAIL_TRANSPORT} : transport « {transport} » inconnu. "
+            f"Valeurs acceptées : {', '.join(MAIL_TRANSPORTS)}."
+        )
+    return transport
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -114,6 +143,11 @@ class AppConfig:
     smtp_to: list[str]
     smtp_use_tls: bool
     smtp_use_ssl: bool
+    #: Par où part le digest : `smtp` ou `resend`. Les adresses, elles, restent celles de
+    #: `SMTP_FROM` et `SMTP_TO` — expéditeur et destinataires ne changent pas de nature
+    #: parce que le transport change.
+    mail_transport: str = DEFAULT_MAIL_TRANSPORT
+    resend_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -161,6 +195,8 @@ class AppConfig:
             smtp_to=_split_csv(_env("SMTP_TO")),
             smtp_use_tls=(_env("SMTP_USE_TLS", "true") or "").lower() == "true",
             smtp_use_ssl=(_env("SMTP_USE_SSL", "false") or "").lower() == "true",
+            mail_transport=load_mail_transport(_env(ENV_MAIL_TRANSPORT)),
+            resend_api_key=_env(ENV_RESEND_API_KEY),
         )
 
     def selection_rule(self, category: str) -> SelectionRule:

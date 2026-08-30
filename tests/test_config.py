@@ -12,7 +12,11 @@ from rssresume.config import (
     DEFAULT_ARTICLE_CHAR_LIMIT,
     DEFAULT_TIMEZONE,
     ENV_ARTICLE_CHAR_LIMIT,
+    ENV_MAIL_TRANSPORT,
+    ENV_RESEND_API_KEY,
     ENV_TIMEZONE,
+    MAIL_TRANSPORT_RESEND,
+    MAIL_TRANSPORT_SMTP,
     AppConfig,
 )
 from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL
@@ -159,6 +163,39 @@ class ArticleCharLimitTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {**BASE_ENV, ENV_ARTICLE_CHAR_LIMIT: "2500"}, clear=True)
     def test_the_limit_is_configurable(self):
         self.assertEqual(2500, AppConfig.from_env().article_char_limit)
+
+
+class MailTransportTests(unittest.TestCase):
+    """Le SMTP par défaut, Resend quand l'hébergeur ferme les ports SMTP."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_transport_defaults_to_smtp(self):
+        self.assertEqual(MAIL_TRANSPORT_SMTP, AppConfig.from_env().mail_transport)
+
+    @mock.patch.dict(
+        os.environ,
+        {**BASE_ENV, ENV_MAIL_TRANSPORT: "  ReSend  ", ENV_RESEND_API_KEY: "re_cle"},
+        clear=True,
+    )
+    def test_the_transport_is_read_whatever_its_casing(self):
+        config = AppConfig.from_env()
+
+        self.assertEqual(MAIL_TRANSPORT_RESEND, config.mail_transport)
+        self.assertEqual("re_cle", config.resend_api_key)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_MAIL_TRANSPORT: "resend "}, clear=True)
+    def test_the_key_is_absent_rather_than_empty(self):
+        """`is_configured()` juge la clé : une chaîne vide passerait pour une clé posée."""
+        self.assertIsNone(AppConfig.from_env().resend_api_key)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_MAIL_TRANSPORT: "resnd"}, clear=True)
+    def test_an_unknown_transport_fails_at_startup(self):
+        """Une faute de frappe retomberait sur le SMTP, le chemin qu'on voulait éviter."""
+        with self.assertRaises(ValueError) as raised:
+            AppConfig.from_env()
+
+        self.assertIn(ENV_MAIL_TRANSPORT, str(raised.exception))
+        self.assertIn("resnd", str(raised.exception))
 
 
 if __name__ == "__main__":
