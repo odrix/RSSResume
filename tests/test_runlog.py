@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import runlog
+from rssresume import pricing, runlog
 from rssresume.audio import AudioGenerator
 from rssresume.digest import DigestService
 from rssresume.llm.openai import OpenAIProvider
@@ -141,6 +141,162 @@ class CostAggregationTests(unittest.TestCase):
 
         self.assertTrue(couts["appels"][0]["cout_estime"])
         self.assertEqual(250, couts["appels"][0]["tokens_entree"])
+
+
+class DayAggregationTests(unittest.TestCase):
+    """La somme de la journée : ce que le disque ne porte nulle part.
+
+    Chaque catégorie écrit son fichier, la journée écrit le sien, et personne
+    n'additionne les uns aux autres. Le cumul est la seule vue qui dise ce que la
+    matinée entière a coûté — et il ne doit rien changer aux fichiers écrits.
+    """
+
+    @staticmethod
+    def _journee(tmpdir):
+        """Deux catégories qui facturent, plus l'éphéméride de la journée."""
+        racine = pathlib.Path(tmpdir)
+        with runlog.day_scope(DAY, racine) as jour:
+            with runlog.category_scope("Tech", "tech", DAY, racine):
+                runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
+                runlog.record_chat("digest", "gpt-4o-mini", USAGE)
+            with runlog.category_scope("News", "news", DAY, racine):
+                runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
+                runlog.record_tts("tts-1", "alloy", "a" * 1000)
+            runlog.record_chat("ephemeride", "gpt-4o-mini", USAGE)
+        return jour
+
+    def test_the_day_sums_what_every_category_spent(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            couts = self._journee(tmpdir).cumul().as_json()
+
+            postes = couts["par_typologie"]
+            self.assertEqual(2, postes["scoring"]["appels"])
+            self.assertEqual(1, postes["resume"]["appels"])
+            self.assertEqual(1, postes["ephemeride"]["appels"])
+            self.assertEqual(1, postes["tts"]["appels"])
+            # Quatre complétions à 1000 tokens d'entrée, la synthèse n'en facturant aucun.
+            self.assertEqual(4000, sum(poste["tokens_entree"] for poste in postes.values()))
+            self.assertEqual(2000, sum(poste["tokens_sortie"] for poste in postes.values()))
+
+    def test_the_total_is_the_sum_of_the_three_journals(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            jour = self._journee(tmpdir)
+
+            categories = [enfant.cumul().as_json()["total"] for enfant in jour.enfants]
+            propre = runlog.Comptes(jour.calls).as_json()["total"]
+
+            self.assertAlmostEqual(sum(categories) + propre, jour.cumul().as_json()["total"], places=6)
+
+    def test_the_written_files_still_bill_only_what_each_journal_spent(self):
+        """Le cumul vit en mémoire : `journee.json` ne doit pas hériter des catégories.
+
+        Sans quoi additionner les fichiers d'une journée — ce que fait n'importe qui
+        devant un répertoire de sortie — compterait deux fois chaque catégorie.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            racine = pathlib.Path(tmpdir)
+            jour = self._journee(tmpdir)
+
+            ecrits = {
+                nom: json.loads((racine / nom).read_text(encoding="utf-8"))["couts"]
+                for nom in (runlog.DAY_LOG_NAME, "tech.log.json", "news.log.json")
+            }
+            self.assertEqual(1, len(ecrits[runlog.DAY_LOG_NAME]["appels"]))
+            self.assertEqual(2, len(ecrits["tech.log.json"]["appels"]))
+            self.assertEqual(2, len(ecrits["news.log.json"]["appels"]))
+            # Le bloc écrit est exactement celui des appels propres du journal.
+            self.assertEqual(runlog.Comptes(jour.calls).as_json(), ecrits[runlog.DAY_LOG_NAME])
+            self.assertEqual(5, len(jour.cumul().as_json()["appels"]))
+
+    def test_a_category_that_failed_still_counts_in_the_day(self):
+        """Elle a dépensé sans rien rendre : c'est exactement ce qu'on veut voir compté."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            racine = pathlib.Path(tmpdir)
+            with runlog.day_scope(DAY, racine) as jour:
+                with self.assertRaises(RuntimeError):
+                    with runlog.category_scope("Tech", "tech", DAY, racine):
+                        runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
+                        raise RuntimeError("le fournisseur a lâché")
+
+            self.assertEqual(1, jour.cumul().as_json()["par_typologie"]["scoring"]["appels"])
+
+
+class RecapitulatifTests(unittest.TestCase):
+    """Le texte de fin d'exécution : ce qu'on lit dans la console après le digest."""
+
+    @staticmethod
+    def _texte(remplir):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            racine = pathlib.Path(tmpdir)
+            with runlog.day_scope(DAY, racine) as jour:
+                remplir(racine)
+            return jour.recapitulatif()
+
+    def test_every_billing_typologie_gets_its_line_and_the_day_its_total(self):
+        def remplir(racine):
+            with runlog.category_scope("Tech", "tech", DAY, racine):
+                runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
+                runlog.record_chat("digest", "gpt-4o-mini", USAGE)
+                runlog.record_tts("tts-1", "alloy", "a" * 1000)
+            runlog.record_chat("ephemeride", "gpt-4o-mini", USAGE)
+
+        texte = self._texte(remplir)
+
+        self.assertIn("scoring : 1 appel(s), 1000 token(s) en entrée, 500 en sortie", texte)
+        self.assertIn("résumé : 1 appel(s)", texte)
+        self.assertIn("éphéméride : 1 appel(s)", texte)
+        # La synthèse est facturée à la longueur du texte : sans les caractères, sa
+        # ligne n'afficherait que des zéros là où elle coûte le plus.
+        self.assertIn(
+            "synthèse vocale : 1 appel(s), 0 token(s) en entrée, 0 en sortie, "
+            "1000 caractère(s) de synthèse",
+            texte,
+        )
+        self.assertIn("total : 4 appel(s), 3000 token(s) en entrée, 1500 en sortie", texte)
+        self.assertIn("USD", texte)
+
+    def test_a_typologie_without_any_call_is_left_out(self):
+        """Trois lignes à zéro noieraient la seule qui porte quelque chose."""
+        texte = self._texte(lambda racine: runlog.record_chat("ephemeride", "gpt-4o-mini", USAGE))
+
+        self.assertIn("éphéméride :", texte)
+        self.assertNotIn("synthèse vocale", texte)
+        self.assertNotIn("scoring", texte)
+
+    def test_the_currency_is_the_one_the_journal_carries(self):
+        texte = self._texte(lambda racine: runlog.record_chat("ephemeride", "gpt-4o-mini", USAGE))
+
+        self.assertIn(f"0.000450 {pricing.CURRENCY}", texte)
+
+    def test_an_untarifed_model_voids_the_total_and_says_why(self):
+        """Un total muet est pire que pas de total : celui qui le lit le reporte."""
+
+        def remplir(racine):
+            with runlog.category_scope("Tech", "tech", DAY, racine):
+                runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
+                runlog.record_chat("digest", "modele-maison", USAGE)
+
+        texte = self._texte(remplir)
+
+        self.assertIn("coût inconnu", texte)
+        self.assertIn("modele-maison", texte)
+        self.assertIn("RSSRESUME_PRICES", texte)
+        self.assertNotIn("USD", texte)
+
+    def test_a_token_billed_tts_makes_the_total_approximate(self):
+        """La synthèse ne rend aucun compteur : son coût est déduit du texte envoyé."""
+        texte = self._texte(
+            lambda racine: runlog.record_tts("gpt-4o-mini-tts", "alloy", "a" * 1000)
+        )
+
+        self.assertIn("environ", texte)
+
+    def test_a_day_without_any_call_says_so_rather_than_showing_a_zero(self):
+        """Tout relu du cache, ou `--dry-run` : un « 0.000000 USD » laisserait croire à une mesure."""
+        texte = self._texte(lambda racine: None)
+
+        self.assertEqual("Consommation IA : aucun appel au fournisseur", texte)
+        self.assertNotIn("total", texte)
 
 
 class ScopeTests(unittest.TestCase):

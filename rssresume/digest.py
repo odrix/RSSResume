@@ -113,6 +113,10 @@ class DigestService:
         else:
             console.log("Marquage comme lu : ignoré (--no-mark-read)")
 
+        # Le scope est refermé et `runlog.active()` vaut de nouveau `None` : c'est la
+        # variable liée par le `with` qui porte encore la journée, catégories rattachées
+        # comprises. Rien d'autre ne totalise ce que la matinée a coûté.
+        console.log(journal.recapitulatif())
         console.log(self._report(digests))
         return digests
 

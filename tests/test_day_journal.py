@@ -76,6 +76,30 @@ class EcritureTests(unittest.TestCase):
 
             self.assertEqual(["ephemeride"], [appel.label for appel in jour.calls])
 
+    def test_the_category_is_attached_without_entering_the_day_calls(self):
+        """Le rattachement sert le cumul, pas le fichier : `journee.json` ne doit pas grossir.
+
+        Les deux vues coexistent — `calls` reste ce que la journée a payé elle-même,
+        `cumul()` ce que la matinée entière a coûté — et c'est ce qui permet d'additionner
+        les fichiers d'un répertoire de sortie sans compter deux fois chaque catégorie.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            racine = pathlib.Path(tmpdir)
+            with runlog.day_scope(JOUR, racine) as jour:
+                with runlog.category_scope("Tech", "tech", JOUR, racine):
+                    runlog.record_chat("digest", "un-modele", {"prompt_tokens": 10})
+                runlog.record_chat("ephemeride", "un-modele", {"prompt_tokens": 5})
+
+            self.assertEqual(1, len(jour.calls))
+            self.assertEqual(1, len(jour.enfants))
+            self.assertEqual(
+                ["digest", "ephemeride"],
+                sorted(appel.label for appel in jour.tous_les_appels()),
+            )
+            ecrit = json.loads((racine / runlog.DAY_LOG_NAME).read_text(encoding="utf-8"))
+            self.assertEqual(1, len(ecrit["couts"]["appels"]))
+            self.assertEqual(5, ecrit["couts"]["par_typologie"]["ephemeride"]["tokens_entree"])
+
     def test_the_day_journal_is_written_even_on_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             racine = pathlib.Path(tmpdir)

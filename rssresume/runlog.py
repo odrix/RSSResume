@@ -65,6 +65,19 @@ TYPOLOGIE_PAR_LABEL = {
 }
 TYPOLOGIE_PAR_DEFAUT = "resume"
 
+#: Comment chaque poste se dit dans le récapitulatif de fin d'exécution. Les clés JSON
+#: restent sans accent — elles sont relues par des outils — mais la console s'adresse à
+#: quelqu'un, et « tts » ne dit rien à qui lit son digest du matin.
+LIBELLE_TYPOLOGIE = {
+    "scoring": "scoring",
+    "resume": "résumé",
+    "ephemeride": "éphéméride",
+    "tts": "synthèse vocale",
+}
+
+#: Ouverture du récapitulatif, dans le style des autres lignes de la console.
+RECAP_PREFIXE = "Consommation IA"
+
 
 def read_day(day_dir: pathlib.Path) -> list[CategoryDigest]:
     """Les digests d'une journée, relus de ses journaux.
@@ -193,6 +206,118 @@ class Call:
         return entree
 
 
+class Comptes:
+    """La table de coûts d'un ensemble d'appels, d'où qu'ils viennent.
+
+    Sortie du `Journal` le jour où la journée entière a eu besoin d'être totalisée : la
+    somme des catégories ne s'écrit dans aucun fichier — chacune a déjà le sien — et
+    n'appartient donc à aucun journal. La compter ailleurs aurait fait deux additions
+    qui finissent par ne plus donner le même chiffre, et c'est précisément le genre de
+    divergence que personne ne remarque.
+
+    La même table sert donc au bloc `couts` d'un journal (`as_json`) et au récapitulatif
+    affiché en fin d'exécution (`texte`).
+    """
+
+    def __init__(self, calls: list[Call]):
+        self.calls = calls
+
+    @property
+    def devise(self) -> str:
+        return pricing.CURRENCY
+
+    @property
+    def modeles_sans_tarif(self) -> list[str]:
+        return sorted({call.model for call in self.calls if call.cost is None})
+
+    def as_json(self) -> dict:
+        return {
+            "devise": self.devise,
+            "total": _total(self.calls),
+            # Sans ce drapeau, un total à `null` ne dirait pas POURQUOI il manque.
+            "tarification_complete": not self.modeles_sans_tarif,
+            "modeles_sans_tarif": self.modeles_sans_tarif,
+            "par_typologie": {typologie: self.somme(typologie) for typologie in TYPOLOGIES},
+            "appels": [call.as_json() for call in self.calls],
+        }
+
+    def somme(self, typologie: str) -> dict:
+        calls = self._de(typologie)
+        somme = {
+            "appels": len(calls),
+            "tokens_entree": sum(call.input_tokens for call in calls),
+            "tokens_sortie": sum(call.output_tokens for call in calls),
+            "tokens_raisonnement": sum(call.reasoning_tokens for call in calls),
+            "cout": _total(calls),
+            "modeles": sorted({call.model for call in calls}),
+        }
+        caracteres = sum(call.characters for call in calls)
+        if caracteres:
+            somme["caracteres"] = caracteres
+        return somme
+
+    # -- récapitulatif -------------------------------------------------------
+
+    def texte(self) -> str:
+        """Ce que la journée a consommé, poste par poste puis en tout.
+
+        Un poste sans le moindre appel est tu : le journal garde ses zéros pour qui
+        recompte, mais trois lignes à zéro dans la console noient les deux qui portent
+        quelque chose — et une journée relue du cache n'a que des zéros à dire.
+        """
+        if not self.calls:
+            # Ni total ni postes : une journée entièrement relue du cache, ou un
+            # `--dry-run`, n'a rien dépensé, et un « 0.000000 USD » laisserait croire
+            # qu'on a mesuré quelque chose.
+            return f"{RECAP_PREFIXE} : aucun appel au fournisseur"
+        lignes = [f"{RECAP_PREFIXE} :"]
+        lignes.extend(
+            f"  {LIBELLE_TYPOLOGIE[typologie]} : {self._volume(self._de(typologie))}"
+            for typologie in TYPOLOGIES
+            if self._de(typologie)
+        )
+        lignes.append(f"  total : {self._volume(self.calls)}, {self._prix()}")
+        return "\n".join(lignes)
+
+    def _de(self, typologie: str) -> list[Call]:
+        return [call for call in self.calls if call.typologie == typologie]
+
+    @staticmethod
+    def _volume(calls: list[Call]) -> str:
+        """Ce qu'un poste a consommé : appels, tokens, et caractères s'il y en a.
+
+        Les caractères ne s'affichent que là où ils existent — la synthèse vocale
+        facturée à la longueur du texte. Sa ligne se lirait sinon « 0 token en entrée,
+        0 en sortie », soit l'exact contraire de ce qu'elle est : le poste le plus cher
+        de la journée.
+        """
+        caracteres = sum(call.characters for call in calls)
+        return (
+            f"{len(calls)} appel(s), "
+            f"{sum(call.input_tokens for call in calls)} token(s) en entrée, "
+            f"{sum(call.output_tokens for call in calls)} en sortie"
+            + (f", {caracteres} caractère(s) de synthèse" if caracteres else "")
+        )
+
+    def _prix(self) -> str:
+        """Le total en toutes lettres, ou la raison pour laquelle il n'y en a pas.
+
+        Un total muet est pire que pas de total : celui qui lit « 0.001234 USD » sans
+        savoir qu'un modèle manque à l'appel reporte un chiffre faux. La ligne nomme
+        donc les modèles non tarifés et dit par où les déclarer.
+        """
+        manquants = self.modeles_sans_tarif
+        if manquants:
+            return (
+                f"coût inconnu : {len(manquants)} modèle(s) sans tarif "
+                f"({', '.join(manquants)}), à déclarer dans RSSRESUME_PRICES"
+            )
+        # La synthèse vocale facturée au token ne rend aucun compteur : son coût est
+        # déduit du texte, et le total qui la contient est approché.
+        approche = "environ " if any(call.estimated for call in self.calls) else ""
+        return f"{approche}{_total(self.calls):.6f} {self.devise}"
+
+
 class Journal:
     """Ce que tout journal tient : les appels au fournisseur et ce qu'ils ont coûté.
 
@@ -204,6 +329,38 @@ class Journal:
 
     def __init__(self):
         self.calls: list[Call] = []
+        #: Les journaux que celui-ci a enveloppés — les catégories, sous la journée.
+        #: Séparés de `calls` et non versés dedans : chaque journal écrit sa propre
+        #: dépense, et un `journee.json` qui reprendrait les appels des catégories les
+        #: compterait deux fois pour qui additionne les fichiers d'une journée.
+        self.enfants: list[Journal] = []
+
+    def rattacher(self, enfant: Journal) -> None:
+        self.enfants.append(enfant)
+
+    def tous_les_appels(self) -> list[Call]:
+        """Les appels de ce journal et de tous ceux qu'il a enveloppés."""
+        return [
+            *self.calls,
+            *(call for enfant in self.enfants for call in enfant.tous_les_appels()),
+        ]
+
+    def cumul(self) -> Comptes:
+        """La somme de la journée : ce journal plus ses descendants.
+
+        Rien sur le disque ne la porte — chaque catégorie a écrit la sienne, personne
+        n'additionne — et elle n'a de sens qu'en mémoire, une fois tous les scopes
+        refermés.
+        """
+        return Comptes(self.tous_les_appels())
+
+    def recapitulatif(self) -> str:
+        """Le texte du récapitulatif de fin d'exécution, à confier à la console.
+
+        Construit ici et non par l'appelant : c'est ce module qui sait ce qu'il a
+        compté, ce qu'il n'a pas pu tarifer, et dans quelle devise.
+        """
+        return self.cumul().texte()
 
     def record_chat(self, label: str, model: str, usage: dict | None) -> None:
         """Enregistre une complétion à partir du bloc `usage` de la réponse."""
@@ -247,31 +404,12 @@ class Journal:
         )
 
     def _couts(self) -> dict:
-        sans_tarif = sorted({call.model for call in self.calls if call.cost is None})
-        return {
-            "devise": pricing.CURRENCY,
-            "total": _total(self.calls),
-            # Sans ce drapeau, un total à `null` ne dirait pas POURQUOI il manque.
-            "tarification_complete": not sans_tarif,
-            "modeles_sans_tarif": sans_tarif,
-            "par_typologie": {typologie: self._somme(typologie) for typologie in TYPOLOGIES},
-            "appels": [call.as_json() for call in self.calls],
-        }
+        """Le bloc `couts` du fichier : les appels de CE journal, pas ceux de ses enfants.
 
-    def _somme(self, typologie: str) -> dict:
-        calls = [call for call in self.calls if call.typologie == typologie]
-        somme = {
-            "appels": len(calls),
-            "tokens_entree": sum(call.input_tokens for call in calls),
-            "tokens_sortie": sum(call.output_tokens for call in calls),
-            "tokens_raisonnement": sum(call.reasoning_tokens for call in calls),
-            "cout": _total(calls),
-            "modeles": sorted({call.model for call in calls}),
-        }
-        caracteres = sum(call.characters for call in calls)
-        if caracteres:
-            somme["caracteres"] = caracteres
-        return somme
+        Une catégorie facture ce qu'elle a dépensé, et rien d'autre : c'est ce qui rend
+        les fichiers d'une journée additionnables entre eux.
+        """
+        return Comptes(self.calls).as_json()
 
 
 class DayJournal(Journal):
@@ -561,7 +699,13 @@ def category_scope(
     day_dir: pathlib.Path,
     parametres: dict[str, Any] | None = None,
 ) -> Iterator[CategoryJournal]:
-    """Ouvre le journal d'une catégorie, et l'écrit à la sortie — même sur exception."""
+    """Ouvre le journal d'une catégorie, et l'écrit à la sortie — même sur exception.
+
+    Il se rattache au journal qui l'enveloppe en se refermant : sans ce lien, la journée
+    ne saurait à la fin que ce qu'elle a payé elle-même, et la somme des catégories
+    n'existerait nulle part ailleurs que dans les fichiers déjà écrits. Le rattachement
+    a lieu même quand la catégorie a échoué — c'est là qu'elle a dépensé sans rendre.
+    """
     global _actif
     precedent = _actif
     journal = CategoryJournal(category, slug, day, day_dir, parametres)
@@ -570,6 +714,8 @@ def category_scope(
         yield journal
     finally:
         _actif = precedent
+        if precedent is not None:
+            precedent.rattacher(journal)
         journal.write()
 
 

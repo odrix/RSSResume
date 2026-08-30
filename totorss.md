@@ -262,7 +262,7 @@ lus. Conserve le filtre Python en filet de sécurité sur la borne de fin. Véri
 par continuation reste correcte, et adapte tests/test_freshrss.py.
 ```
 
-### 17. Comptabiliser les tokens et le coût
+### 17. Comptabiliser les tokens et le coût ✅
 
 L'extension FeedDigest logue les tokens par flux dès sa v1, RSSResume ne logue rien.
 Le scoring passe sur **tous** les articles quotidiens : c'est la ligne qui va dériver sans qu'on le voie.
