@@ -15,7 +15,7 @@ from unittest import mock
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm.openai import OpenAIProvider
 from rssresume.tools import http
-from support import make_config
+from tests.support import make_config
 
 
 # Les reprises sont tracées là où elles comptent, pas déversées dans la sortie des tests.

@@ -9,7 +9,7 @@ from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.models import Article, CategoryDigest, Link
 from rssresume.summaries import SummaryGenerator
-from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
+from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
 DAY = dt.date(2026, 8, 23)
 

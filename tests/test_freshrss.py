@@ -15,7 +15,7 @@ from rssresume.external.freshrss import (
     FreshRSSClient,
 )
 from rssresume.models import Article, Note
-from support import make_config
+from tests.support import make_config
 
 
 def make_article(item_id):

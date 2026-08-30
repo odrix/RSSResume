@@ -7,7 +7,7 @@ from unittest import mock
 from rssresume.config import AppConfig
 from rssresume.external import mailer
 from rssresume.external.mailer import EmailSender
-from support import make_config
+from tests.support import make_config
 
 
 class EmailSenderTests(unittest.TestCase):

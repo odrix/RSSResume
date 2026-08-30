@@ -9,7 +9,7 @@ from unittest import mock
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import score_tag, scoring_tag, theme_tag
 from rssresume.models import Article, Note
-from support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, FakeScorer, empreinte, make_config
+from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, FakeScorer, empreinte, make_config
 
 DAY = dt.date(2026, 8, 23)
 

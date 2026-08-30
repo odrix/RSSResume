@@ -15,14 +15,14 @@ from unittest import mock
 from rssresume import runlog
 from rssresume.digest import DigestService
 from rssresume.models import WATCHLIST_MAX, WATCHLIST_MIN
-from support import (
+from tests.support import (
     FakeAudioGenerator,
     FakeEmailSender,
     FakeFreshRSSClient,
     FakeScorer,
     make_config,
 )
-from test_scoring_pipeline import DAY, make_article
+from tests.test_scoring_pipeline import DAY, make_article
 
 
 class Harness:

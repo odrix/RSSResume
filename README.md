@@ -485,5 +485,5 @@ Pour utiliser le paquet comme bibliothèque sans cette sortie : `rssresume.conso
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -t tests
+python -m unittest discover
 ```

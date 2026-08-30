@@ -17,7 +17,7 @@ from rssresume.external import mail, mailer_resend
 from rssresume.external.mailer import EmailSender
 from rssresume.external.mailer_resend import ResendEmailSender
 from rssresume.tools import http
-from support import make_config
+from tests.support import make_config
 
 
 def config_resend(tmpdir, **surcharges):

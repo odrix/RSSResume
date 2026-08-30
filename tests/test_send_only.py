@@ -13,7 +13,7 @@ from unittest import mock
 
 from rssresume import cli, runlog
 from rssresume.config import AppConfig
-from support import make_config
+from tests.support import make_config
 
 JOUR = dt.date(2026, 8, 29)
 

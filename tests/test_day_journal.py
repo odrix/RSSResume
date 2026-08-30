@@ -18,8 +18,8 @@ from rssresume.ephemeride import fetes
 from rssresume.config import AppConfig
 from rssresume.models import Ephemeride
 from rssresume.newsletter import date_longue
-from support import make_config
-from test_send_only import JOUR, FakeSender, ecrire_journee
+from tests.support import make_config
+from tests.test_send_only import JOUR, FakeSender, ecrire_journee
 
 #: Le jour où le renvoi a lieu : maintenant, dans le fuseau de la configuration. C'est
 #: sur lui que la lettre renvoyée doit s'ouvrir, et non sur la journée qu'elle raconte.

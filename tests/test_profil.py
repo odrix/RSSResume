@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from rssresume.llm.prompts import article_system, scoring_system
-from support import empreinte
+from tests.support import empreinte
 from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL, ENV_PROFIL_FILE, load_profil
 
 AUTRE_PROFIL = "Vigneronne en Anjou, bio depuis 2019. Veille : météo, phytosanitaire, export."

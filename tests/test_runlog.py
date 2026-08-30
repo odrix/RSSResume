@@ -14,7 +14,7 @@ from rssresume.digest import DigestService
 from rssresume.llm.openai import OpenAIProvider
 from rssresume.models import Article, Note
 from rssresume.llm.providers import Settings, Voice
-from support import FakeEmailSender, FakeFreshRSSClient, FakeScorer, make_config
+from tests.support import FakeEmailSender, FakeFreshRSSClient, FakeScorer, make_config
 
 DAY = dt.date(2026, 8, 26)
 
