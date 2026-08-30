@@ -16,7 +16,7 @@ services:
       # `env_file`, donc un `RSSRESUME_OUTPUT_DIR=output` hérité du poste de travail ne
       # peut pas faire écrire le conteneur dans /app, que l'utilisateur non-root ne
       # possède pas. La sortie va dans le volume, et nulle part ailleurs.
-      RSSRESUME_OUTPUT_DIR: /data
+      RSSRESUME_OUTPUT_DIR: /data/output
       # L'heure du passage et la journée digérée (J-1 par défaut : à 7 h du matin,
       # « aujourd'hui » ne contient que les articles parus depuis minuit).
       RSSRESUME_SCHEDULE: ${RSSRESUME_SCHEDULE:-04:00}
