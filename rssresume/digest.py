@@ -262,6 +262,10 @@ class DigestService:
             "minimum_retenus": regle.minimum,
             "plafond": regle.plafond,
             "langue": self._config.summary_language,
+            # Le mode sous lequel cette catégorie a tourné. Il explique l'absence de
+            # fichier autant que le statut « monte », et deux journaux qui en diffèrent
+            # ne se comparent pas sur le nombre d'audios produits.
+            "audio": self._config.audio_mode,
             # Qui fait quoi : fournisseur et modèle de chaque action, tels qu'ils ont été
             # lus au lancement. Une action dont `actif` est faux est retombée sur le
             # local — extractif pour le résumé, espeak pour la voix.

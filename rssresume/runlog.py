@@ -32,6 +32,7 @@ import pathlib
 from typing import Any, Iterator
 
 from rssresume import pricing
+from rssresume.config import AUDIO_MODE_GLOBAL
 from rssresume.models import (
     ORIGINE_MONTAGE,
     WATCHLIST_MAX,
@@ -639,6 +640,12 @@ class CategoryJournal(Journal):
             return "deterministe"
         if not self.selected:
             return "aucun-article-retenu"
+        if self.parametres.get("audio") == AUDIO_MODE_GLOBAL:
+            # Résumée, mais sans fichier à elle : sa voix est dans celui de la journée.
+            # Un statut à part, et pas `sans-audio` : celui-ci dit qu'on attendait un
+            # audio et qu'il manque, ce qui se lit comme une panne. Ici il ne manque
+            # rien — il est ailleurs, et `journee.json` dit où.
+            return "monte"
         return "audio" if self.digest.audio_path else "sans-audio"
 
     def _articles(self) -> list[dict]:

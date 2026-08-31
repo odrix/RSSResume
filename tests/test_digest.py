@@ -460,6 +460,27 @@ class AudioGlobalTests(unittest.TestCase):
         _, digests = montage.ecrire.call_args.args
         self.assertEqual(["Tech", "News"], [digest.category for digest in digests])
 
+    def test_a_summarized_category_is_not_logged_as_a_failure(self):
+        """« sans-audio » dit qu'on attendait un fichier et qu'il manque. Ici il ne
+        manque rien : il est dans celui de la journée, et le statut doit le dire."""
+        jour, _, _ = self._run(
+            {"Tech": [make_article()], "News": []}, "global", send_email=False
+        )
+
+        journal = json.loads((jour / "tech.log.json").read_text(encoding="utf-8"))
+        self.assertEqual("monte", journal["resultat"]["statut"])
+        self.assertIsNone(journal["resultat"]["audio"])
+        self.assertEqual("global", journal["parametres"]["audio"])
+
+    def test_by_category_the_status_is_unchanged(self):
+        jour, _, _ = self._run(
+            {"Tech": [make_article()], "News": []}, "category", send_email=False
+        )
+
+        journal = json.loads((jour / "tech.log.json").read_text(encoding="utf-8"))
+        self.assertEqual("audio", journal["resultat"]["statut"])
+        self.assertEqual("tech.wav", journal["resultat"]["audio"])
+
     def test_the_day_journal_keeps_the_text_that_was_read_aloud(self):
         montage = mock.Mock()
         montage.ecrire.return_value = Montage(texte="Bonjour Adrien. Voici la journée.")
