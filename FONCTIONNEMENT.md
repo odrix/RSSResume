@@ -740,6 +740,55 @@ lu, rien noté, rien dépensé, et le journal ne dirait que des zéros là où s
 Une catégorie routée hors du pipeline LLM écrit le même fichier avec un `parametres` et un `statut`
 qui lui sont propres : voir [Ce que le journal en garde](#ce-que-le-journal-en-garde).
 
+### Le relire sans l'extraire — `--journal`
+
+Ces fichiers vivent dans un volume, sur un serveur où l'on n'entre que par SSH. La question
+qu'on se pose devant une journée qui s'est mal passée tient en une ligne — quel statut, quel
+seuil a réellement trié, combien ça a coûté, qu'est-ce qui est passé juste à côté — et y
+répondre demandait d'en extraire un JSON de plusieurs centaines de lignes.
+
+`runlog.Bilan` la met en tableau, une ligne par catégorie, et `--journal` l'imprime. Aucun
+appel, aucun envoi, rien d'écrit : la commande ne fait que lire. Elle court-circuite
+l'assemblage des fournisseurs au même endroit que `--send-only`, et pour la même raison —
+celle qui sert quand quelque chose ne va pas ne doit pas tomber pour ce qu'on diagnostique.
+
+**Le bilan ne passe pas par `read_day`.** Celui-ci relit déjà les journaux, mais pour écrire
+un email : il rend `articles=[]` et jette le statut, le seuil appliqué et les coûts —
+c'est-à-dire exactement ce qu'on cherche ici. Deux relectures, deux besoins, et aucune des
+deux n'a à porter ce dont l'autre a envie.
+
+Rien n'est recalculé pour autant. `Call.relu` est l'inverse de `Call.as_json`, ce qui fait
+repasser les coûts par `Comptes` — l'objet qui a écrit ces blocs. Le récapitulatif est donc
+celui de la fin d'exécution au caractère près, et le total d'une journée dont un modèle n'est
+pas tarifé reste `null` sans qu'on ait à y repenser. Refaire la somme ailleurs, c'était deux
+additions qui finissent par ne plus donner le même chiffre.
+
+Trois choix de présentation, et chacun répond à une façon de se tromper :
+
+- **le seuil affiché est `seuil_applique`**, celui qui a trié, pas celui de la configuration :
+  c'est lui, et lui seul, qui dit si le repli des jours creux a joué. Un tiret pour une
+  catégorie déterministe, où l'écrire ferait croire à un tri qui n'a pas eu lieu ;
+- **un coût inconnu s'écrit `?`**. Un `0.000000` se lirait « rien dépensé » là où la réponse
+  est « on ne sait pas » — c'est déjà l'arbitrage du journal, il ne doit pas s'inverser à
+  l'affichage ;
+- **les catégories sans le moindre journal sont listées quand même**, sous leur marqueur.
+  Elles n'ont rien lu ni rien dépensé, mais elles font partie de la journée, et leur absence
+  du tableau se lirait comme un oubli.
+
+`--debug` ajoute sous chaque catégorie ses articles, dans la forme du marqueur `.no-article`
+— un seul format à apprendre. `origine_note` y figure parce que c'est elle qui explique une
+journée qui n'a presque rien coûté : tout relu des tags, aucun appel de scoring.
+
+**Et `RSSRESUME_DEBUG=true` imprime ce même bilan à la fin de chaque passage.** C'est le point
+de tout l'exercice : le conteneur n'expose rien, sa sortie standard est le seul endroit où
+l'on regarde, et le bilan y atterrit pour se chercher et s'archiver. Il est appelé depuis
+`cli.main` et non depuis `DigestService` — c'est une relecture du répertoire de sortie, pas
+une décision sur ce que la journée contient —, ce qui garantit que les logs du matin montrent
+exactement ce que `--journal` rejouera le soir.
+
+Le drapeau ne commande que cela. Ce n'est pas un interrupteur fourre-tout qui promettrait des
+traces ailleurs : il n'en pose aucune.
+
 ### Comment le coût est rattaché à une catégorie
 
 Les appels partent du fond d'un `LLMProvider`, qui n'a aucune raison de savoir quelle catégorie est en

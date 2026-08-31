@@ -168,6 +168,8 @@ Variables optionnelles :
 - `RSSRESUME_AUDIO_MODE=category` — `category` (défaut) rend un fichier audio par
   catégorie, `global` un seul pour toute la journée (voir ci-dessous). Une valeur
   inconnue fait échouer le lancement
+- `RSSRESUME_DEBUG=true` — imprime le bilan de la journée en fin de passage, articles
+  compris, sur la sortie standard (voir [Suivre une journée dans le conteneur](#suivre-une-journée-dans-le-conteneur))
 
 ### Les deux modes audio
 
@@ -394,7 +396,9 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | `--no-mark-read` | laisse les articles non lus dans FreshRSS |
 | `--include-read` | redemande aussi les articles déjà lus, que l'API exclut par défaut |
 | `--send-only` | renvoie l'email d'une journée déjà produite, sans rien recalculer |
+| `--journal` | imprime ce qu'une journée déjà produite dit d'elle-même ; ne lit que le disque |
 | `--audio-mode category\|global` | un audio par catégorie, ou un seul pour la journée ; l'emporte sur `RSSRESUME_AUDIO_MODE` |
+| `--debug` | ajoute le détail des articles au journal, et l'imprime en fin de passage ; l'emporte sur `RSSRESUME_DEBUG` |
 | `--dry-run` | raccourci pour `--no-email --no-tags --no-mark-read` |
 
 Les trois axes sont indépendants et se cumulent :
@@ -443,6 +447,61 @@ Dans le conteneur, la sortie est dans le volume et non dans `output` :
 ```bash
 docker exec -it <conteneur> python -m rssresume --send-only --date 2026-08-29
 ```
+
+### Suivre une journée dans le conteneur
+
+Les journaux vivent dans le volume, sur un serveur où l'on n'entre que par SSH. Les en
+extraire pour répondre à « qu'est-ce qui s'est passé ce matin » revient à lire un JSON de
+plusieurs centaines de lignes. `--journal` le fait à votre place :
+
+```bash
+docker exec <conteneur> python -m rssresume --journal --date 2026-08-30
+```
+
+```
+Journée du 2026-08-30 — /data/output/2026-08-30
+audio : journee.mp3 (montage)
+
+catégorie                               statut                art.  ret.  seuil       coût
+2 - Cybersecurite technique et menaces  monte                    6     4      5          ?
+6 - Tech generaliste                    monte                    2     1      5          ?
+7 - IA et R and D                       aucun-article-retenu     1     0      5   0.000225
+
+Sans journal (aucun article lu) :
+  1-alertes-et-avis-cert-fr-anssi.no-article
+  3-conformite-reglementation-et-gouvernance.no-article
+
+Consommation IA :
+  scoring : 2 appel(s), 2530 token(s) en entrée, 119 en sortie
+  montage : 1 appel(s), 2856 token(s) en entrée, 1128 en sortie
+  total : 7 appel(s), …, coût inconnu : 1 modèle(s) sans tarif (gpt-5.6-luna)
+```
+
+Trois colonnes portent l'essentiel :
+
+- **`seuil`** est celui qui a **réellement** trié, repli compris — pas celui de la
+  configuration. C'est lui qui explique une journée maigre ;
+- **`coût`** vaut `?` et non `0.000000` quand le modèle n'est pas dans la grille de
+  tarifs : « on ne sait pas » et « rien dépensé » ne se lisent pas pareil ;
+- **`statut`** distingue une catégorie vide (`aucun-article-retenu`) d'une catégorie
+  montée dans l'audio de la journée (`monte`) d'une catégorie interrompue (`interrompu`).
+
+`--debug` ajoute chaque article sous sa catégorie — score, thématique, retenu ou non, et
+si sa note a été calculée ou relue des tags :
+
+```
+2 - Cybersecurite technique et menaces  monte                    6     4      5          ?
+     9/10 cyber         retenu  tags      TerminalFix Uses Fake Cloudflare CAPTCHAs…
+     4/10 autre                 tags      YARA-X 1.20.0 Release
+```
+
+La colonne d'origine est celle qui explique une journée qui n'a presque rien coûté : tout
+relu des tags, aucun appel de scoring.
+
+**Pour ne plus avoir à le demander**, `RSSRESUME_DEBUG=true` fait imprimer ce même bilan
+à la fin de chaque passage : il atterrit dans la sortie standard, donc dans l'onglet Logs
+de l'hébergeur, où il se cherche et s'archive tout seul. Rien n'est écrit de plus sur le
+disque, et aucun appel n'est fait.
 
 ### Le document de la personne
 
