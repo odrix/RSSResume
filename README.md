@@ -1,6 +1,11 @@
 # RSSResume
 
-RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie par catégorie, produit un fichier audio pour chaque catégorie et peut envoyer le tout par email.
+RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie par catégorie, en produit
+la version audio et peut envoyer le tout par email.
+
+Deux façons d'écouter, au choix (`RSSRESUME_AUDIO_MODE`) : **un fichier par catégorie**, ou **un
+seul fichier pour toute la journée** — salutation, éphéméride, les catégories enchaînées et une
+conclusion sur ce qui reste à faire. Voir [Les deux modes audio](#les-deux-modes-audio).
 
 ## Fonctionnement
 
@@ -12,7 +17,8 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 5. pour les avis de vulnérabilité trop courts, lecture de la page de l'avis pour en avoir le détail
 6. résumé texte de la sélection, en prose continue, sans lien ni liste (le texte part en audio),
    ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
-7. synthèse audio par catégorie (fournisseur configuré — OpenAI ou Mistral —, sinon `espeak` en local)
+7. synthèse audio (fournisseur configuré — OpenAI ou Mistral —, sinon `espeak` en local) : par
+   catégorie, ou en un seul fichier une fois toutes les catégories traitées
 8. écriture des tags de la catégorie : `score-NN`, `theme-<thematique>`, `scoring-<hash>`,
    `digested` sur les retenus
 9. envoi d'un email avec les fichiers audio en pièces jointes et les liens des articles retenus
@@ -48,8 +54,12 @@ output/
     ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
     ├── culture.no-article   # articles lus, aucun retenu : la liste des scores
     ├── culture.log.json     # les scores obtenus et le scoring déjà payé
-    └── news.no-article      # catégorie vide : pas de journal, il ne dirait que des zéros
+    ├── news.no-article      # catégorie vide : pas de journal, il ne dirait que des zéros
+    └── journee.json         # l'éphéméride du jour, et le montage s'il y en a eu un
 ```
+
+En mode `global`, les `<categorie>.mp3` laissent la place à un seul `journee.mp3`, dont le texte
+est conservé dans `journee.json`. Tout le reste est identique.
 
 Toute catégorie qui a lu au moins un article a son **journal** `<categorie>.log.json` — y
 compris sans sélection, et même après une erreur en cours de route.
@@ -155,6 +165,50 @@ Variables optionnelles :
 - `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
 - `RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI` — catégories routées
   vers le traitement déterministe, sans aucun appel IA (voir ci-dessous)
+- `RSSRESUME_AUDIO_MODE=category` — `category` (défaut) rend un fichier audio par
+  catégorie, `global` un seul pour toute la journée (voir ci-dessous). Une valeur
+  inconnue fait échouer le lancement
+
+### Les deux modes audio
+
+```bash
+RSSRESUME_AUDIO_MODE=global
+```
+
+En `category` — le défaut, et le comportement historique — chaque catégorie qui a des
+articles retenus produit son `<slug>.mp3`, et l'email les joint tous.
+
+En `global`, aucune catégorie ne produit de fichier. Une fois toutes les catégories
+traitées, leurs résumés — déjà écrits — partent dans un **montage** qui les enchaîne en
+une seule prise de parole :
+
+- une salutation, qui vous nomme si la clé `prenom` du document de profil est remplie ;
+- l'éphéméride du jour, la même que celle qui ouvre l'email, dite à voix haute ;
+- une phrase qui annonce ce qui vient, de quoi décider d'écouter jusqu'au bout ;
+- les catégories dans l'ordre, sans être annoncées comme des rubriques, avec une
+  transition de quelques mots entre elles ;
+- une conclusion sur les deux à quatre points actionnables de la journée.
+
+Le montage **réécrit les liaisons, pas les faits** : identifiants de vulnérabilité, noms
+de produits et numéros de version se recopient à l'identique. L'email, lui, ne change
+pas — il continue de montrer les résumés de chaque catégorie mot pour mot, avec leurs
+liens et leur liste « à surveiller ». Seule la pièce jointe est différente : un
+`journee.mp3` unique, nommé une fois sous l'introduction.
+
+C'est un appel de complétion de plus par journée, et autant de caractères de synthèse
+qu'avant répartis sur moins d'appels : le coût est sensiblement le même. Il apparaît
+sous son propre poste, `montage`, dans `journee.json`.
+
+Sans clé d'API pour ce fournisseur, ou si l'appel échoue, les résumés partent bout à
+bout sans transitions ni conclusion : l'audio du jour sort quand même, et
+`journee.json` le dit (`"origine": "assemblage"` au lieu de `"montage"`).
+
+Pour comparer les deux sur une même journée, `--audio-mode` l'emporte sur la variable
+sans qu'il y ait à toucher à l'environnement — et le scoring n'est pas repayé :
+
+```bash
+python -m rssresume --date 2026-08-30 --include-read --no-mark-read --no-email --audio-mode global
+```
 
 ### Les avis CERT-FR, sans IA
 
@@ -231,7 +285,8 @@ RSSRESUME_TTS_PROVIDER=mistral   # sauf celle-ci
 ```
 
 Les actions sont `SCORING` (notation), `ARTICLE` (résumé d'un article), `DIGEST` (résumé
-de catégorie) et `TTS` (synthèse vocale) ; chacune accepte un
+de catégorie), `EPHEMERIDE` (le fait du jour), `MONTAGE` (l'audio de journée, en mode
+`global` seulement) et `TTS` (synthèse vocale) ; chacune accepte un
 `RSSRESUME_<ACTION>_PROVIDER`. Chaque fournisseur n'utilise que **sa** clé : sans
 `MISTRAL_API_KEY`, une action confiée à Mistral retombe sur le local — résumé extractif,
 ou `espeak` pour la voix — plutôt que d'emprunter celle d'OpenAI.
@@ -257,6 +312,12 @@ n'est pas secret et vit dans [llm/providers.json](rssresume/llm/providers.json) 
 Les consignes de diction d'OpenAI (`instructions` du bloc `tts`) y ont leur place : le
 rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas — son
 `/v1/audio/speech` n'a pas de champ pour elles, tout se joue dans le choix de la voix.
+
+Le même bloc porte `input_limit`, le plafond d'entrée de l'endpoint de synthèse en
+caractères (4000 chez OpenAI, dont l'API refuse au-delà de 4096 — le texte n'est pas
+tronqué, l'appel échoue). Au-delà, le texte est découpé entre deux paragraphes, sinon
+entre deux phrases, et les audios sont raboutés en un seul fichier. La clé absente —
+c'est le cas de Mistral, qui n'annonce pas le sien — envoie le texte d'un seul tenant.
 
 ### Envoi de l'email
 
@@ -333,6 +394,7 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | `--no-mark-read` | laisse les articles non lus dans FreshRSS |
 | `--include-read` | redemande aussi les articles déjà lus, que l'API exclut par défaut |
 | `--send-only` | renvoie l'email d'une journée déjà produite, sans rien recalculer |
+| `--audio-mode category\|global` | un audio par catégorie, ou un seul pour la journée ; l'emporte sur `RSSRESUME_AUDIO_MODE` |
 | `--dry-run` | raccourci pour `--no-email --no-tags --no-mark-read` |
 
 Les trois axes sont indépendants et se cumulent :
@@ -399,12 +461,16 @@ RSSRESUME_PROFILE_FILE=input/moi/profile.json
   "_note": "les clés inconnues servent à annoter, elles n'entrent nulle part",
   "profil": "CTO d'un SaaS B2B…\n\nAxes de veille pertinents :\n- reglementaire : …",
   "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
-  "email": "moi@example.com"
+  "email": "moi@example.com",
+  "prenom": "Adrien"
 }
 ```
 
 Seule `profil` est exigée. `stack` absente, aucun avis n'est apparié et le digest le dit ;
 `email` absente, aucun email ne part. `email` accepte une adresse ou une liste d'adresses.
+`prenom` ne sert qu'à la salutation de l'audio en mode `global` : absente, le montage
+ouvre sans nommer personne. Remplie avec autre chose qu'un texte, elle fait échouer le
+lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
 
 Le fichier est lu comme un **objet JSON** s'il commence par une accolade, comme du texte brut
 sinon — l'accolade décide, pas l'extension, qui n'est qu'une promesse que rien ne vérifie. Pour un
@@ -533,7 +599,8 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `profil.py` | le document de la personne : profil de pertinence, stack, destinataire |
 | `digest.py` | orchestration du digest quotidien |
 | `summaries.py` | résumé d'une catégorie : celui du fournisseur, ou le repli extractif |
-| `audio.py` | synthèse vocale (fournisseur configuré, ou `espeak`) |
+| `montage.py` | le texte d'un seul audio pour la journée, en mode `global` |
+| `audio.py` | synthèse vocale (fournisseur configuré, ou `espeak`), découpée si le texte dépasse |
 | `pricing.py` | lecture de la grille de tarifs et calcul du coût d'un appel |
 | `runlog.py` | journal `<categorie>.log.json` : articles, scores et coûts par catégorie |
 | **`certfr/`** | **la catégorie qui ne passe par aucun modèle** |
@@ -546,7 +613,7 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `llm/providers.json` | réglages non secrets de chaque fournisseur : endpoint, modèles, voix, tarifs |
 | `llm/providers.py` | lecture de ces réglages, et choix du fournisseur par action |
 | `llm/prompts.py` | les prompts, indépendants de tout fournisseur |
-| `llm/base.py` | `LLMProvider` : les quatre opérations, le transport, et la fabrique |
+| `llm/base.py` | `LLMProvider` : les opérations, le transport, et la fabrique |
 | `llm/openai.py` | `OpenAIProvider` : ce que le dialecte OpenAI change |
 | `llm/mistral.py` | `MistralProvider` : idem, dont la synthèse `voice_id` / base64 |
 | `llm/processing.py` | relecture des réponses du noteur, et démonstration autonome |

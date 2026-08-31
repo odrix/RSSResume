@@ -22,22 +22,31 @@ flowchart TD
     E -->|score ≥ seuil de la catégorie<br/>abaissé les jours creux, plafonné,<br/>regroupé par thématique| F[SummaryGenerator<br/>texte intégral + angle]
     E -->|aucun retenu| N[".no-article<br/>liste des scores obtenus"]
     N --> T
-    F --> G[AudioGenerator<br/>synthèse vocale]
+    F --> M{RSSRESUME_AUDIO_MODE}
+    M -->|category| G[AudioGenerator<br/>un mp3 par catégorie]
+    M -->|global| T
     G --> T[tags score-NN + theme + scoring-hash<br/>tag digested sur les retenus]
     T --> J["&lt;categorie&gt;.log.json<br/>articles + scores + coûts"]
     J -->|catégorie suivante| B
-    J --> H[Email<br/>audio en pièces jointes]
+    J --> P{mode global ?}
+    P -->|oui| Q[MontageService<br/>les résumés enchaînés]
+    Q --> R[AudioGenerator<br/>journee.mp3]
+    R --> H
+    P -->|non| H[Email<br/>audio en pièces jointes]
     H --> L[marquage comme lu<br/>sur tous les articles]
 
     style D fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
     style F fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
     style G fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
+    style Q fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
+    style R fill:#4a3a1a,stroke:#c99a2e,color:#f0e6d2
 ```
 
-Les trois blocs ambrés sont les seuls qui appellent l'API payante.
+Les blocs ambrés sont les seuls qui appellent l'API payante.
 
-Tout ce qui précède l'email se répète **par catégorie**, tags compris. Seul le marquage comme lu
-attend la livraison, une fois toutes les catégories traitées.
+Tout ce qui précède l'email se répète **par catégorie**, tags compris. Le marquage comme lu attend
+la livraison ; le montage de la journée, lui, a lieu une fois toutes les catégories traitées, et
+seulement en mode `global` — voir [Les deux modes audio](#les-deux-modes-audio).
 
 ## Les étapes
 
@@ -284,8 +293,12 @@ extrait est plafonné à 6000 caractères (au-delà, on paierait des tokens pour
 de page) et les blocs `<script>`/`<style>` sont retirés avant les balises. Une page injoignable
 n'est pas bloquante : l'article repart tel quel, le digest du jour se fait quand même.
 
-Le texte produit part ensuite en synthèse vocale (fournisseur configuré — OpenAI ou Mistral —,
-sinon `espeak` en local). Chez OpenAI, les `instructions` du bloc `tts` de `providers.json`
+Le texte produit part ensuite en synthèse vocale — **sauf en mode `global`**, où la catégorie
+n'a pas de fichier à elle et où son texte attend le montage de la journée (étape 5 bis). Le
+résumé, lui, est produit dans les deux modes : c'est ce que l'email montre.
+
+La synthèse va au fournisseur configuré — OpenAI ou Mistral —, sinon à `espeak` en local. Chez
+OpenAI, les `instructions` du bloc `tts` de `providers.json`
 dirigent la diction — ton, débit, émotion, prononciation ; chez Mistral, tout se joue dans
 le choix de la voix.
 Ces consignes ne sont **pas** envoyées quand la variable est vide : les modèles de synthèse plus
@@ -307,6 +320,27 @@ Le reste du rythme n'est pas réglable ici : il vient de la phrase écrite (voir
 fait d'incises et de compléments empilés sera monotone quelle que soit la consigne de diction.
 L'exemple complet est dans [.env.example](.env.example).
 
+**Un texte trop long est découpé, pas refusé.** `/v1/audio/speech` plafonne son entrée à 4096
+caractères, et un texte qui dépasse n'est pas tronqué : l'appel échoue, et la journée avec. Le
+plafond est déclaré par le fournisseur (`input_limit` du bloc `tts`, 4000 chez OpenAI pour la
+marge ; absent chez Mistral, dont l'endpoint n'annonce pas le sien, et le texte part alors d'un
+seul tenant). Au-delà, `tools.text.decouper` coupe **là où la voix respire déjà** : entre deux
+paragraphes, sinon entre deux phrases, et seulement en dernier recours entre deux mots. Une
+reprise tombée sur une frontière que la diction marquait ne s'entend presque pas ; au milieu
+d'une proposition, elle s'entend beaucoup. Les morceaux sont regroupés au plus large, pour qu'il
+y ait le moins de reprises possible.
+
+Les audios sont ensuite raboutés en un seul fichier, et **le tag ID3 des reprises est retiré**.
+Chaque appel rend un fichier complet, donc précédé du sien ; collés tels quels, ces tags se
+retrouvent au milieu du son. Les lecteurs savent les enjamber, mais le parcours des trames de
+`tools/duration.py` s'y arrête : l'email annoncerait la durée du premier morceau pour celle de la
+journée entière.
+
+### 5 bis. Le montage de la journée
+
+Cette étape n'existe qu'en mode `global`, et elle a lieu **une fois**, après la dernière
+catégorie. Voir [Les deux modes audio](#les-deux-modes-audio).
+
 ### 6. Tags de la catégorie
 
 Dès que le résumé de la catégorie est produit, ses tags sont écrits : nettoyage des tags périmés,
@@ -323,8 +357,10 @@ survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre 
 
 ### 7. Email
 
-Un seul email pour toutes les catégories, les fichiers audio en pièces jointes. Sans `SMTP_HOST`,
-ou sans destinataire à la clé `email` du document de profil, l'étape est sautée sans erreur.
+Un seul email pour toutes les catégories, les fichiers audio en pièces jointes — un par catégorie,
+ou l'unique `journee.mp3` en mode `global` ([ce que l'email en fait](#ce-que-lemail-en-fait)).
+Sans `SMTP_HOST`, ou sans destinataire à la clé `email` du document de profil, l'étape est sautée
+sans erreur.
 
 La composition vit dans `newsletter.py` — `Lettre.compose(jour, digests, éphéméride)` — et non
 dans `digest.py`. Elle sert deux chemins : la journée qu'on vient de produire, et celle qu'on
@@ -428,6 +464,110 @@ table et le calendrier, sans aucun appel, comme le promet `--send-only`.
 **Après l'envoi uniquement**, et sur **tous** les articles récupérés, pas seulement les retenus. Un
 échec d'email les laisse non lus : le passage suivant les reprend, et le cache de scoring fait qu'il
 ne repaie rien.
+
+## Les deux modes audio
+
+```bash
+RSSRESUME_AUDIO_MODE=global      # défaut : category
+```
+
+`category` — le défaut, et le comportement d'origine — donne un mp3 par catégorie. Six catégories
+font six fichiers, six ouvertures, six clôtures, et une manipulation de lecteur entre chaque. C'est
+ce qui a motivé l'autre mode.
+
+`global` n'en donne qu'un. Aucune catégorie ne synthétise plus rien ; leurs résumés — **déjà
+écrits, et inchangés** — partent dans un montage qui les enchaîne en une seule prise de parole.
+
+**C'est un second passage, et il faut qu'il le reste.** Le montage ne refait pas les résumés : il
+réécrit les *liaisons*. Rien ne doit apparaître dans son texte qui ne soit dans ce qu'on lui
+donne, et rien de ce qui y est ne doit disparaître. C'est aussi l'endroit exact où un « 7.4.5 »
+devient un « 7.4 » et où deux CVE se confondent, d'où une consigne de fidélité placée avant toutes
+les consignes de style : identifiants, noms de produits et numéros de version se recopient
+caractère pour caractère. Le garde-fou n'est pas que dans le prompt : l'email continue de montrer
+les résumés de catégorie **mot pour mot**, et `journee.json` garde le texte lu, ce qui permet de
+confronter les deux sans réécouter.
+
+Ce que le montage produit, dans l'ordre :
+
+| | |
+| --- | --- |
+| une salutation | nomme la personne si la clé `prenom` du document de profil est remplie. La formule est libre et change d'un jour à l'autre : c'est la première chose entendue tous les matins |
+| l'éphéméride | la même que celle qui ouvre l'email, dite à voix haute plutôt que récitée. Le prompt interdit d'y ajouter ou d'y corriger quoi que ce soit — la ligne est fabriquée hors du modèle |
+| une phrase de sommaire | ce qui vient, de quoi décider d'écouter jusqu'au bout |
+| les catégories | dans l'ordre, **sans être annoncées comme des rubriques** — ce serait remettre une liste au milieu d'un texte qui doit se couler —, séparées par une transition de quelques mots |
+| une conclusion | deux à quatre points actionnables, et ce qu'il y a à faire. Les mêmes interdits qu'ailleurs : ni « restez vigilant », ni résumé du résumé |
+
+Chaque résumé reçu porte sa propre ouverture et sa propre clôture, puisqu'il a été écrit pour être
+écouté seul. Mis bout à bout, cela ferait autant d'ouvertures que de catégories : le prompt du
+montage a la consigne de ne pas les reprendre. Le prompt de digest, lui, **n'est pas touché** —
+l'email garde ses sections identiques dans les deux modes.
+
+### Quelles catégories entrent dans le montage
+
+Le tri se fait sur `marker_path`, et non sur `selected`. Une catégorie sans article, ou dont rien
+n'a passé le seuil, porte son marqueur `.no-article` et un `summary_text` qui est une phrase de
+plomberie — « Aucun article retenu sur 3 (seuil 7) » : la donner au montage la ferait lire à voix
+haute. Une catégorie CERT-FR dont aucun avis ne touche la stack, elle, n'a pas de marqueur, et sa
+phrase est un vrai résultat — « sept avis, aucun ne vous concerne » est exactement ce qu'on veut
+entendre sans ouvrir l'email. `selected` aurait écarté les deux ensemble.
+
+Les catégories muettes partent quand même, **leur nom seul**, dans un champ à part : le prompt
+autorise au plus une incise, et seulement si la journée est vraiment creuse.
+
+Quand aucune catégorie n'a rien à dire, **aucun fichier n'est écrit**. Une salutation suivie d'un
+silence serait pire qu'une pièce jointe absente, et l'email dit déjà qu'aucun article n'a été
+trouvé.
+
+### Le repli
+
+Sans clé pour le fournisseur de l'action `montage`, ou si l'appel échoue, les résumés partent bout
+à bout : la salutation, l'éphéméride, les textes à la suite, et rien d'autre. Ni transitions ni
+conclusion — les fabriquer sans modèle rendrait exactement la formule passe-partout que le prompt
+interdit, et une conclusion fausse est pire qu'une conclusion absente.
+
+La journée est déjà payée en scoring, en résumés et en tags : la perdre sur le dernier appel
+serait le plus cher des abandons. `Montage.origine` garde la trace — `montage` ou `assemblage` —,
+la console le dit, et `journee.json` l'écrit. Même arbitrage que `Ephemeride.origine` : un audio
+dégradé ne doit pas passer pour un audio réussi.
+
+### Ce que l'email en fait
+
+Une pièce jointe au lieu de N, et une seule mention : `Pièce jointe : journee.mp3 — 12 min`, sous
+l'introduction et non sous chaque section — six fois le même nom n'apprendrait rien, et le fichier
+ne relève d'aucune catégorie. Les badges de durée, les pastilles d'en-tête et les lignes de pied
+de section **disparaissent d'eux-mêmes**, `Section.secondes` et `Section.audio_path` étant `None` :
+aucune condition n'a eu à être ajoutée pour cela. Tout le reste est identique — le texte des
+sections, les ancres, les deux listes de liens.
+
+### Le journal et le renvoi
+
+Le journal de chaque catégorie reste écrit comme d'habitude, à deux détails près : ses
+`parametres` portent `"audio": "global"`, et son statut est **`monte`** au lieu de `audio`.
+`sans-audio` aurait été un contresens — il dit qu'on attendait un fichier et qu'il manque, donc
+qu'il y a eu une panne, alors qu'ici il ne manque rien : il est ailleurs, et `journee.json` dit où.
+
+`journee.json` porte justement un bloc `montage` à côté de l'éphéméride :
+
+```json
+"montage": {
+  "texte": "Bonjour Adrien. Lundi 31 août 2026, saint Aristide…",
+  "audio": "journee.mp3",
+  "origine": "montage"
+}
+```
+
+Le texte y est gardé pour la même raison que celui des catégories : juger une transition sans
+relancer le fichier, et voir ce que le montage a fait des résumés qu'on lui a donnés.
+`--send-only` le relit tel quel — **le mode dans lequel une journée a été produite est écrit là**,
+il ne se redemande pas à la configuration du jour, qui a pu changer depuis. Un audio effacé fait
+partir la lettre sans lui, exactement comme le fait déjà `_digest_relu` pour une catégorie.
+
+### Ce que cela coûte
+
+Un appel de complétion de plus par journée — son entrée est la somme des résumés, quelques
+milliers de caractères —, et autant de caractères de synthèse qu'avant, répartis sur moins
+d'appels. Sensiblement neutre. Le montage a **son propre poste** dans le journal, et non celui du
+résumé : les confondre empêcherait précisément de voir ce que ce mode coûte en plus.
 
 ## Le traitement déterministe des avis CERT-FR
 
@@ -609,15 +749,18 @@ y dépose ce qu'il apprend : le bloc `usage` d'une complétion, le texte envoyé
 Le pipeline est séquentiel — une catégorie à la fois —, ce qui rend cet état de module suffisant.
 Hors de tout scope (par exemple `python -m rssresume.llm.processing`), l'enregistrement est un no-op.
 
-### Les trois postes de dépense
+### Les postes de dépense
 
-Les quatre actions d'un `LLMProvider` se rangent sous trois postes :
+Les six actions d'un `LLMProvider` se rangent sous cinq postes — `digest` et `article` sont
+deux façons de résumer et partagent le leur :
 
 | Poste | Actions | Facturé sur | Nombre d'appels |
 | --- | --- | --- | --- |
 | `scoring` | `scoring` | tokens d'entrée + de sortie | un par lot de 40 articles **à noter** |
 | `resume` | `digest`, `article` | tokens d'entrée + de sortie | un seul pour toute la catégorie |
-| `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un seul pour toute la catégorie |
+| `ephemeride` | `ephemeride` | tokens d'entrée + de sortie | un seul pour toute la journée |
+| `montage` | `montage` | tokens d'entrée + de sortie | un seul pour toute la journée, en mode `global` uniquement |
+| `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un par catégorie, ou un pour la journée — plus un par morceau si le texte a dû être découpé |
 
 **Un appel par poste n'est donc pas une remontée partielle** : c'est le fonctionnement nominal.
 Le scoring envoie ses articles par lots de 40 (`llm.prompts.SCORING_BATCH_SIZE`), et n'y met que
@@ -663,11 +806,14 @@ Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil
 
 | Clé | Ce qu'elle décide | Où elle arrive |
 | --- | --- | --- |
-| `profil` | ce qui mérite d'être noté, raconté, et sous quel angle | les **trois** prompts : noter, résumer un article, dicter le digest |
+| `profil` | ce qui mérite d'être noté, raconté, et sous quel angle | les **quatre** prompts : noter, résumer un article, dicter le digest, monter la journée |
 | `stack` | quels avis CERT-FR font lever la tête | `CertfrService`, sans le moindre appel IA |
 | `email` | où le digest arrive | `AppConfig.smtp_to`, pour les deux transports |
+| `prenom` | par quel nom l'audio de journée ouvre | `MontageService`, en mode `global` seulement |
 
-Seule `profil` est exigée. Le texte de pertinence est ce qui définit ce qu'est une information
+Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne — c'est une
+salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle fait échouer le
+lancement, une salutation fautive ne se découvrant qu'à l'écoute. Le texte de pertinence est ce qui définit ce qu'est une information
 pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
 sont personnelles au même titre, et c'est tout ce qui les réunit ici.
 
@@ -758,12 +904,14 @@ immédiatement, au résumé. Le mettre en label ferait une phrase entière dans 
 ## Les appels à l'IA
 
 Un **fournisseur est un objet**. Il reçoit ses réglages au constructeur et sait faire
-quatre choses :
+ces choses, et rien d'autre :
 
 ```python
 provider.score_articles(articles, profil)      # -> [{id, score, thematique, angle}]
 provider.summarize_article(article, profil)    # -> str
 provider.write_digest(category, articles, …)   # -> str
+provider.write_ephemeride(day)                 # -> str
+provider.write_montage(sections, jour, …)      # -> str
 provider.speak(text)                           # -> bytes
 ```
 
@@ -779,7 +927,7 @@ retomber le résumé sur l'extractif local et la voix sur `espeak`.
 | [llm/providers.json](rssresume/llm/providers.json) | les **valeurs** : endpoint, modèle et réglages par action, voix, format, tarifs. Aucun code, aucun secret. |
 | [llm/providers.py](rssresume/llm/providers.py) | la **lecture** de ces valeurs, et le choix du fournisseur par action. Rend un `Settings`, un objet de valeurs sans comportement. |
 | [llm/prompts.py](rssresume/llm/prompts.py) | les **prompts**. Le même texte part chez tous les fournisseurs. |
-| [llm/base.py](rssresume/llm/base.py) | `LLMProvider` : les quatre opérations, le transport, la comptabilité — tout ce qui ne dépend pas du fournisseur. Et la fabrique. |
+| [llm/base.py](rssresume/llm/base.py) | `LLMProvider` : les opérations, le transport, la comptabilité — tout ce qui ne dépend pas du fournisseur. Et la fabrique. |
 | [llm/openai.py](rssresume/llm/openai.py) · [llm/mistral.py](rssresume/llm/mistral.py) | ce qui diffère **vraiment** : quatre méthodes courtes chacune. |
 
 Une sous-classe ne redéfinit que `chat_payload`, `read_chat`, `speech_payload` et
@@ -800,11 +948,16 @@ promenée au pire.
 | `scoring` | `gpt-4o-mini`, température 0.1 | `mistral-small-latest`, température 0.1 |
 | `article` | `gpt-5.6-luna`, effort `low` | `mistral-medium-latest`, température 0.3 |
 | `digest` | `gpt-5.6-luna`, effort `medium` | `mistral-medium-latest`, température 0.4 |
+| `montage` | `gpt-5.6-luna`, effort `medium` | `mistral-medium-latest`, température 0.5 |
 | `tts` | `gpt-4o-mini-tts`, voix `alloy` | `voxtral-mini-tts-2603`, voix `fr_marie_curious` |
 
 Une note doit être reproductible, sinon le seuil devient un tirage au sort : d'où une
 température basse et un modèle classique côté notation. Le digest, lui, empile beaucoup
-de contraintes à tenir ensemble, ce qui justifie l'effort `medium` là où il existe.
+de contraintes à tenir ensemble, ce qui justifie l'effort `medium` là où il existe. Le
+montage en empile autant, plus l'interdiction de déformer un numéro de version : même
+effort, et un plafond de sortie doublé — il rend le texte de **toutes** les catégories
+d'un coup, là où le digest n'en rend qu'une, et une troncature y perdrait la fin de la
+journée.
 
 ### Ce que les deux dialectes ne partagent pas
 
@@ -1013,15 +1166,18 @@ flowchart LR
     DIG --> FR[external/freshrss.py]
     FR --> HTTP[tools/http.py<br/>réessai réseau]
     DIG --> SU[summaries.py]
+    DIG --> MO[montage.py<br/>mode global]
     DIG --> AU[audio.py]
+    MO --> AU
     DIG --> MA[external/mailer.py]
     DIG --> RL[runlog.py<br/>journal .log.json]
     DIG --> CF[certfr/<br/>appariement déterministe]
     CF --> STK[certfr/stack.py<br/>appariement sur les composants déclarés]
     DIG --> SC[LLMProvider<br/>scorer]
     SU --> LLMP[LLMProvider<br/>digest]
+    MO --> LLMM[LLMProvider<br/>montage]
     AU --> TTS[LLMProvider<br/>voix]
-    SC & LLMP & TTS --> BASE[llm/base.py<br/>opérations + transport]
+    SC & LLMP & LLMM & TTS --> BASE[llm/base.py<br/>opérations + transport]
     BASE --> OAI[llm/openai.py]
     BASE --> MIS[llm/mistral.py]
     BASE --> PRO[llm/prompts.py]
