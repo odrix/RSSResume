@@ -11,9 +11,12 @@ import unittest
 from unittest import mock
 
 from rssresume.config import (
+    AUDIO_MODE_CATEGORY,
+    AUDIO_MODE_GLOBAL,
     DEFAULT_ARTICLE_CHAR_LIMIT,
     DEFAULT_TIMEZONE,
     ENV_ARTICLE_CHAR_LIMIT,
+    ENV_AUDIO_MODE,
     ENV_CERTFR_CATEGORIES,
     ENV_MAIL_TRANSPORT,
     ENV_RESEND_API_KEY,
@@ -300,6 +303,32 @@ class MailTransportTests(unittest.TestCase):
 
         self.assertIn(ENV_MAIL_TRANSPORT, str(raised.exception))
         self.assertIn("resnd", str(raised.exception))
+
+
+class AudioModeTests(unittest.TestCase):
+    """Ce que ces tests protègent : le mode décide combien de fichiers audio la journée
+    produit. Une valeur fautive qu'on laisserait passer retomberait sur le mode par
+    catégorie — celui qu'on voulait précisément quitter — sans que rien ne le dise."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_mode_defaults_to_one_audio_per_category(self):
+        self.assertEqual(AUDIO_MODE_CATEGORY, AppConfig.from_env().audio_mode)
+
+    @mock.patch.dict(
+        os.environ, {**BASE_ENV, ENV_AUDIO_MODE: "  GloBal  "}, clear=True
+    )
+    def test_the_mode_is_read_whatever_its_casing(self):
+        self.assertEqual(AUDIO_MODE_GLOBAL, AppConfig.from_env().audio_mode)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_MODE: "journee"}, clear=True)
+    def test_an_unknown_mode_fails_at_startup(self):
+        with self.assertRaises(ValueError) as raised:
+            AppConfig.from_env()
+
+        self.assertIn(ENV_AUDIO_MODE, str(raised.exception))
+        self.assertIn("journee", str(raised.exception))
+        # Le message nomme ce qu'il accepte : c'est ce qui évite un second essai à l'aveugle.
+        self.assertIn(AUDIO_MODE_GLOBAL, str(raised.exception))
 
 
 if __name__ == "__main__":

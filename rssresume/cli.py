@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 
 from rssresume import certfr, ephemeride, llm, runlog
 from rssresume.audio import AudioGenerator
-from rssresume.config import AppConfig
+from rssresume.config import AUDIO_MODES, AppConfig
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
@@ -72,6 +73,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Resend the email of an already-produced day from its logs, without any AI call.",
     )
+    # Pas de défaut ici non plus : c'est `RSSRESUME_AUDIO_MODE` qui décide, et l'option
+    # n'existe que pour essayer l'autre mode sur une journée sans toucher l'environnement
+    # du conteneur. Un défaut posé ici l'écraserait à chaque exécution.
+    parser.add_argument(
+        "--audio-mode",
+        choices=AUDIO_MODES,
+        help="One audio per category, or a single one for the whole day. "
+        "Overrides RSSRESUME_AUDIO_MODE.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -126,6 +136,11 @@ def send_only(config: AppConfig, day: dt.date) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
+    if args.audio_mode:
+        # L'option l'emporte sur l'environnement, et la configuration reste la seule
+        # source : tout le monde continue de lire `config.audio_mode`, sans avoir à
+        # savoir qu'une ligne de commande existe.
+        config = dataclasses.replace(config, audio_mode=args.audio_mode)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
     if args.send_only:
         # Avant l'assemblage : le renvoi n'a besoin d'aucun fournisseur, et en exiger un
