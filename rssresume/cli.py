@@ -13,6 +13,7 @@ from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
 from rssresume.external import mail
+from rssresume.montage import MontageService
 from rssresume.newsletter import Lettre
 from rssresume.summaries import SummaryGenerator
 from rssresume.tools import console
@@ -39,6 +40,15 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
         email_sender=mail.sender(config),
         ephemeride_service=ephemeride.EphemerideService(
             llm.for_action(providers.EPHEMERIDE)
+        ),
+        # Construit dans les deux modes, sollicité par le seul mode `global` : un
+        # collaborateur qu'on n'appelle pas ne coûte rien, et le service n'a pas à
+        # savoir qu'il pourrait être absent.
+        montage_service=MontageService(
+            llm.for_action(providers.MONTAGE),
+            language=config.summary_language,
+            profil=config.profil,
+            prenom=config.prenom,
         ),
         # Sans fournisseur, et c'est tout l'intérêt : les catégories que
         # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de
@@ -122,7 +132,13 @@ def send_only(config: AppConfig, day: dt.date) -> int:
     # aucun appel, comme le promet `--send-only`.
     envoi = dt.datetime.now(config.timezone).date()
     lettre = Lettre.compose(
-        day, digests, ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi)
+        day,
+        digests,
+        ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi),
+        # Relu du journal de la journée, comme le reste : le mode dans lequel elle a été
+        # produite est écrit là, il ne se redemande pas à la configuration du jour. Une
+        # journée faite par catégorie n'a pas de montage, et rend `None`.
+        montage=runlog.read_montage(day_dir),
     )
     sender.send(
         subject=lettre.subject,

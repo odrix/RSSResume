@@ -33,11 +33,13 @@ from typing import Any, Iterator
 
 from rssresume import pricing
 from rssresume.models import (
+    ORIGINE_MONTAGE,
     WATCHLIST_MAX,
     WATCHLIST_MIN,
     Article,
     CategoryDigest,
     Ephemeride,
+    Montage,
     Note,
 )
 
@@ -440,9 +442,15 @@ class DayJournal(Journal):
         self.day = day
         self.day_dir = day_dir
         self.ephemeride: Ephemeride | None = None
+        #: L'audio unique du mode `global`, quand il y en a un. `None` en mode
+        #: `category` : c'est alors le journal de chaque catégorie qui nomme son fichier.
+        self.montage: Montage | None = None
 
     def set_ephemeride(self, ephemeride: Ephemeride | None) -> None:
         self.ephemeride = ephemeride
+
+    def set_montage(self, montage: Montage | None) -> None:
+        self.montage = montage
 
     @property
     def path(self) -> pathlib.Path:
@@ -456,8 +464,13 @@ class DayJournal(Journal):
         l'identique à partir de la seule date, et l'écrire ferait un journal qui ne
         transporte rien. Celle du modèle, elle, ne se retrouve pas sans la repayer.
         """
-        return bool(self.calls) or (
-            self.ephemeride is not None and self.ephemeride.origine != "calendrier"
+        return (
+            bool(self.calls)
+            or (self.ephemeride is not None and self.ephemeride.origine != "calendrier")
+            # Le montage, lui, vaut toujours son fichier : c'est le seul endroit où
+            # retrouver le texte que la voix a lu, et sans lui `--send-only` renverrait
+            # une journée sans sa pièce jointe.
+            or (self.montage is not None and bool(self.montage.texte))
         )
 
     def write(self) -> pathlib.Path | None:
@@ -484,6 +497,21 @@ class DayJournal(Journal):
                     "origine": self.ephemeride.origine,
                 }
                 if self.ephemeride
+                else None
+            ),
+            # Le texte que la voix a lu, et le fichier qu'elle a produit. Le texte est
+            # gardé pour la même raison que celui des catégories : juger une transition
+            # sans réécouter, et voir ce qu'un montage a fait des résumés qu'on lui a
+            # donnés. `origine` dit s'il vient du modèle ou de l'assemblage local.
+            "montage": (
+                {
+                    "texte": self.montage.texte,
+                    "audio": self.montage.audio_path.name
+                    if self.montage.audio_path
+                    else None,
+                    "origine": self.montage.origine,
+                }
+                if self.montage and self.montage.texte
                 else None
             ),
             "couts": self._couts(),
@@ -706,6 +734,34 @@ def read_ephemeride(day_dir: pathlib.Path) -> Ephemeride | None:
         fete=bloc.get("fete") or "",
         texte=texte,
         origine=bloc.get("origine") or "table",
+    )
+
+
+def read_montage(day_dir: pathlib.Path) -> Montage | None:
+    """Le montage d'une journée passée, `None` quand elle n'en a pas produit.
+
+    `None` est le cas normal d'une journée en mode `category` : il n'y a pas d'audio de
+    journée à renvoyer, et ce sont les journaux de catégorie qui portent les fichiers.
+
+    Le chemin de l'audio est reconstruit ici, et le fichier vérifié, exactement comme
+    `_digest_relu` le fait pour une catégorie : un mp3 effacé depuis fait partir la
+    lettre sans lui plutôt que d'échouer sur une pièce jointe introuvable.
+    """
+    path = day_dir / DAY_LOG_NAME
+    try:
+        journal = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    bloc = journal.get("montage") or {}
+    texte = (bloc.get("texte") or "").strip()
+    if not texte:
+        return None
+    audio = bloc.get("audio")
+    chemin = day_dir / audio if audio else None
+    return Montage(
+        texte=texte,
+        audio_path=chemin if chemin and chemin.is_file() else None,
+        origine=bloc.get("origine") or ORIGINE_MONTAGE,
     )
 
 
