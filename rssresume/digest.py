@@ -45,8 +45,6 @@ from rssresume.protocols import (
 from rssresume.tools import console
 from rssresume.tools.text import no_article_message, no_selection_message, slugify
 
-NO_ARTICLE_SUFFIX = ".no-article"
-
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
 SCORING_EXCERPT_LENGTH = 400
 
@@ -443,7 +441,7 @@ class DigestService:
     @staticmethod
     def _write_marker(day_dir: pathlib.Path, slug: str, content: str = "") -> pathlib.Path:
         """Écrit le marqueur `.no-article` d'une catégorie sans audio."""
-        marker_path = day_dir / f"{slug}{NO_ARTICLE_SUFFIX}"
+        marker_path = day_dir / f"{slug}{runlog.NO_ARTICLE_SUFFIX}"
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(content, encoding="utf-8")
         return marker_path

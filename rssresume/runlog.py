@@ -47,6 +47,11 @@ from rssresume.models import (
 #: Extension du journal, à côté du `.mp3` ou du `.no-article` de la même catégorie.
 LOG_SUFFIX = ".log.json"
 
+#: Le marqueur d'une catégorie sans audio : sans article du tout, ou sans article retenu.
+#: Écrit par `digest.py`, nommé ici avec les autres fichiers d'une journée — c'est le
+#: bilan qui a besoin de les retrouver, et il ne peut pas importer `digest`.
+NO_ARTICLE_SUFFIX = ".no-article"
+
 #: Le journal de la journée, à côté de ceux des catégories. Sans le suffixe `.log.json`,
 #: et c'est délibéré : `read_day` ramasse les journaux de catégorie au glob, et un
 #: fichier de journée qui répondrait au même motif se relirait comme une catégorie vide.
@@ -218,6 +223,30 @@ class Call:
             entree["cout_estime"] = True
         entree.update(self.detail)
         return entree
+
+    @classmethod
+    def relu(cls, entree: dict) -> "Call":
+        """L'inverse d'`as_json` : un appel reconstruit depuis un journal écrit.
+
+        C'est ce qui permet au bilan d'une journée passée de repasser par `Comptes` au
+        lieu de refaire ses additions. Refaire la somme ailleurs, c'est deux calculs qui
+        finissent par ne plus donner le même chiffre — et le traitement du coût `None`,
+        qui contamine tout le total, se serait dédoublé avec eux.
+
+        `cout` est relu tel quel et jamais recalculé : la grille de tarifs a pu changer
+        depuis, et ce journal dit ce que la journée a coûté ce jour-là.
+        """
+        return cls(
+            typologie=str(entree.get("typologie") or TYPOLOGIE_PAR_DEFAUT),
+            label=str(entree.get("type_appel") or ""),
+            model=str(entree.get("modele") or ""),
+            input_tokens=_int(entree.get("tokens_entree")),
+            output_tokens=_int(entree.get("tokens_sortie")),
+            reasoning_tokens=_int(entree.get("tokens_raisonnement")),
+            characters=_int(entree.get("caracteres")),
+            cost=entree.get("cout") if isinstance(entree.get("cout"), (int, float)) else None,
+            estimated=bool(entree.get("cout_estime")),
+        )
 
 
 class Comptes:
@@ -836,4 +865,215 @@ def _int(value: Any) -> int:
 def _round(value: float | None) -> float | None:
     """Arrondi d'affichage. Six décimales : un scoring coûte quelques millièmes de dollar."""
     return None if value is None else round(value, 6)
+
+
+# -- le bilan d'une journée déjà produite ------------------------------------
+#
+# Les journaux sont écrits dans un volume, sur un serveur où l'on n'entre que par SSH.
+# La question qu'on se pose devant une journée qui s'est mal passée tient en une ligne —
+# quel statut, quel seuil a réellement trié, combien ça a coûté, qu'est-ce qui est passé
+# juste à côté — et y répondre demandait d'extraire un JSON de plusieurs centaines de
+# lignes. Le bilan la met en tableau, là où on regarde déjà : la console, donc les logs
+# du conteneur.
+#
+# Il ne passe pas par `read_day` : celui-ci ne garde que ce qu'un email demande et jette
+# précisément ce qu'on cherche ici — les articles, le statut, le seuil appliqué, les
+# coûts. Deux relectures, deux besoins.
+
+#: Ce qu'on affiche à la place d'un chiffre absent. Un coût `None` — modèle hors de la
+#: grille de tarifs — ne doit surtout pas s'écrire `0.000000`, qui se lirait « rien
+#: dépensé » là où la vraie réponse est « on ne sait pas ».
+INCONNU = "?"
+
+#: Largeur maximale de la colonne des catégories. Au-delà, le libellé est tronqué : un
+#: tableau qui déborde de la fenêtre du terminal ne se lit plus en colonnes du tout.
+LARGEUR_CATEGORIE_MAX = 38
+
+
+@dataclasses.dataclass(frozen=True)
+class Bilan:
+    """Ce qu'une journée déjà produite dit d'elle-même, relu de ses journaux.
+
+    Les blocs JSON sont gardés tels quels plutôt que convertis en objets : ce sont les
+    journaux qui font foi, ils portent des clés que le bilan n'affiche pas encore, et
+    une conversion les perdrait en silence à chaque évolution du format.
+    """
+
+    jour: dt.date
+    day_dir: pathlib.Path
+    #: Les `<categorie>.log.json`, dans l'ordre des noms de fichier — donc celui des
+    #: catégories quand elles sont numérotées, comme FreshRSS invite à le faire.
+    categories: list[dict] = dataclasses.field(default_factory=list)
+    #: Le `journee.json`, `{}` quand la journée n'en a pas laissé.
+    journee: dict = dataclasses.field(default_factory=dict)
+    #: Les `.no-article` trouvés sur le disque, dans l'ordre des noms.
+    marqueurs: list[pathlib.Path] = dataclasses.field(default_factory=list)
+
+    @property
+    def vide(self) -> bool:
+        """Vrai quand la journée n'a rien laissé : pas de répertoire, ou un répertoire nu."""
+        return not (self.categories or self.journee or self.marqueurs)
+
+    def texte(self, detail: bool = False) -> str:
+        """Le bilan, prêt pour la console. `detail` ajoute les articles de chaque catégorie."""
+        blocs = [self._entete(), self._tableau(detail), self._orphelins(), self._couts()]
+        return "\n\n".join(bloc for bloc in blocs if bloc)
+
+    # -- les morceaux --------------------------------------------------------
+
+    def _entete(self) -> str:
+        lignes = [f"Journée du {self.jour.isoformat()} — {self.day_dir}"]
+        audio = self._audio()
+        if audio:
+            lignes.append(audio)
+        return "\n".join(lignes)
+
+    def _audio(self) -> str | None:
+        """Ce que la journée a produit comme son, et sous quel régime.
+
+        Le montage est nommé avec son origine : `assemblage` dit que le modèle n'a pas
+        répondu et que les résumés sont partis bout à bout. C'est exactement ce qu'on
+        veut voir en premier quand un audio a mal sonné.
+        """
+        montage = self.journee.get("montage") or {}
+        if montage:
+            fichier = montage.get("audio") or "aucun fichier"
+            return f"audio : {fichier} ({montage.get('origine') or INCONNU})"
+        fichiers = [nom for nom in (self._resultat(j).get("audio") for j in self.categories) if nom]
+        if fichiers:
+            return f"audio : {len(fichiers)} fichier(s) par catégorie"
+        return None
+
+    def _tableau(self, detail: bool) -> str:
+        if not self.categories:
+            return ""
+        largeur = min(
+            LARGEUR_CATEGORIE_MAX,
+            max([len(self._nom(journal)) for journal in self.categories] + [len("catégorie")]),
+        )
+        lignes = [
+            f"{'catégorie':<{largeur}}  {'statut':<20} {'art.':>5} {'ret.':>5} "
+            f"{'seuil':>6} {'coût':>10}"
+        ]
+        for journal in self.categories:
+            lignes.append(self._ligne(journal, largeur))
+            if detail:
+                lignes.extend(self._articles(journal))
+        return "\n".join(lignes)
+
+    def _ligne(self, journal: dict, largeur: int) -> str:
+        resultat = self._resultat(journal)
+        cout = (journal.get("couts") or {}).get("total")
+        return (
+            f"{self._nom(journal)[:largeur]:<{largeur}}  "
+            f"{str(resultat.get('statut') or INCONNU):<20} "
+            f"{self._nombre(resultat.get('articles')):>5} "
+            f"{self._nombre(resultat.get('retenus')):>5} "
+            f"{self._seuil(journal):>6} "
+            f"{(f'{cout:.6f}' if isinstance(cout, (int, float)) else INCONNU):>10}"
+        )
+
+    def _articles(self, journal: dict) -> list[str]:
+        """Les articles lus, dans la forme du marqueur `.no-article` — un seul format à lire.
+
+        `origine_note` y figure parce que c'est elle qui explique une journée qui n'a
+        rien coûté : tout relu des tags, aucun appel de scoring.
+        """
+        lignes = []
+        for article in journal.get("articles") or []:
+            score = article.get("score")
+            lignes.append(
+                f"    {(str(score) if isinstance(score, int) else INCONNU):>2}/10 "
+                f"{str(article.get('thematique') or ''):<13} "
+                f"{'retenu ' if article.get('retenu') else '       '} "
+                f"{str(article.get('origine_note') or ''):<9} "
+                f"{article.get('titre') or ''}"
+            )
+        return lignes
+
+    def _orphelins(self) -> str:
+        """Les marqueurs qu'aucun journal ne nomme : les catégories sans le moindre article.
+
+        Elles n'ont ni journal ni ligne dans le tableau — elles n'ont rien lu, rien noté,
+        rien dépensé — et disparaîtraient donc du bilan alors qu'elles font partie de la
+        journée. Celles qui ont un journal ont déjà leur ligne : leur marqueur est nommé
+        dans leur `resultat`, et n'est pas répété ici.
+        """
+        nommes = {self._resultat(journal).get("marqueur") for journal in self.categories}
+        restants = [chemin.name for chemin in self.marqueurs if chemin.name not in nommes]
+        if not restants:
+            return ""
+        return "Sans journal (aucun article lu) :\n" + "\n".join(
+            f"  {nom}" for nom in restants
+        )
+
+    def _couts(self) -> str:
+        """La consommation de la journée entière, catégories et journée réunies.
+
+        Repasse par `Comptes`, le même objet qui a écrit ces blocs : le texte est donc
+        celui de la fin d'exécution, au caractère près, et le total d'une journée dont
+        un modèle n'est pas tarifé reste `None` sans qu'on ait à y repenser ici.
+        """
+        appels = [
+            Call.relu(entree)
+            for journal in [*self.categories, self.journee]
+            for entree in (journal.get("couts") or {}).get("appels") or []
+        ]
+        return Comptes(appels).texte()
+
+    # -- lectures élémentaires ----------------------------------------------
+
+    @staticmethod
+    def _resultat(journal: dict) -> dict:
+        return journal.get("resultat") or {}
+
+    @staticmethod
+    def _nom(journal: dict) -> str:
+        return str(journal.get("categorie") or "(sans nom)")
+
+    @staticmethod
+    def _nombre(valeur: Any) -> str:
+        return str(valeur) if isinstance(valeur, int) else INCONNU
+
+    @classmethod
+    def _seuil(cls, journal: dict) -> str:
+        """Le seuil qui a RÉELLEMENT trié, pas celui de la configuration.
+
+        C'est tout l'intérêt de la colonne : elle dit si le repli des jours creux a joué.
+        Un tiret pour une catégorie déterministe, où le seuil n'a aucun sens — l'écrire
+        ferait croire à un tri qui n'a pas eu lieu.
+        """
+        if (journal.get("parametres") or {}).get("traitement") == TRAITEMENT_DETERMINISTE:
+            return "—"
+        return cls._nombre(cls._resultat(journal).get("seuil_applique"))
+
+
+def lire_bilan(day_dir: pathlib.Path, jour: dt.date) -> Bilan:
+    """Le bilan d'une journée, relu de son répertoire de sortie.
+
+    Aucun appel à quiconque, et aucune exception : un journal illisible est sauté plutôt
+    que de faire échouer la commande qui sert justement quand quelque chose ne va pas.
+    """
+    if not day_dir.is_dir():
+        return Bilan(jour=jour, day_dir=day_dir)
+    return Bilan(
+        jour=jour,
+        day_dir=day_dir,
+        categories=[
+            journal
+            for journal in (_lu(path) for path in sorted(day_dir.glob(f"*{LOG_SUFFIX}")))
+            if journal is not None
+        ],
+        journee=_lu(day_dir / DAY_LOG_NAME) or {},
+        marqueurs=sorted(day_dir.glob(f"*{NO_ARTICLE_SUFFIX}")),
+    )
+
+
+def _lu(path: pathlib.Path) -> dict | None:
+    """Le contenu JSON d'un fichier, `None` s'il manque ou s'il est illisible."""
+    try:
+        contenu = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return contenu if isinstance(contenu, dict) else None
 
