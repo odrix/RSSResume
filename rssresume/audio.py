@@ -7,7 +7,8 @@ import shutil
 import subprocess
 
 from rssresume.llm import LLMProvider
-from rssresume.tools import console
+from rssresume.tools import console, duration
+from rssresume.tools.text import decouper
 
 ESPEAK_EXTENSION = ".wav"
 
@@ -34,12 +35,32 @@ class AudioGenerator:
             return self._synthesize_with_espeak(text, output_path)
 
         voice = self._provider.voice
+        # Le texte est découpé avant d'être annoncé : le nombre d'appels fait partie de
+        # ce qu'on veut lire dans le suivi, une journée en trois morceaux se paie trois fois.
+        morceaux = decouper(text, voice.input_limit or 0) or [text or ""]
         console.detail(
             f"synthèse vocale via {self._provider.name} — {voice.model} (voix {voice.voice}"
-            + (", consignes de diction)" if voice.instructions else ")")
+            + (", consignes de diction" if voice.instructions else "")
+            + (f", {len(morceaux)} segments" if len(morceaux) > 1 else "")
+            + ")"
         )
-        output_path.write_bytes(self._provider.speak(text))
+        output_path.write_bytes(self._rabouter(morceaux))
         return output_path
+
+    def _rabouter(self, morceaux: list[str]) -> bytes:
+        """Les morceaux synthétisés bout à bout, le tag ID3 des reprises retiré.
+
+        Chaque appel rend un fichier complet, donc précédé de son propre tag. Collés tels
+        quels, ces tags se retrouvent au milieu du son : le parcours des trames de
+        `duration.py` s'y arrête, et l'email annoncerait la durée du premier morceau pour
+        celle de la journée. Les lecteurs, eux, savent les enjamber — c'est la mesure qui
+        ne le sait pas, et c'est elle qui décide si on lance l'écoute.
+        """
+        segments = [self._provider.speak(morceau) for morceau in morceaux]
+        return b"".join(
+            segment if rang == 0 else segment[duration.apres_id3(segment) :]
+            for rang, segment in enumerate(segments)
+        )
 
     @staticmethod
     def _synthesize_with_espeak(text: str, output_path: pathlib.Path) -> pathlib.Path:

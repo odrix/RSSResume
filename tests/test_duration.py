@@ -73,6 +73,19 @@ class Mp3Tests(unittest.TestCase):
             self.assertIsNone(duration.seconds(chemin))
 
 
+class ApresId3Tests(unittest.TestCase):
+    """`apres_id3` est publique parce qu'`audio.py` s'en sert pour rabouter les morceaux
+    d'une synthèse découpée : le tag des reprises doit sauter, sinon le parcours des
+    trames s'arrête dessus et la durée annoncée est celle du premier morceau."""
+
+    def test_a_file_without_a_tag_starts_at_zero(self):
+        self.assertEqual(0, duration.apres_id3(mp3(3)))
+
+    def test_the_offset_clears_the_whole_tag(self):
+        charge = b"pochette" * 10
+        self.assertEqual(10 + len(charge), duration.apres_id3(tag_id3(charge)))
+
+
 class WavTests(unittest.TestCase):
     def test_a_wav_is_read_from_its_header(self):
         with tempfile.TemporaryDirectory() as tmpdir:

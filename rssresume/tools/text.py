@@ -93,6 +93,94 @@ def truncate_sentences(value: str, limit: int) -> str:
     return tete[:coupe].rstrip() + TRUNCATION_MARK
 
 
+#: Frontière de paragraphe : la coupe passe juste après la ligne vide, qui reste donc
+#: attachée au morceau qui précède.
+PARAGRAPH_END = re.compile(r"(?<=\n\n)")
+
+
+def decouper(value: str, limit: int) -> list[str]:
+    """`value` en morceaux d'au plus `limit` caractères, coupés là où la voix respire.
+
+    Les endpoints de synthèse plafonnent leur entrée — 4096 caractères chez OpenAI — et
+    un texte qui dépasse n'est pas tronqué : il est refusé, ce qui fait perdre la journée.
+    Le texte part donc en plusieurs appels, dont les audios sont raboutés.
+
+    Trois frontières, de la moins audible à la plus : entre deux paragraphes, entre deux
+    phrases, et seulement en dernier recours entre deux mots. La reprise ne s'entend
+    presque pas quand elle tombe là où la voix marquait déjà une pause ; au milieu d'une
+    proposition, elle s'entend beaucoup. Un mot plus long que le plafond est coupé dedans :
+    à ce stade il n'y a plus de bonne coupe, seulement une mauvaise et une exception.
+
+    Un `limit` nul ou négatif ne découpe rien : c'est ainsi qu'un fournisseur qui ne
+    déclare aucun plafond reçoit son texte d'un seul tenant.
+    """
+    texte = value or ""
+    if limit <= 0 or len(texte) <= limit:
+        return [texte] if texte else []
+    return _emballer(_unites(texte, limit), limit)
+
+
+def _unites(texte: str, limit: int) -> list[str]:
+    """Le texte en pièces qui tiennent toutes sous le plafond, séparateurs compris.
+
+    On ne descend d'un niveau que pour la pièce qui dépasse : un paragraphe qui tient
+    reste entier, même si son voisin a dû être coupé phrase à phrase.
+    """
+    unites: list[str] = []
+    for paragraphe in PARAGRAPH_END.split(texte):
+        if not paragraphe:
+            continue
+        if len(paragraphe) <= limit:
+            unites.append(paragraphe)
+            continue
+        for phrase in _phrases(paragraphe):
+            if len(phrase) <= limit:
+                unites.append(phrase)
+            else:
+                unites.extend(_mots(phrase, limit))
+    return unites
+
+
+def _phrases(bloc: str) -> list[str]:
+    """Le bloc coupé après chaque ponctuation forte, celle-ci restant sur sa phrase."""
+    coupes = [fin.end() for fin in SENTENCE_END.finditer(bloc)]
+    morceaux = []
+    depart = 0
+    for coupe in coupes:
+        morceaux.append(bloc[depart:coupe])
+        depart = coupe
+    morceaux.append(bloc[depart:])
+    return [morceau for morceau in morceaux if morceau]
+
+
+def _mots(phrase: str, limit: int) -> list[str]:
+    """La phrase trop longue, coupée sur ses espaces, et dans un mot s'il le faut."""
+    morceaux = []
+    reste = phrase
+    while len(reste) > limit:
+        coupe = reste.rfind(" ", 0, limit + 1)
+        morceaux.append(reste[: coupe if coupe > 0 else limit])
+        reste = reste[coupe if coupe > 0 else limit :]
+    if reste:
+        morceaux.append(reste)
+    return morceaux
+
+
+def _emballer(unites: list[str], limit: int) -> list[str]:
+    """Les pièces regroupées au plus large : moins d'appels, donc moins de reprises."""
+    morceaux: list[str] = []
+    courant = ""
+    for unite in unites:
+        if courant and len(courant) + len(unite) > limit:
+            morceaux.append(courant)
+            courant = unite
+        else:
+            courant += unite
+    if courant:
+        morceaux.append(courant)
+    return [morceau.strip() for morceau in morceaux if morceau.strip()]
+
+
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "category"
 

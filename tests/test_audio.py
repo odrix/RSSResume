@@ -11,6 +11,8 @@ from rssresume.audio import AudioGenerator
 from rssresume.llm.mistral import MistralProvider
 from rssresume.llm.openai import OpenAIProvider
 from rssresume.llm.providers import Settings, Voice
+from rssresume.tools import duration
+from tests.test_duration import DUREE_TRAME, mp3, tag_id3
 
 CONSIGNES = "Voix posée, débit modéré, ton sincère."
 
@@ -29,10 +31,10 @@ def make_provider(classe, voice):
     )
 
 
-def openai_provider(instructions=None, audio_format="mp3"):
+def openai_provider(instructions=None, audio_format="mp3", input_limit=None):
     return make_provider(
         OpenAIProvider,
-        Voice("gpt-4o-mini-tts", "alloy", audio_format, instructions),
+        Voice("gpt-4o-mini-tts", "alloy", audio_format, instructions, input_limit),
     )
 
 
@@ -84,6 +86,68 @@ class MistralSpeechTests(unittest.TestCase):
         # Ce qui atterrit sur le disque est un fichier audio, pas du JSON.
         self.assertEqual(b"octets-audio", audio)
         self.assertEqual("tech.mp3", name)
+
+
+def synthesize_long(provider, texte, reponses):
+    """Comme `synthesize`, mais avec une réponse par appel : renvoie (payloads, octets)."""
+    generator = AudioGenerator(provider)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        chemin = pathlib.Path(tmpdir) / f"journee{generator.extension}"
+        with mock.patch.object(type(provider), "_post", side_effect=reponses) as post:
+            generator.synthesize(texte, chemin)
+        return [appel.args[1] for appel in post.call_args_list], chemin.read_bytes()
+
+
+class DecoupageTests(unittest.TestCase):
+    """Ce que ces tests protègent : `/v1/audio/speech` refuse une entrée trop longue —
+    elle n'est pas tronquée, l'appel échoue et la journée est perdue. Le texte part donc
+    en plusieurs appels, dont les audios sont raboutés en un seul fichier."""
+
+    #: Trois phrases identiques de 28 signes : sous un plafond de 60, elles se rangent
+    #: deux d'un côté, une de l'autre — deux appels, coupés sur une fin de phrase.
+    TEXTE = ("Une phrase de trente signes. " * 3).strip()
+
+    def test_a_text_over_the_limit_is_sent_in_several_calls(self):
+        payloads, _ = synthesize_long(
+            openai_provider(input_limit=60), self.TEXTE, [b"un", b"deux"]
+        )
+
+        self.assertEqual(2, len(payloads))
+        for payload in payloads:
+            self.assertLessEqual(len(payload["input"]), 60)
+        # Aucun mot n'est perdu en route : c'est tout le texte qui est dit.
+        self.assertEqual(
+            self.TEXTE.split(), " ".join(p["input"] for p in payloads).split()
+        )
+
+    def test_without_a_declared_limit_the_text_goes_in_one_call(self):
+        """Un fournisseur qui n'annonce pas de plafond reçoit son texte d'un seul tenant."""
+        payloads, audio = synthesize_long(openai_provider(), self.TEXTE, [b"tout"])
+
+        self.assertEqual([self.TEXTE], [payload["input"] for payload in payloads])
+        self.assertEqual(b"tout", audio)
+
+    def test_the_segments_land_in_a_single_file(self):
+        _, audio = synthesize_long(
+            openai_provider(input_limit=60), self.TEXTE, [b"debut", b"fin"]
+        )
+
+        self.assertEqual(b"debutfin", audio)
+
+    def test_the_id3_tag_of_a_resumed_segment_is_dropped(self):
+        """Sans cela le parcours des trames s'arrête au tag, et la durée annoncée est
+        celle du premier morceau — le sous-titre de l'email promettrait la moitié."""
+        segments = [tag_id3(b"pochette" * 4) + mp3(10) for _ in range(2)]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            generator = AudioGenerator(openai_provider(input_limit=60))
+            chemin = pathlib.Path(tmpdir) / "journee.mp3"
+            with mock.patch.object(OpenAIProvider, "_post", side_effect=segments):
+                generator.synthesize(self.TEXTE, chemin)
+
+            # Le tag du premier est gardé — c'est celui du fichier —, celui du second non.
+            self.assertEqual(segments[0] + mp3(10), chemin.read_bytes())
+            self.assertAlmostEqual(20 * DUREE_TRAME, duration.seconds(chemin), places=5)
 
 
 class ExtensionTests(unittest.TestCase):
