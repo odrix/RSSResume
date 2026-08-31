@@ -42,6 +42,14 @@
         "temperature": 0.2,
         "max_tokens": 2048,
         "effort": "low"
+      },
+      "montage": {
+        "_pourquoi": "Un second passage sur des resumes deja ecrits : le travail est d'enchainer, pas de rediger. Effort medium comme le digest — les contraintes a tenir ensemble sont du meme ordre, avec en plus l'interdiction de deformer un numero de version.",
+        "_pourquoi_16384": "Le montage rend le texte de TOUTES les categories d'un coup, la ou le digest n'en rend qu'une : le plafond du digest le couperait sur une journee chargee, et une troncature ici perd la fin de la journee.",
+        "model": "gpt-5.6-luna",
+        "temperature": 0.4,
+        "max_tokens": 16384,
+        "effort": "medium"
       }
     },
     "tts": {
@@ -142,6 +150,12 @@
         "model": "mistral-medium-latest",
         "temperature": 0.2,
         "max_tokens": 512
+      },
+      "montage": {
+        "_pourquoi": "Enchainer demande un peu plus de liberte que resumer, d'ou 0.5. Le plafond est celui du montage chez OpenAI : il rend toutes les categories d'un coup.",
+        "model": "mistral-medium-latest",
+        "temperature": 0.5,
+        "max_tokens": 16384
       }
     },
     "tts": {

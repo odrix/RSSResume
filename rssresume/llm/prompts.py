@@ -354,3 +354,137 @@ def depth_instruction(article_count: int) -> str:
         if article_count <= threshold:
             return instruction
     return DEPTH_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# Montage : l'audio unique d'une journée
+# ---------------------------------------------------------------------------
+#
+# Un second passage, et il faut qu'il le reste. Les résumés de catégorie sont déjà
+# écrits et partent tels quels dans l'email : le montage ne les refait pas, il les
+# enchaîne. C'est aussi l'endroit exact où un numéro de version se déforme — d'où une
+# consigne de fidélité qui passe avant toutes les consignes de style.
+
+MONTAGE_INTRO = (
+    "Tu montes le résumé de veille quotidien de la personne dont voici le profil, en un seul "
+    "texte lu à voix haute d'une traite. Les résumés de chaque catégorie sont DÉJÀ écrits : "
+    "ton travail est de les enchaîner en une seule prise de parole, pas de les refaire.\n\n"
+)
+
+MONTAGE_RULES = (
+    "Tu réécris les LIAISONS, pas les faits. Aucun fait, aucun chiffre, aucun nom de produit ne "
+    "doit apparaître dans ton texte s'il n'est pas dans les résumés qu'on te donne — et aucun "
+    "de ceux qui y sont ne doit disparaître. "
+    "Tu parles comme quelqu'un qui raconte de vive voix ce qu'il a lu ce matin, à une seule "
+    "personne, en tête à tête."
+)
+
+
+def montage_system(profil: str | None = None, prenom: str = "") -> str:
+    """Prompt système du montage : le profil, et à qui l'on s'adresse.
+
+    Le prénom est ici et non dans le message utilisateur : il dit qui écoute, ce qui ne
+    change pas d'un jour à l'autre, au même titre que le profil.
+    """
+    qui = f"La personne qui écoute s'appelle {prenom.strip()}.\n\n" if prenom.strip() else ""
+    return f"{MONTAGE_INTRO}{load_profil(profil).texte}\n\n{qui}{MONTAGE_RULES}\n\n{INJECTION_GUARD}"
+
+
+GREETING_INSTRUCTION = (
+    "Ouvre par une salutation adressée à la personne qui écoute, en la nommant par son prénom "
+    "s'il t'a été donné. Choisis la formule toi-même, et qu'elle change d'un jour à l'autre : "
+    "c'est la première chose entendue tous les matins, et la même phrase répétée s'entend au "
+    "bout de trois jours. Si aucun prénom ne t'a été donné, salue sans nommer personne."
+)
+
+#: La ligne du jour est fabriquée hors du modèle — table des fêtes, calendrier, ou un
+#: appel déjà payé. Lui demander de la vérifier ou de la compléter, c'est lui demander
+#: d'inventer une date : le seul travail attendu ici est de la dire à voix haute.
+EPHEMERIDE_INSTRUCTION = (
+    "Enchaîne sur le jour lui-même, tel que la ligne « jour » te le donne : la date, la fête, "
+    "et le fait historique s'il y en a un. Dis-les comme on les raconte, en une ou deux "
+    "phrases, jamais comme une fiche récitée. N'ajoute aucun fait que cette ligne ne porte "
+    "pas, et n'en corrige aucun : ce que tu crois savoir de cette date ne compte pas ici."
+)
+
+SOMMAIRE_INSTRUCTION = (
+    "Annonce ensuite, en UNE phrase, ce qui vient — « trois choses ce matin : une faille sur un "
+    "composant que vous exploitez, un texte européen, et un rachat ». C'est cette phrase qui "
+    "permet de décider d'écouter jusqu'au bout ; elle se juge sur les sujets du jour et n'est "
+    "jamais la même. Pas de plan annoncé, pas de « nous verrons ensuite »."
+)
+
+MONTAGE_ORDER_INSTRUCTION = (
+    "Reprends ensuite chaque catégorie dans l'ordre où elle t'est donnée, et garde cet ordre. "
+    "N'annonce JAMAIS les catégories comme des rubriques — ni leur nom, ni « côté sécurité », "
+    "ni « on passe à » : ce serait remettre une liste au milieu d'un texte qui doit se couler. "
+    "Le passage de l'une à l'autre se fait par une transition d'une poignée de mots, qui dit "
+    "pourquoi on y va : un contraste, une conséquence, un changement de terrain."
+)
+
+#: Chaque résumé de catégorie a été écrit pour être écouté seul, donc avec sa phrase
+#: d'ouverture et sa phrase de fin. Mis bout à bout, cela fait autant d'ouvertures et de
+#: conclusions que de catégories — c'est le premier défaut qui s'entend.
+SINGLE_VOICE_INSTRUCTION = (
+    "Chaque résumé reçu porte sa propre phrase d'ouverture et sa propre phrase de fin, parce "
+    "qu'il a été écrit pour être écouté seul. Ne les reprends pas : ton texte n'a qu'une "
+    "ouverture, la tienne, et qu'une clôture. Fonds dans le fil ce qu'elles disent d'utile, "
+    "et laisse tomber le reste."
+)
+
+#: La consigne cardinale du montage. Un second passage sur du texte déjà résumé est
+#: exactement l'endroit où « 7.4.5 » devient « 7.4 » et où deux CVE se confondent.
+FIDELITY_INSTRUCTION = (
+    "Les identifiants de vulnérabilité, les noms d'éditeurs et de produits et les numéros de "
+    "version se recopient à l'identique, caractère pour caractère : « CVE-2026-1234 », "
+    "« FortiOS 7.4.5 ». Ne les reformule pas, ne les abrège pas, n'en déduis aucun autre, et "
+    "ne fonds jamais deux vulnérabilités dans la même phrase. C'est sur ces éléments que "
+    "l'auditeur décide s'il est concerné, et c'est précisément ce qu'une réécriture déforme."
+)
+
+MUTE_INSTRUCTION = (
+    "Les catégories qui n'ont rien donné aujourd'hui te sont données à part, sous "
+    "« categories_sans_rien ». Ne les détaille pas : au plus une incise, et seulement si la "
+    "journée est vraiment creuse. Une journée pleine ne perd pas une phrase à énumérer ce qui "
+    "n'a rien dit."
+)
+
+CONCLUSION_INSTRUCTION = (
+    "Termine par ce qui compte vraiment dans cette journée : deux à quatre points, pas plus, et "
+    "pour chacun ce qu'il y a à faire aujourd'hui ou à suivre demain. Ils découlent des sujets "
+    "du jour et d'eux seuls, et se disent en phrases enchaînées — surtout pas en énumération, "
+    "ce serait une liste à la fin d'un texte qui a évité les listes du début à la fin. "
+    "Pas de conclusion passe-partout : ni rappel que la sécurité est un enjeu, ni appel à la "
+    "vigilance, ni résumé du résumé, ni « bonne journée » seul. Quand il n'y a rien à faire, "
+    "dis-le : c'est une information."
+)
+
+
+def montage_user(
+    sections: list[dict], jour: str, muettes: list[str], language: str
+) -> str:
+    """Message utilisateur du montage : les consignes, puis la journée déjà résumée.
+
+    Aucune consigne de longueur, délibérément : le texte dit tout ce que les résumés
+    portent, et c'est la synthèse vocale qui le découpe en autant d'appels qu'il faut.
+    """
+    consignes = (
+        GREETING_INSTRUCTION,
+        EPHEMERIDE_INSTRUCTION,
+        SOMMAIRE_INSTRUCTION,
+        MONTAGE_ORDER_INSTRUCTION,
+        SINGLE_VOICE_INSTRUCTION,
+        FIDELITY_INSTRUCTION,
+        MUTE_INSTRUCTION,
+        STYLE_INSTRUCTION,
+        RHYTHM_INSTRUCTION,
+        NO_SOURCE_INSTRUCTION,
+        CONCLUSION_INSTRUCTION,
+    )
+    journee = {"jour": jour, "categories": sections, "categories_sans_rien": muettes}
+    return (
+        f"Monte le résumé de cette journée en {language}, en un seul texte lu d'une traite.\n\n"
+        + "\n".join(consignes)
+        + "\n\nJournée:\n"
+        + fenced(json.dumps(journee, ensure_ascii=False))
+    )

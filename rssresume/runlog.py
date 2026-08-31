@@ -52,7 +52,7 @@ DAY_LOG_NAME = "journee.json"
 #: Les postes de dépense, dans l'ordre où ils sont engagés. L'éphéméride est le seul
 #: qui ne soit pas payé par catégorie : un appel pour la journée entière, et il apparaît
 #: donc dans le journal de la journée, jamais dans celui d'une catégorie.
-TYPOLOGIES = ("scoring", "resume", "ephemeride", "tts")
+TYPOLOGIES = ("scoring", "resume", "ephemeride", "montage", "tts")
 
 #: Action (au sens de `providers.ACTIONS`) rangée sous son poste de dépense. Le résumé
 #: par article et le digest de catégorie sont deux façons de résumer : même poste.
@@ -61,6 +61,10 @@ TYPOLOGIE_PAR_LABEL = {
     "article": "resume",
     "digest": "resume",
     "ephemeride": "ephemeride",
+    # Un poste à lui, et non rangé sous « resume » : le montage n'est payé qu'en mode
+    # `global`, et le confondre avec les résumés de catégorie empêcherait justement de
+    # voir ce que ce mode coûte en plus.
+    "montage": "montage",
     "tts": "tts",
 }
 TYPOLOGIE_PAR_DEFAUT = "resume"
@@ -72,6 +76,7 @@ LIBELLE_TYPOLOGIE = {
     "scoring": "scoring",
     "resume": "résumé",
     "ephemeride": "éphéméride",
+    "montage": "montage",
     "tts": "synthèse vocale",
 }
 
