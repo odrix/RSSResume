@@ -73,6 +73,12 @@ AUDIO_MODE_GLOBAL = "global"
 AUDIO_MODES = (AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL)
 DEFAULT_AUDIO_MODE = AUDIO_MODE_CATEGORY
 
+#: Le mode debug. Il ne commande qu'une chose — le bilan de la journée imprimé en fin de
+#: passage, articles compris — et pas un interrupteur fourre-tout qui promettrait des
+#: traces partout. Le conteneur n'expose rien : sa sortie standard est le seul endroit où
+#: l'on regarde, et c'est là que le bilan doit atterrir pour se chercher et s'archiver.
+ENV_DEBUG = "RSSRESUME_DEBUG"
+
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
     """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
@@ -234,6 +240,9 @@ class AppConfig:
     prenom: str = ""
     #: Comment la journée est mise en voix : un audio par catégorie, ou un seul pour tout.
     audio_mode: str = DEFAULT_AUDIO_MODE
+    #: Le bilan de la journée en fin de passage, articles compris. Rien d'autre : ce
+    #: drapeau ne promet pas des traces ailleurs, et n'en pose aucune.
+    debug: bool = False
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -275,6 +284,7 @@ class AppConfig:
             stack=personne.stack,
             prenom=personne.prenom,
             audio_mode=load_audio_mode(_env(ENV_AUDIO_MODE)),
+            debug=(_env(ENV_DEBUG, "false") or "").lower() == "true",
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             category_thresholds=_split_thresholds(
                 _env("RSSRESUME_CATEGORY_THRESHOLDS"), "RSSRESUME_CATEGORY_THRESHOLDS"

@@ -92,6 +92,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="One audio per category, or a single one for the whole day. "
         "Overrides RSSRESUME_AUDIO_MODE.",
     )
+    # `--journal` et non `--log` : « le journal » est le nom métier de ces fichiers dans
+    # tout le dépôt, et le franciser à moitié désignerait autre chose que ce que `runlog`
+    # appelle un journal.
+    parser.add_argument(
+        "--journal",
+        action="store_true",
+        help="Print what an already-produced day says about itself, from its logs. "
+        "No AI call, no email, nothing written.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print the day's report at the end of a run, articles included. "
+        "Overrides RSSRESUME_DEBUG.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -149,6 +164,25 @@ def send_only(config: AppConfig, day: dt.date) -> int:
     return 0
 
 
+def journal(config: AppConfig, day: dt.date) -> int:
+    """Imprime ce qu'une journée déjà produite dit d'elle-même, depuis ses journaux.
+
+    Les fichiers d'une journée vivent dans un volume, sur un serveur où l'on n'entre que
+    par SSH. Cette commande répond aux questions qu'on se pose devant une journée qui
+    s'est mal passée — quel statut, quel seuil a réellement trié, combien ça a coûté,
+    qu'est-ce qui est passé juste à côté — sans avoir à en extraire un fichier.
+
+    Aucun appel, aucun envoi, rien d'écrit : elle ne fait que lire.
+    """
+    day_dir = config.output_dir / day.isoformat()
+    bilan = runlog.lire_bilan(day_dir, day)
+    if bilan.vide:
+        console.error(f"Journal : aucune trace du {day.isoformat()} dans {day_dir}.")
+        return 1
+    console.log(bilan.texte(detail=config.debug))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
@@ -157,7 +191,14 @@ def main(argv: list[str] | None = None) -> int:
         # source : tout le monde continue de lire `config.audio_mode`, sans avoir à
         # savoir qu'une ligne de commande existe.
         config = dataclasses.replace(config, audio_mode=args.audio_mode)
+    if args.debug:
+        config = dataclasses.replace(config, debug=True)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
+    if args.journal:
+        # Avant l'assemblage, pour la même raison que le renvoi : lire un journal n'a
+        # besoin d'aucun fournisseur, et en exiger un ferait échouer la commande qui sert
+        # justement quand quelque chose ne va pas.
+        return journal(config, day)
     if args.send_only:
         # Avant l'assemblage : le renvoi n'a besoin d'aucun fournisseur, et en exiger un
         # ferait échouer la seule commande qui sait se passer d'eux.
@@ -175,4 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
     service.run(day, send_email=send_email, write_tags=write_tags, mark_read=mark_read)
+    if config.debug:
+        # Le bilan est une relecture du répertoire de sortie, pas une décision sur ce que
+        # la journée contient : il est ici et non dans `DigestService`. Il emprunte donc
+        # exactement le chemin de `--journal`, et ce qu'on lit dans les logs du matin est
+        # ce que la commande rejouera le soir.
+        bilan = runlog.lire_bilan(config.output_dir / day.isoformat(), day)
+        console.log(bilan.texte(detail=True))
     return 0

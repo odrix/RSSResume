@@ -18,6 +18,7 @@ from rssresume.config import (
     ENV_ARTICLE_CHAR_LIMIT,
     ENV_AUDIO_MODE,
     ENV_CERTFR_CATEGORIES,
+    ENV_DEBUG,
     ENV_MAIL_TRANSPORT,
     ENV_RESEND_API_KEY,
     ENV_SMTP_TO,
@@ -329,6 +330,22 @@ class AudioModeTests(unittest.TestCase):
         self.assertIn("journee", str(raised.exception))
         # Le message nomme ce qu'il accepte : c'est ce qui évite un second essai à l'aveugle.
         self.assertIn(AUDIO_MODE_GLOBAL, str(raised.exception))
+
+
+class DebugTests(unittest.TestCase):
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_debug_is_off_by_default(self):
+        self.assertFalse(AppConfig.from_env().debug)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_DEBUG: " TRUE "}, clear=True)
+    def test_debug_is_read_whatever_its_casing(self):
+        self.assertTrue(AppConfig.from_env().debug)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_DEBUG: "1"}, clear=True)
+    def test_only_true_turns_it_on(self):
+        """Comme `SMTP_USE_TLS` : la valeur est lue, pas devinée. « 1 » n'est pas « true »,
+        et un drapeau qu'on croit posé est pire qu'un drapeau absent."""
+        self.assertFalse(AppConfig.from_env().debug)
 
 
 if __name__ == "__main__":
