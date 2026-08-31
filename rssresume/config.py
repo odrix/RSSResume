@@ -61,6 +61,18 @@ ENV_SMTP_TO = "SMTP_TO"
 #: renommé un dossier FreshRSS. Vide — le défaut — laisse tout au chemin habituel.
 ENV_CERTFR_CATEGORIES = "RSSRESUME_CERTFR_CATEGORIES"
 
+#: Comment la journée est mise en voix. `category` — le défaut — rend un mp3 par
+#: catégorie ; `global` n'en rend qu'un, qui raconte la journée entière. Le second ne
+#: remplace pas les résumés de catégorie : il les relit pour les enchaîner, et l'email
+#: continue de montrer les siens, mot pour mot. Les valeurs sont en anglais comme celles
+#: de `RSSRESUME_MAIL_TRANSPORT` — ce qui se tape dans l'environnement suit la langue des
+#: variables, pas celle du code métier.
+ENV_AUDIO_MODE = "RSSRESUME_AUDIO_MODE"
+AUDIO_MODE_CATEGORY = "category"
+AUDIO_MODE_GLOBAL = "global"
+AUDIO_MODES = (AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL)
+DEFAULT_AUDIO_MODE = AUDIO_MODE_CATEGORY
+
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
     """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
@@ -92,6 +104,22 @@ def load_mail_transport(name: str | None = None) -> str:
             f"Valeurs acceptées : {', '.join(MAIL_TRANSPORTS)}."
         )
     return transport
+
+
+def load_audio_mode(name: str | None = None) -> str:
+    """Le mode nommé, validé au lancement : un nom inconnu ne doit pas attendre le soir.
+
+    Même arbitrage que le transport du courrier. Une faute de frappe ignorée retomberait
+    sur le mode par catégorie, c'est-à-dire précisément sur celui qu'on voulait quitter —
+    et rien ne le dirait avant la boîte aux lettres, sept mp3 plus tard.
+    """
+    mode = (name or DEFAULT_AUDIO_MODE).strip().lower() or DEFAULT_AUDIO_MODE
+    if mode not in AUDIO_MODES:
+        raise ValueError(
+            f"{ENV_AUDIO_MODE} : mode « {mode} » inconnu. "
+            f"Valeurs acceptées : {', '.join(AUDIO_MODES)}."
+        )
+    return mode
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -200,6 +228,12 @@ class AppConfig:
     #: d'avis d'un matin. Vide par défaut — c'est l'état de qui vient d'installer l'outil,
     #: et la phrase du digest le dit.
     stack: Stack = dataclasses.field(default_factory=Stack)
+    #: Le prénom de la personne, déclaré dans le même document que le profil : c'est avec
+    #: lui que l'audio de journée ouvre. Facultatif — sans lui, le montage ouvre sans
+    #: nommer personne, et rien d'autre ne change.
+    prenom: str = ""
+    #: Comment la journée est mise en voix : un audio par catégorie, ou un seul pour tout.
+    audio_mode: str = DEFAULT_AUDIO_MODE
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -239,6 +273,8 @@ class AppConfig:
             timezone=load_timezone(_env(ENV_TIMEZONE)),
             profil=personne.texte,
             stack=personne.stack,
+            prenom=personne.prenom,
+            audio_mode=load_audio_mode(_env(ENV_AUDIO_MODE)),
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
             category_thresholds=_split_thresholds(
                 _env("RSSRESUME_CATEGORY_THRESHOLDS"), "RSSRESUME_CATEGORY_THRESHOLDS"

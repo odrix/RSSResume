@@ -7,7 +7,7 @@ import pathlib
 from typing import Iterable, Protocol
 
 from rssresume.certfr import Revue, Stack
-from rssresume.models import Article, Ephemeride, Note
+from rssresume.models import Article, CategoryDigest, Ephemeride, Montage, Note
 
 
 class FreshRSSClientProtocol(Protocol):
@@ -44,6 +44,20 @@ class SummaryGeneratorProtocol(Protocol):
     def summarize(
         self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
     ) -> str:
+        ...
+
+
+class MontageServiceProtocol(Protocol):
+    """Ce que `DigestService` attend du montage : le texte d'un seul audio pour la journée.
+
+    Jamais `None`, comme l'éphéméride : le service sait toujours quoi rendre, quitte à
+    descendre sur l'assemblage local. Un `texte` vide, en revanche, veut dire qu'il n'y
+    avait rien à dire — et c'est le seul cas où aucun audio n'est produit.
+    """
+
+    def ecrire(
+        self, ephemeride: Ephemeride | None, digests: list[CategoryDigest]
+    ) -> Montage:
         ...
 
 

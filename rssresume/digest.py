@@ -9,12 +9,13 @@ copies ici, qui commençaient à diverger.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import pathlib
 
 from rssresume import runlog
 from rssresume.certfr import CertfrService
-from rssresume.config import AppConfig
+from rssresume.config import AUDIO_MODE_GLOBAL, AppConfig
 from rssresume.ephemeride import EphemerideService
 from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
 from rssresume.llm import providers
@@ -24,10 +25,12 @@ from rssresume.models import (
     Article,
     CategoryDigest,
     Ephemeride,
+    Montage,
     Note,
     Selection,
     SelectionRule,
 )
+from rssresume.montage import MontageService
 from rssresume.newsletter import Lettre
 from rssresume.protocols import (
     AudioGeneratorProtocol,
@@ -35,6 +38,7 @@ from rssresume.protocols import (
     EmailSenderProtocol,
     EphemerideServiceProtocol,
     FreshRSSClientProtocol,
+    MontageServiceProtocol,
     ScorerProtocol,
     SummaryGeneratorProtocol,
 )
@@ -58,6 +62,7 @@ class DigestService:
         scorer: ScorerProtocol | None = None,
         ephemeride_service: EphemerideServiceProtocol | None = None,
         certfr_service: CertfrServiceProtocol | None = None,
+        montage_service: MontageServiceProtocol | None = None,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
@@ -72,6 +77,10 @@ class DigestService:
         #: toujours, sollicité seulement par les catégories que
         #: `RSSRESUME_CERTFR_CATEGORIES` route.
         self._certfr_service = certfr_service or CertfrService()
+        #: Sans service injecté, celui qui n'appelle personne : les résumés bout à bout.
+        #: Comme l'éphéméride, il rend toujours quelque chose, ce qui évite un cas
+        #: « pas de montage » à traiter en mode `global`.
+        self._montage_service = montage_service or MontageService()
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
@@ -108,12 +117,18 @@ class DigestService:
                 self._build_digest(category, day, day_dir, write_tags) for category in categories
             ]
 
+            # Après toutes les catégories, et toujours dans le scope de la journée : le
+            # montage comme sa synthèse ne se rattachent à aucune catégorie, et c'est
+            # ici — et nulle part ailleurs — que leur coût est compté.
+            montage = self._build_montage(day_dir, ephemeride, digests)
+            journal.set_montage(montage)
+
         if not send_email:
             console.log("Email : ignoré (--no-email)")
         elif not self._email_sender.is_configured():
             console.log("Email : ignoré (configuration SMTP incomplète)")
         else:
-            self._send_email(day, digests, ephemeride)
+            self._send_email(day, digests, ephemeride, montage)
 
         if mark_read:
             # Après livraison seulement : un échec d'envoi ne doit pas perdre les articles.
@@ -125,12 +140,51 @@ class DigestService:
         # variable liée par le `with` qui porte encore la journée, catégories rattachées
         # comprises. Rien d'autre ne totalise ce que la matinée a coûté.
         console.log(journal.recapitulatif())
-        console.log(self._report(digests))
+        console.log(self._report(digests, montage))
         return digests
 
+    @property
+    def _audio_global(self) -> bool:
+        """Vrai quand la journée tient dans un seul fichier au lieu d'un par catégorie."""
+        return self._config.audio_mode == AUDIO_MODE_GLOBAL
+
+    def _build_montage(
+        self,
+        day_dir: pathlib.Path,
+        ephemeride: Ephemeride | None,
+        digests: list[CategoryDigest],
+    ) -> Montage | None:
+        """L'audio unique de la journée, `None` hors du mode `global`.
+
+        Le texte est écrit avant de savoir s'il y aura un fichier : un montage vide veut
+        dire que la journée n'avait rien à raconter — toutes les catégories muettes — et
+        une salutation suivie d'un silence serait pire qu'une pièce jointe absente.
+        L'email dit déjà, lui, qu'aucun article n'a été trouvé.
+        """
+        if not self._audio_global:
+            return None
+
+        montage = self._montage_service.ecrire(ephemeride, digests)
+        if not montage.texte:
+            console.log("Audio de la journée : rien à raconter, aucun fichier produit")
+            return montage
+
+        audio_path = self._audio_generator.synthesize(
+            montage.texte, day_dir / f"journee{self._audio_generator.extension}"
+        )
+        console.log(
+            f"audio de la journée écrit : {audio_path.name} "
+            f"({audio_path.stat().st_size} octets)"
+        )
+        return dataclasses.replace(montage, audio_path=audio_path)
+
     @staticmethod
-    def _report(digests: list[CategoryDigest]) -> str:
+    def _report(digests: list[CategoryDigest], montage: Montage | None = None) -> str:
         audios = sum(1 for digest in digests if digest.audio_path)
+        if montage is not None:
+            # En mode global les catégories n'ont plus de fichier : c'est le montage qui
+            # en porte un, et le compte doit rester celui de ce qui a été écrit.
+            audios = 1 if montage.audio_path else 0
         articles = sum(len(digest.articles) for digest in digests)
         retenus = sum(len(digest.selected) for digest in digests)
         vides = sum(1 for digest in digests if not digest.articles)
@@ -208,6 +262,10 @@ class DigestService:
             "minimum_retenus": regle.minimum,
             "plafond": regle.plafond,
             "langue": self._config.summary_language,
+            # Le mode sous lequel cette catégorie a tourné. Il explique l'absence de
+            # fichier autant que le statut « monte », et deux journaux qui en diffèrent
+            # ne se comparent pas sur le nombre d'audios produits.
+            "audio": self._config.audio_mode,
             # Qui fait quoi : fournisseur et modèle de chaque action, tels qu'ils ont été
             # lus au lancement. Une action dont `actif` est faux est retombée sur le
             # local — extractif pour le résumé, espeak pour la voix.
@@ -333,11 +391,18 @@ class DigestService:
             )
 
         summary_text = self._summary_generator.summarize(category, selected, notes)
-        audio_path = self._audio_generator.synthesize(
-            summary_text,
-            day_dir / f"{slug}{self._audio_generator.extension}",
-        )
-        console.detail(f"audio écrit : {audio_path.name} ({audio_path.stat().st_size} octets)")
+        # En mode global, la catégorie n'a pas d'audio à elle : son texte partira au
+        # montage, qui l'enchaînera aux autres. Le résumé, lui, est produit dans les deux
+        # modes — c'est lui que l'email montre, et le montage ne le remplace pas.
+        audio_path = None
+        if not self._audio_global:
+            audio_path = self._audio_generator.synthesize(
+                summary_text,
+                day_dir / f"{slug}{self._audio_generator.extension}",
+            )
+            console.detail(
+                f"audio écrit : {audio_path.name} ({audio_path.stat().st_size} octets)"
+            )
 
         if write_tags:
             self._write_tags(articles, selected, new_notes, stale)
@@ -554,7 +619,11 @@ class DigestService:
             self._freshrss_client.mark_digested(item_ids)
 
     def _send_email(
-        self, day: dt.date, digests: list[CategoryDigest], ephemeride: Ephemeride | None = None
+        self,
+        day: dt.date,
+        digests: list[CategoryDigest],
+        ephemeride: Ephemeride | None = None,
+        montage: Montage | None = None,
     ) -> None:
         """Compose la lettre et la confie à l'expéditeur, sous ses deux formes.
 
@@ -563,7 +632,7 @@ class DigestService:
         le seul endroit où retrouver l'article derrière un sujet entendu, et c'est
         `newsletter.Lettre` qui décide comment il les présente.
         """
-        lettre = Lettre.compose(day, digests, ephemeride)
+        lettre = Lettre.compose(day, digests, ephemeride, montage=montage)
         self._email_sender.send(
             subject=lettre.subject,
             body=lettre.text,

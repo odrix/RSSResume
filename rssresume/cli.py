@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 
 from rssresume import certfr, ephemeride, llm, runlog
 from rssresume.audio import AudioGenerator
-from rssresume.config import AppConfig
+from rssresume.config import AUDIO_MODES, AppConfig
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
 from rssresume.external import mail
+from rssresume.montage import MontageService
 from rssresume.newsletter import Lettre
 from rssresume.summaries import SummaryGenerator
 from rssresume.tools import console
@@ -38,6 +40,15 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
         email_sender=mail.sender(config),
         ephemeride_service=ephemeride.EphemerideService(
             llm.for_action(providers.EPHEMERIDE)
+        ),
+        # Construit dans les deux modes, sollicité par le seul mode `global` : un
+        # collaborateur qu'on n'appelle pas ne coûte rien, et le service n'a pas à
+        # savoir qu'il pourrait être absent.
+        montage_service=MontageService(
+            llm.for_action(providers.MONTAGE),
+            language=config.summary_language,
+            profil=config.profil,
+            prenom=config.prenom,
         ),
         # Sans fournisseur, et c'est tout l'intérêt : les catégories que
         # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de
@@ -71,6 +82,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--send-only",
         action="store_true",
         help="Resend the email of an already-produced day from its logs, without any AI call.",
+    )
+    # Pas de défaut ici non plus : c'est `RSSRESUME_AUDIO_MODE` qui décide, et l'option
+    # n'existe que pour essayer l'autre mode sur une journée sans toucher l'environnement
+    # du conteneur. Un défaut posé ici l'écraserait à chaque exécution.
+    parser.add_argument(
+        "--audio-mode",
+        choices=AUDIO_MODES,
+        help="One audio per category, or a single one for the whole day. "
+        "Overrides RSSRESUME_AUDIO_MODE.",
     )
     parser.add_argument(
         "--dry-run",
@@ -112,7 +132,13 @@ def send_only(config: AppConfig, day: dt.date) -> int:
     # aucun appel, comme le promet `--send-only`.
     envoi = dt.datetime.now(config.timezone).date()
     lettre = Lettre.compose(
-        day, digests, ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi)
+        day,
+        digests,
+        ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi),
+        # Relu du journal de la journée, comme le reste : le mode dans lequel elle a été
+        # produite est écrit là, il ne se redemande pas à la configuration du jour. Une
+        # journée faite par catégorie n'a pas de montage, et rend `None`.
+        montage=runlog.read_montage(day_dir),
     )
     sender.send(
         subject=lettre.subject,
@@ -126,6 +152,11 @@ def send_only(config: AppConfig, day: dt.date) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = AppConfig.from_env()
+    if args.audio_mode:
+        # L'option l'emporte sur l'environnement, et la configuration reste la seule
+        # source : tout le monde continue de lire `config.audio_mode`, sans avoir à
+        # savoir qu'une ligne de commande existe.
+        config = dataclasses.replace(config, audio_mode=args.audio_mode)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
     if args.send_only:
         # Avant l'assemblage : le renvoi n'a besoin d'aucun fournisseur, et en exiger un

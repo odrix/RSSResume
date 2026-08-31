@@ -77,7 +77,7 @@ def _mp3(path: pathlib.Path) -> float | None:
     fait quelques milliers de trames — le parcours est immédiat.
     """
     data = path.read_bytes()
-    position = _apres_id3(data)
+    position = apres_id3(data)
     duree = 0.0
     trames = 0
     while position + 4 <= len(data):
@@ -98,12 +98,17 @@ def _mp3(path: pathlib.Path) -> float | None:
     return duree if trames else None
 
 
-def _apres_id3(data: bytes) -> int:
+def apres_id3(data: bytes) -> int:
     """L'offset du son, une fois passé le tag ID3v2 s'il y en a un.
 
     Le tag est en tête et peut peser plusieurs kilo-octets — une pochette d'album y
     tient. Le chercher trame par trame finirait par trouver une fausse synchronisation
     dans une image.
+
+    Publique parce qu'elle a un second appelant : `audio.py` raboute les morceaux d'une
+    synthèse découpée, et chaque morceau arrive avec son propre tag. Laissé au milieu du
+    fichier, il arrêterait le parcours des trames ici même — la durée annoncée serait
+    celle du premier morceau seulement.
     """
     if not data.startswith(b"ID3") or len(data) < 10:
         return 0

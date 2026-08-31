@@ -9,6 +9,7 @@ import unittest
 from rssresume.tools.text import (
     casefold_ascii,
     contains_words,
+    decouper,
     strip_html,
     truncate_sentences,
     words,
@@ -155,6 +156,70 @@ class ContainsWordsTests(unittest.TestCase):
     def test_an_empty_pattern_matches_nothing(self):
         """Sans cette borne, un alias sans lettre reconnaîtrait tous les textes."""
         self.assertFalse(contains_words(words("Keycloak"), ()))
+
+
+class DecoupeTests(unittest.TestCase):
+    """Ce que ces tests protègent : un texte qui dépasse le plafond du fournisseur de
+    synthèse n'est pas tronqué, il est refusé — et la journée est perdue. Le découpage
+    doit donc tenir le plafond sans jamais perdre un mot."""
+
+    def test_a_text_under_the_limit_stays_whole(self):
+        self.assertEqual(["Une phrase courte."], decouper("Une phrase courte.", 100))
+
+    def test_a_null_limit_disables_the_cut(self):
+        """C'est ainsi qu'un fournisseur sans plafond déclaré reçoit son texte entier."""
+        long = "mot " * 500
+        self.assertEqual([long], decouper(long, 0))
+
+    def test_an_empty_text_asks_for_no_call_at_all(self):
+        self.assertEqual([], decouper("", 100))
+
+    def test_the_cut_falls_between_paragraphs_when_it_can(self):
+        texte = "A" * 40 + "\n\n" + "B" * 40 + "\n\n" + "C" * 40
+
+        self.assertEqual(["A" * 40, "B" * 40, "C" * 40], decouper(texte, 50))
+
+    def test_paragraphs_are_grouped_as_wide_as_the_limit_allows(self):
+        """Moins d'appels, donc moins de reprises audibles : on remplit avant de couper."""
+        texte = "A" * 20 + "\n\n" + "B" * 20 + "\n\n" + "C" * 20
+
+        self.assertEqual(["A" * 20 + "\n\n" + "B" * 20, "C" * 20], decouper(texte, 50))
+
+    def test_a_long_paragraph_falls_back_on_sentence_ends(self):
+        phrase = "Une phrase de taille raisonnable. "
+        morceaux = decouper(phrase * 6, 80)
+
+        for morceau in morceaux:
+            self.assertLessEqual(len(morceau), 80)
+            self.assertTrue(morceau.endswith("."), morceau)
+
+    def test_a_sentence_longer_than_the_limit_is_cut_between_words(self):
+        morceaux = decouper("mot " * 60, 50)
+
+        for morceau in morceaux:
+            self.assertLessEqual(len(morceau), 50)
+            # La coupe est tombée sur une espace : aucun morceau ne commence ni ne finit
+            # au milieu de « mot ».
+            self.assertEqual(set(morceau.split()), {"mot"})
+
+    def test_a_word_longer_than_the_limit_is_cut_inside(self):
+        """Il n'y a plus de bonne coupe à ce stade : le plafond prime sur l'élégance."""
+        morceaux = decouper("a" * 25, 10)
+
+        self.assertEqual(["a" * 10, "a" * 10, "a" * 5], morceaux)
+
+    def test_not_a_single_word_is_lost(self):
+        texte = (
+            "Première phrase du premier paragraphe. Et sa voisine, un peu plus longue.\n\n"
+            "Deuxième paragraphe, qui tient tout seul.\n\n"
+            "Troisième paragraphe : celui-ci est nettement plus bavard que les autres, "
+            "au point qu'il faudra bien le couper quelque part au milieu."
+        )
+        for limite in (40, 60, 90, 150):
+            with self.subTest(limite=limite):
+                morceaux = decouper(texte, limite)
+                self.assertTrue(all(len(m) <= limite for m in morceaux))
+                self.assertEqual(texte.split(), " ".join(morceaux).split())
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import dataclasses
 import datetime as dt
+import json
 import pathlib
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from unittest import mock
 from rssresume import certfr
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
-from rssresume.models import Article, CategoryDigest, Link
+from rssresume.models import ORIGINE_MONTAGE, Article, CategoryDigest, Link, Montage
 from rssresume.summaries import SummaryGenerator
 from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
@@ -378,6 +379,123 @@ class CertfrRoutingTests(unittest.TestCase):
 
             self.assertTrue(digest.marker_path.exists())
             self.assertIn("Aucun nouvel article", digest.summary_text)
+
+
+class AudioGlobalTests(unittest.TestCase):
+    """Ce que ces tests protègent : en mode `global`, un seul fichier est écrit — celui
+    de la journée — et aucune catégorie n'en produit plus. Les deux modes ne doivent
+    jamais coexister dans un même répertoire, sans quoi l'email joindrait les deux."""
+
+    def _run(self, articles_by_category, mode, montage_service=None, **kwargs):
+        tmpdir = tempfile.mkdtemp()
+        config = dataclasses.replace(make_config(tmpdir), audio_mode=mode)
+        sender = FakeEmailSender()
+        service = DigestService(
+            config=config,
+            freshrss_client=FakeFreshRSSClient(articles_by_category),
+            summary_generator=SummaryGenerator(None),
+            audio_generator=FakeAudioGenerator(),
+            email_sender=sender,
+            montage_service=montage_service,
+        )
+        digests = service.run(DAY, **kwargs)
+        return pathlib.Path(tmpdir) / DAY.isoformat(), digests, sender
+
+    def test_by_category_each_category_keeps_its_own_file(self):
+        jour, digests, _ = self._run(
+            {"Tech": [make_article()], "News": [make_article(category="News")]},
+            "category",
+            send_email=False,
+        )
+
+        self.assertEqual(["tech.wav", "news.wav"], [d.audio_path.name for d in digests])
+        self.assertFalse((jour / "journee.wav").exists())
+
+    def test_globally_a_single_file_carries_the_whole_day(self):
+        jour, digests, _ = self._run(
+            {"Tech": [make_article()], "News": [make_article(category="News")]},
+            "global",
+            send_email=False,
+        )
+
+        self.assertEqual([None, None], [d.audio_path for d in digests])
+        self.assertTrue((jour / "journee.wav").exists())
+        # Aucun fichier de catégorie n'a été écrit à côté.
+        self.assertEqual([], sorted(jour.glob("tech.wav")))
+
+    def test_the_summaries_are_still_produced_for_the_email(self):
+        """Le montage ne les remplace pas : l'email continue de les montrer."""
+        _, digests, _ = self._run(
+            {"Tech": [make_article()], "News": []}, "global", send_email=False
+        )
+
+        self.assertTrue(digests[0].summary_text.strip())
+
+    def test_the_single_file_is_the_only_attachment(self):
+        _, _, sender = self._run(
+            {"Tech": [make_article()], "News": [make_article(category="News")]}, "global"
+        )
+
+        _, _, attachments, _ = sender.messages[0]
+        self.assertEqual(["journee.wav"], [chemin.name for chemin in attachments])
+
+    def test_a_day_with_nothing_to_say_writes_no_file_at_all(self):
+        """Une salutation suivie d'un silence serait pire qu'une pièce jointe absente."""
+        jour, _, _ = self._run({"Tech": [], "News": []}, "global", send_email=False)
+
+        self.assertFalse((jour / "journee.wav").exists())
+
+    def test_the_montage_sees_every_category_once(self):
+        montage = mock.Mock()
+        montage.ecrire.return_value = Montage(texte="Bonjour. Voici la journée.")
+
+        self._run(
+            {"Tech": [make_article()], "News": [make_article(category="News")]},
+            "global",
+            montage_service=montage,
+            send_email=False,
+        )
+
+        montage.ecrire.assert_called_once()
+        _, digests = montage.ecrire.call_args.args
+        self.assertEqual(["Tech", "News"], [digest.category for digest in digests])
+
+    def test_a_summarized_category_is_not_logged_as_a_failure(self):
+        """« sans-audio » dit qu'on attendait un fichier et qu'il manque. Ici il ne
+        manque rien : il est dans celui de la journée, et le statut doit le dire."""
+        jour, _, _ = self._run(
+            {"Tech": [make_article()], "News": []}, "global", send_email=False
+        )
+
+        journal = json.loads((jour / "tech.log.json").read_text(encoding="utf-8"))
+        self.assertEqual("monte", journal["resultat"]["statut"])
+        self.assertIsNone(journal["resultat"]["audio"])
+        self.assertEqual("global", journal["parametres"]["audio"])
+
+    def test_by_category_the_status_is_unchanged(self):
+        jour, _, _ = self._run(
+            {"Tech": [make_article()], "News": []}, "category", send_email=False
+        )
+
+        journal = json.loads((jour / "tech.log.json").read_text(encoding="utf-8"))
+        self.assertEqual("audio", journal["resultat"]["statut"])
+        self.assertEqual("tech.wav", journal["resultat"]["audio"])
+
+    def test_the_day_journal_keeps_the_text_that_was_read_aloud(self):
+        montage = mock.Mock()
+        montage.ecrire.return_value = Montage(texte="Bonjour Adrien. Voici la journée.")
+
+        jour, _, _ = self._run(
+            {"Tech": [make_article()], "News": []},
+            "global",
+            montage_service=montage,
+            send_email=False,
+        )
+
+        journal = json.loads((jour / "journee.json").read_text(encoding="utf-8"))
+        self.assertEqual("Bonjour Adrien. Voici la journée.", journal["montage"]["texte"])
+        self.assertEqual("journee.wav", journal["montage"]["audio"])
+        self.assertEqual(ORIGINE_MONTAGE, journal["montage"]["origine"])
 
 
 if __name__ == "__main__":

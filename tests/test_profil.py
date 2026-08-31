@@ -18,6 +18,7 @@ from rssresume.llm.prompts import article_system, scoring_system
 from tests.support import empreinte
 from rssresume.profil import (
     CLE_EMAIL,
+    CLE_PRENOM,
     CLE_PROFIL,
     CLE_STACK,
     DEFAULT_PROFIL,
@@ -200,6 +201,31 @@ class EmailTests(unittest.TestCase):
     def test_an_empty_list_raises(self):
         with self.assertRaises(ValueError):
             self._emails([])
+
+
+class PrenomTests(unittest.TestCase):
+    """La clé `prenom` : par quel nom l'audio de journée ouvre. Facultative, mais pas
+    permissive — une salutation qui se trompe ne se voit qu'à l'écoute, un matin."""
+
+    def _prenom(self, valeur):
+        return charge({CLE_PROFIL: AUTRE_PROFIL, CLE_PRENOM: valeur}).prenom
+
+    def test_the_first_name_is_read(self):
+        self.assertEqual("Adrien", self._prenom("  Adrien  "))
+
+    def test_a_missing_key_greets_nobody_by_name(self):
+        self.assertEqual("", charge({CLE_PROFIL: AUTRE_PROFIL}).prenom)
+
+    def test_an_empty_key_greets_nobody_by_name(self):
+        self.assertEqual("", self._prenom("   "))
+
+    def test_something_that_is_not_a_name_raises(self):
+        with self.assertRaises(ValueError):
+            self._prenom(["Adrien"])
+
+    def test_a_plain_text_document_declares_no_first_name(self):
+        """Un profil en texte brut ne porte que lui : ni stack, ni adresse, ni prénom."""
+        self.assertEqual("", charge(AUTRE_PROFIL).prenom)
 
 
 class InjectedProfileTests(unittest.TestCase):

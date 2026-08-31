@@ -12,7 +12,7 @@ import unittest
 import wave
 
 from rssresume.ephemeride import fetes
-from rssresume.models import Article, CategoryDigest, Ephemeride
+from rssresume.models import Article, CategoryDigest, Ephemeride, Montage
 from rssresume.newsletter import Lettre, Section, date_longue, duree
 
 #: La journée que la lettre raconte, et celle où elle part : le passage de 7 h résume
@@ -50,9 +50,9 @@ def digest(categorie="Cyber", resume="Le résumé.", retenus=(), veille=(), audi
     )
 
 
-def wav(dossier, secondes):
+def wav(dossier, secondes, nom="voix.wav"):
     """Un vrai fichier audio, pour que la durée soit mesurée et non simulée."""
-    chemin = pathlib.Path(dossier) / "voix.wav"
+    chemin = pathlib.Path(dossier) / nom
     with wave.open(str(chemin), "wb") as fichier:
         fichier.setnchannels(1)
         fichier.setsampwidth(2)
@@ -429,6 +429,90 @@ class SectionMesureTests(unittest.TestCase):
 
             self.assertIsNone(section.secondes)
             self.assertIsNone(section.ecoute)
+
+
+class MontageTests(unittest.TestCase):
+    """La lettre du mode `global` : un seul fichier, annoncé une seule fois.
+
+    Ce que ces tests protègent : les sections gardent tout ce qui n'est pas l'audio —
+    leur texte, leurs ancres, leurs deux listes. L'email doit se lire pareil dans les
+    deux modes, à la pièce jointe près."""
+
+    def _lettre(self, tmpdir, secondes=120, sections=2):
+        chemin = wav(tmpdir, secondes, nom="journee.wav")
+        digests = [
+            digest("Cyber", "Une faille sur Traefik.", retenus=[("Traefik", "https://a.test")]),
+            digest("Marché", "Un rachat."),
+        ][:sections]
+        return Lettre.compose(
+            JOUR,
+            digests,
+            ephem(),
+            generated_at=COMPOSEE_LE,
+            montage=Montage(texte="Bonjour Adrien.", audio_path=chemin),
+        )
+
+    def test_the_single_file_is_the_only_attachment(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir)
+
+            self.assertEqual(["journee.wav"], [c.name for c in lettre.attachments])
+
+    def test_the_subject_promises_the_time_of_that_one_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, secondes=120)
+
+            self.assertIn("2 min d'écoute", lettre.subject)
+
+    def test_the_file_is_named_once_above_the_sections(self):
+        """Une fois pour la lettre, et non sous chaque catégorie : six fois le même nom
+        n'apprendrait rien, et le fichier ne relève d'aucune section."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir)
+
+            self.assertEqual(1, lettre.text.count("journee.wav"))
+            self.assertIn("Pièce jointe : journee.wav — 2 min", lettre.text)
+            self.assertEqual(1, lettre.html.count("journee.wav"))
+            # Annoncé avant la première section, pas après.
+            self.assertLess(lettre.text.index("journee.wav"), lettre.text.index("CYBER"))
+
+    def test_the_sections_keep_everything_but_their_audio(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir)
+
+            self.assertIn("Une faille sur Traefik.", lettre.text)
+            self.assertIn("https://a.test", lettre.text)
+            # Aucun badge de durée, aucune pastille : les sections n'ont pas de fichier.
+            self.assertEqual([None], list({section.ecoute for section in lettre.sections}))
+            self.assertEqual("", lettre._detail_ecoute)
+
+    def test_an_unreadable_file_promises_no_listening_time(self):
+        """Comme pour une catégorie : la durée se tait plutôt que d'annoncer « 0 min ».
+
+        Le fichier reste nommé — c'est ce que font déjà les sections, et la lettre n'est
+        pas l'endroit qui juge du disque. C'est `runlog.read_montage` qui écarte un audio
+        disparu, au renvoi, là où le cas se produit vraiment.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chemin = wav(tmpdir, 60, nom="journee.wav")
+            chemin.unlink()
+            lettre = Lettre.compose(
+                JOUR, [digest()], ephem(), montage=Montage(texte="x", audio_path=chemin)
+            )
+
+            self.assertIsNone(lettre.montage_ecoute)
+            self.assertIsNone(lettre.total_secondes)
+            self.assertIn("Pièce jointe : journee.wav", lettre.text)
+            self.assertNotIn("journee.wav —", lettre.text)
+
+    def test_without_a_montage_nothing_changes(self):
+        """Le mode par catégorie doit se composer exactement comme avant."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chemin = wav(tmpdir, 120)
+            lettre = Lettre.compose(JOUR, [digest(audio=chemin)], ephem())
+
+            self.assertEqual(["voix.wav"], [c.name for c in lettre.attachments])
+            self.assertIn("Pièce jointe : voix.wav", lettre.text)
 
 
 if __name__ == "__main__":

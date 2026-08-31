@@ -135,6 +135,34 @@ class Ephemeride:
     origine: str = "calendrier"
 
 
+#: Le texte du montage vient du modèle, qui a enchaîné les résumés de catégorie.
+ORIGINE_MONTAGE = "montage"
+#: Il vient de l'assemblage local : les résumés mis bout à bout, sans transitions ni
+#: conclusion. Aucun fournisseur, ou un appel qui a échoué.
+ORIGINE_ASSEMBLAGE = "assemblage"
+
+
+@dataclasses.dataclass(frozen=True)
+class Montage:
+    """L'audio unique d'une journée : le texte qui a été dit, et le fichier produit.
+
+    Le pendant de `Ephemeride` pour le mode `global` : un objet de valeur que le journal
+    de la journée écrit et que `--send-only` relit, sans rien rappeler à personne.
+
+    `origine` n'est pas décoratif, pour la même raison qu'ailleurs : un montage écrit par
+    le modèle et des résumés mis bout à bout ne s'écoutent pas pareil, et un audio
+    dégradé ne doit pas passer pour un audio réussi. C'est le journal qui le dit, faute
+    de quoi il faudrait réécouter pour s'en apercevoir.
+
+    Le texte est gardé parce qu'il est ce que la voix a lu : c'est le seul endroit où
+    juger une transition sans relancer le fichier, et ce que `--send-only` renvoie.
+    """
+
+    texte: str = ""
+    audio_path: pathlib.Path | None = None
+    origine: str = ORIGINE_MONTAGE
+
+
 @dataclasses.dataclass(frozen=True)
 class Article:
     #: Identifiant FreshRSS de l'article, requis pour le marquer comme lu.

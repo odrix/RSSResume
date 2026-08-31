@@ -23,8 +23,11 @@ ARTICLE = "article"
 DIGEST = "digest"
 #: L'éphéméride d'ouverture : un appel par journée, pas un par catégorie.
 EPHEMERIDE = "ephemeride"
+#: Le montage de la journée en un seul texte, quand l'audio est global. Un appel par
+#: journée lui aussi, et seulement dans ce mode — il n'est pas payé en mode `category`.
+MONTAGE = "montage"
 TTS = "tts"
-ACTIONS = (SCORING, ARTICLE, DIGEST, EPHEMERIDE, TTS)
+ACTIONS = (SCORING, ARTICLE, DIGEST, EPHEMERIDE, MONTAGE, TTS)
 
 #: Le fournisseur retenu quand rien ne le dit.
 DEFAULT_PROVIDER = "openai"
@@ -72,6 +75,10 @@ class Voice:
     voice: str
     audio_format: str = "mp3"
     instructions: str | None = None
+    #: Plafond d'entrée de l'endpoint de synthèse, en caractères. Au-delà, le texte est
+    #: découpé et les audios raboutés (`audio.py`). `None` quand le fournisseur n'en
+    #: déclare pas : le texte part alors d'un seul tenant, comme avant.
+    input_limit: int | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -187,6 +194,9 @@ def settings(name: str | None = None) -> Settings:
             instructions=(str(tts["instructions"]).strip() or None)
             if tts.get("instructions")
             else None,
+            input_limit=(
+                int(_num(tts, "input_limit")) if _num(tts, "input_limit") else None
+            ),
         ),
         prices={
             str(model): {str(k): float(v) for k, v in tarif.items() if isinstance(v, (int, float))}

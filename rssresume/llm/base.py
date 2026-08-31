@@ -26,6 +26,7 @@ from rssresume.llm.providers import (
     ARTICLE,
     DIGEST,
     EPHEMERIDE,
+    MONTAGE,
     SCORING,
     TTS,
     Call,
@@ -163,6 +164,27 @@ class LLMProvider:
         exploitable, et vers quoi descendre sinon.
         """
         return self._chat(EPHEMERIDE, prompts.ephemeride_system(), prompts.ephemeride_user(day))
+
+    def write_montage(
+        self,
+        sections: list[dict],
+        jour: str,
+        muettes: list[str],
+        language: str = "fr",
+        profil: str | None = None,
+        prenom: str = "",
+    ) -> str:
+        """Le texte de l'audio unique d'une journée, celui qui part en synthèse vocale.
+
+        Un appel par journée et non par catégorie, comme l'éphéméride — et seulement en
+        mode `global` : le mode par catégorie ne le paie jamais. L'entrée n'est pas faite
+        d'articles mais des résumés déjà écrits : ce chemin ne relit aucun contenu de flux.
+        """
+        return self._chat(
+            MONTAGE,
+            prompts.montage_system(profil, prenom),
+            prompts.montage_user(sections, jour, muettes, language),
+        )
 
     def speak(self, text: str) -> bytes:
         """Synthèse vocale ; renvoie les octets audio, quel que soit l'emballage reçu."""

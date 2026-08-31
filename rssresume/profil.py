@@ -38,6 +38,10 @@ ENV_PROFIL_FILE = "RSSRESUME_PROFILE_FILE"
 #: Les clés du document. `profil` est la seule exigée.
 CLE_PROFIL = "profil"
 CLE_EMAIL = "email"
+#: Le prénom, pour la salutation de l'audio de journée. Il est ici et pas ailleurs pour
+#: la même raison que l'adresse : comment on s'adresse à quelqu'un est aussi personnel
+#: que ce qu'il veut lire, et rien de personnel ne se déclare dans l'environnement.
+CLE_PRENOM = "prenom"
 
 DEFAULT_PROFIL = """Professionnel de la tech — développement, produit, direction technique
 ou qualité. Veille quotidienne sur ce qui change la façon de concevoir, de livrer et
@@ -78,7 +82,13 @@ class Profil:
     digest — un critère de pertinence, une infrastructure, une boîte aux lettres.
     """
 
-    def __init__(self, texte: str, stack: Stack | None = None, emails: Iterable[str] = ()):
+    def __init__(
+        self,
+        texte: str,
+        stack: Stack | None = None,
+        emails: Iterable[str] = (),
+        prenom: str = "",
+    ):
         self.texte = texte
         #: Vide quand le document ne déclare rien : aucun avis n'est alors apparié, et
         #: la phrase du digest le dit plutôt que d'annoncer que rien ne nous concerne.
@@ -86,6 +96,9 @@ class Profil:
         #: Les destinataires du digest. Vides, aucun email ne part — c'est déjà ce que
         #: faisait `SMTP_TO` absente.
         self.emails = tuple(emails)
+        #: Le prénom qui ouvre l'audio de journée. Vide, le montage n'appelle personne
+        #: par son nom : c'est une salutation en moins, pas une erreur.
+        self.prenom = prenom
 
 
 def load_profil(override: str | None = None) -> Profil:
@@ -147,7 +160,25 @@ def _document(contenu: str, fichier: pathlib.Path) -> Profil:
         texte.strip(),
         Stack.declaree(parsed.get(CLE_STACK)),
         _emails(parsed.get(CLE_EMAIL), fichier),
+        _prenom(parsed.get(CLE_PRENOM), fichier),
     )
+
+
+def _prenom(valeur: object, fichier: pathlib.Path) -> str:
+    """Le prénom déclaré, s'il l'est. Absent, la salutation se passe de nom.
+
+    Facultatif, mais pas permissif : une clé remplie avec autre chose qu'un texte lève au
+    lancement. Sans cela, la seule façon de s'en apercevoir serait d'entendre la
+    salutation se tromper un matin — et l'audio est justement ce qu'on ne relit pas.
+    """
+    if valeur is None:
+        return ""
+    if not isinstance(valeur, str):
+        raise ValueError(
+            f"{ENV_PROFIL_FILE} : la clé « {CLE_PRENOM} » attend un prénom écrit en "
+            f"toutes lettres, pas {type(valeur).__name__} ({fichier})."
+        )
+    return valeur.strip()
 
 
 def _emails(valeur: object, fichier: pathlib.Path) -> tuple[str, ...]:

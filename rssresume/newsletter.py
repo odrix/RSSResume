@@ -37,7 +37,7 @@ import html
 import pathlib
 
 from rssresume import ancres
-from rssresume.models import CategoryDigest, Ephemeride, Link
+from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
 from rssresume.tools import duration
 
 #: Les jours et les mois en toutes lettres. Écrits ici plutôt que demandés à `locale` :
@@ -175,6 +175,11 @@ class Lettre:
     #: Le jour de l'envoi, sur lequel l'introduction s'ouvre. Distinct de `day` tous les
     #: matins, puisque le passage de 7 h raconte la veille.
     sent_on: dt.date | None = None
+    #: L'audio unique de la journée, en mode `global`. `None` en mode `category`, où ce
+    #: sont les sections qui portent chacune le leur. Les deux ne coexistent jamais.
+    montage: Montage | None = None
+    #: Durée mesurée de cet audio, `None` si le fichier manque ou n'est pas lisible.
+    montage_secondes: float | None = None
 
     @classmethod
     def compose(
@@ -183,12 +188,17 @@ class Lettre:
         digests: list[CategoryDigest],
         ephemeride: Ephemeride | None = None,
         generated_at: dt.datetime | None = None,
+        montage: Montage | None = None,
     ) -> "Lettre":
         """Compose la lettre. `day` est la journée racontée, pas celle de l'envoi.
 
         Le jour de l'envoi est celui de l'éphéméride, et non un second paramètre :
         elle porte déjà la fête et le fait de cette date, et les trois doivent parler
         du même jour. Sans éphéméride, c'est le moment de la composition qui fait foi.
+
+        `montage` est le seul paramètre qui change la forme de la lettre : avec lui, une
+        seule pièce jointe et une seule durée, annoncées une fois sous l'introduction.
+        Les sections gardent tout le reste — leur texte, leurs ancres, leurs deux listes.
         """
         moment = generated_at or dt.datetime.now().astimezone()
         return cls(
@@ -197,7 +207,38 @@ class Lettre:
             ephemeride=ephemeride,
             generated_at=moment,
             sent_on=ephemeride.jour if ephemeride else moment.date(),
+            montage=montage,
+            # Mesurée ici pour la même raison que celle des sections : c'est le seul
+            # instant où le fichier est certainement écrit, après une exécution comme
+            # au renvoi d'une journée passée.
+            montage_secondes=duration.seconds(montage.audio_path if montage else None),
         )
+
+    # -- l'audio de la journée, quand il n'y en a qu'un ----------------------
+
+    @property
+    def montage_path(self) -> pathlib.Path | None:
+        """Le fichier de l'audio de journée, `None` s'il n'y en a pas ou plus."""
+        return self.montage.audio_path if self.montage else None
+
+    @property
+    def montage_ecoute(self) -> str | None:
+        return duree(self.montage_secondes)
+
+    @property
+    def _annonce_audio(self) -> str | None:
+        """`Pièce jointe : journee.mp3 — 12 min`, la seule mention du fichier.
+
+        Une ligne pour la lettre entière, et non une par section : en mode `global` le
+        message ne porte qu'un fichier, et le nommer sous chaque catégorie donnerait six
+        fois le même nom sans rien apprendre. La durée y est jointe parce que c'est ici
+        qu'elle sert — juste avant de décider d'écouter.
+        """
+        nom = self.montage_path.name if self.montage_path else None
+        if not nom:
+            return None
+        ecoute = self.montage_ecoute
+        return f"{PIECE_JOINTE} {nom}" + (f" — {ecoute}" if ecoute else "")
 
     # -- ce que l'expéditeur demande ----------------------------------------
 
@@ -218,13 +259,27 @@ class Lettre:
 
     @property
     def attachments(self) -> list[pathlib.Path]:
+        """Les fichiers joints : celui de la journée, ou ceux des catégories.
+
+        Jamais les deux : un mode produit l'un, l'autre mode produit les autres. La
+        condition porte donc sur le montage, et les sections restent la règle générale.
+        """
+        if self.montage_path:
+            return [self.montage_path]
         return [section.audio_path for section in self.sections if section.audio_path]
 
     # -- les chiffres du sous-titre et du pied ------------------------------
 
     @property
     def total_secondes(self) -> float | None:
-        """La durée cumulée des audios, `None` si aucune n'a pu être mesurée."""
+        """La durée d'écoute annoncée, `None` si rien n'a pu être mesuré.
+
+        En mode `global` c'est celle du seul fichier ; sinon la somme des catégories.
+        Dans les deux cas, c'est le temps que la lettre coûte à écouter en entier — ce
+        que l'objet promet, et ce sur quoi on décide de l'ouvrir maintenant ou plus tard.
+        """
+        if self.montage:
+            return self.montage_secondes
         mesurees = [s.secondes for s in self.sections if s.secondes is not None]
         return sum(mesurees) if mesurees else None
 
@@ -332,6 +387,11 @@ class Lettre:
             self._sous_titre + (f"\n{self._detail_ecoute}" if self._detail_ecoute else ""),
             introduction,
         ]
+        # L'audio de la journée s'annonce une fois, ici, avant les sections : il ne
+        # relève d'aucune d'elles. En mode par catégorie, la ligne n'existe pas et
+        # chaque section nomme son fichier comme avant.
+        if self._annonce_audio:
+            blocs.append(self._annonce_audio)
         blocs.extend(self._section_texte(section) for section in self.sections)
         # Le pied est un bloc et non des blocs : ses lignes se suivent, là où les
         # sections respirent. Trois lignes espacées auraient l'air de trois sections.
@@ -425,6 +485,11 @@ class Lettre:
                 date, virgule, reste = corps.partition(",")
                 corps = date.replace(" ", "&nbsp;") + virgule + reste
             lignes.append(_INTRODUCTION_LIGNE.format(corps=corps, style=_INTRO_STYLES[rang > 0]))
+        if self._annonce_audio:
+            # Sous l'introduction et non dans une section : le fichier porte la journée
+            # entière. Même traitement qu'ailleurs — le nom en chasse fixe, jamais un
+            # lien, aucun client mail n'ouvrant une pièce jointe depuis le corps.
+            lignes.append(_ANNONCE_AUDIO.format(texte=_e(self._annonce_audio)))
         return "".join(lignes)
 
     @classmethod
@@ -587,6 +652,13 @@ _AUDIO = (
     'font-size:12px;color:#9ca3af;">{etiquette} '
     '<span style="font-family:ui-monospace,SFMono-Regular,Consolas,monospace;'
     'color:#6b7280;">{fichier}</span></div>'
+)
+
+#: L'audio de la journée, annoncé sous l'introduction. Discret : c'est une référence à
+#: retrouver dans le bandeau des pièces jointes, pas un titre.
+_ANNONCE_AUDIO = (
+    '<p style="margin:14px 0 0;font-size:12px;color:#9ca3af;'
+    'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;">{texte}</p>'
 )
 
 _SECTION = """

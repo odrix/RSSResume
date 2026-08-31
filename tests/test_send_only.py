@@ -243,6 +243,71 @@ class SendOnlyCertfrTests(unittest.TestCase):
             self.assertNotIn("d'écoute", envoi["subject"])
 
 
+class MontageRelurTests(unittest.TestCase):
+    """Renvoyer une journée produite en mode `global` : un seul audio, relu du journal.
+
+    Le mode dans lequel la journée a été produite est écrit dans `journee.json` ; il ne
+    se redemande pas à la configuration du jour, qui a pu changer depuis."""
+
+    def _journee(self, racine, audio="journee.mp3", ecrire_le_fichier=True, par_categorie=False):
+        # `par_categorie` laisse traîner le mp3 d'une exécution antérieure dans le même
+        # répertoire : c'est ce qui arrive quand on rejoue une journée dans l'autre mode.
+        ecrire_journee(racine, avec_audio=par_categorie)
+        day_dir = pathlib.Path(racine) / JOUR.isoformat()
+        if audio and ecrire_le_fichier:
+            (day_dir / audio).write_bytes(b"son")
+        (day_dir / "journee.json").write_text(
+            json.dumps(
+                {
+                    "date": JOUR.isoformat(),
+                    "montage": {
+                        "texte": "Bonjour Adrien. Voici la journée.",
+                        "audio": audio,
+                        "origine": "montage",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return day_dir
+
+    def test_the_day_audio_is_the_only_attachment(self):
+        """Même quand le mp3 d'une exécution par catégorie traîne encore à côté : rejouer
+        la journée dans l'autre mode laisse les deux fichiers, et un seul doit partir."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig(**{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)})
+            self._journee(tmpdir, par_categorie=True)
+            sender = FakeSender()
+
+            with mock.patch.object(cli.mail, "sender", return_value=sender):
+                code = cli.send_only(config, JOUR)
+
+            self.assertEqual(0, code)
+            envoi, = sender.envois
+            self.assertEqual(["journee.mp3"], [c.name for c in envoi["attachments"]])
+            self.assertIn("Pièce jointe : journee.mp3", envoi["body"])
+            # Le résumé de la catégorie est toujours là : le montage ne l'a pas remplacé.
+            self.assertIn("Le résumé de Tech.", envoi["body"])
+
+    def test_an_audio_deleted_since_sends_the_letter_without_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig(**{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)})
+            self._journee(tmpdir, ecrire_le_fichier=False)
+            sender = FakeSender()
+
+            with mock.patch.object(cli.mail, "sender", return_value=sender):
+                cli.send_only(config, JOUR)
+
+            self.assertEqual([], sender.envois[0]["attachments"])
+
+    def test_a_day_produced_by_category_has_no_montage_to_reread(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ecrire_journee(tmpdir)
+
+            self.assertIsNone(runlog.read_montage(pathlib.Path(tmpdir) / JOUR.isoformat()))
+
+
 class SendOnlyArgumentsTests(unittest.TestCase):
     """Le renvoi court-circuite l'assemblage : aucun fournisseur n'est construit."""
 
