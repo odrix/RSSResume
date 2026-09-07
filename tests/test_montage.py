@@ -2,11 +2,13 @@
 
 Ce que ces tests protègent, dans l'ordre d'importance :
 
-- le montage est un SECOND passage : il enchaîne des résumés déjà écrits, et ce qui
-  n'est pas dans ce qu'on lui donne ne doit pas pouvoir en sortir ;
+- le montage part des SUJETS de toutes les catégories, remis dans un seul ordre : c'est
+  la différence entre un seul fichier et un seul récit, et l'ordre des dossiers FreshRSS
+  ne doit plus décider de ce qu'on entend en premier ;
+- la phrase d'une catégorie déterministe est relayée telle quelle, jamais refaite : la
+  faire réécrire par un modèle réintroduirait l'invention là où `certfr/` l'a écartée ;
 - les phrases de plomberie — « Aucun article retenu sur 3 (seuil 7) » — ne partent
-  jamais à la voix, alors que la phrase d'une catégorie CERT-FR sans correspondance,
-  elle, est un vrai résultat qui doit s'entendre ;
+  jamais à la voix ;
 - une journée déjà payée ne se perd pas sur le dernier appel : sans fournisseur comme
   après un échec, l'assemblage local prend la suite et `origine` le dit.
 """
@@ -16,6 +18,7 @@ import pathlib
 import unittest
 from unittest import mock
 
+from rssresume.certfr import Stack
 from rssresume.llm import LLMError
 from rssresume.models import (
     ORIGINE_ASSEMBLAGE,
@@ -23,6 +26,7 @@ from rssresume.models import (
     Article,
     CategoryDigest,
     Ephemeride,
+    Note,
 )
 from rssresume.montage import MontageService
 
@@ -35,7 +39,7 @@ EPHEMERIDE = Ephemeride(
 )
 
 
-def article(titre="Un titre"):
+def article(titre="Un titre", contenu="Le corps de l'article."):
     return Article(
         item_id=titre,
         category="Cyber",
@@ -43,17 +47,43 @@ def article(titre="Un titre"):
         url="https://ex.test/a",
         published_at=dt.datetime(2026, 8, 30, 8, 0),
         feed_title="Flux A",
-        content_text="",
+        content_text=contenu,
     )
 
 
-def racontee(categorie, resume, retenus=1):
-    """Une catégorie qui a quelque chose à dire : pas de marqueur, un vrai résumé."""
+def racontee(categorie, resume, sujets=None, contenus=None):
+    """Une catégorie résumée : pas de marqueur, des articles retenus et leurs notes.
+
+    `sujets` est une suite de (titre, score, thematique) — c'est tout ce dont l'ordre du
+    jour a besoin. Par défaut, un seul sujet dont le titre porte la catégorie, pour que
+    deux catégories montées dans le même test ne partagent pas un identifiant.
+    """
+    sujets = sujets or ((f"Sujet {categorie}", 7, "cyber"),)
+    contenus = contenus or {}
+    articles = [
+        article(titre, contenus.get(titre, "Le corps de l'article."))
+        for titre, _, _ in sujets
+    ]
+    notes = {
+        titre: Note(score=score, thematique=theme, angle=f"Ce que {titre} change.")
+        for titre, score, theme in sujets
+    }
     return CategoryDigest(
         category=categorie,
-        articles=[article()],
+        articles=articles,
         summary_text=resume,
-        selected=[article() for _ in range(retenus)],
+        selected=articles,
+        notes=notes,
+    )
+
+
+def deterministe(categorie, phrase):
+    """Une catégorie routée hors du pipeline LLM : sa phrase est déjà écrite."""
+    return CategoryDigest(
+        category=categorie,
+        articles=[article(f"Avis {categorie}")],
+        summary_text=phrase,
+        deterministe=True,
     )
 
 
@@ -80,15 +110,27 @@ class FakeProvider:
     def model(self, action):
         return f"modele-{action}"
 
-    def write_montage(self, sections, jour, muettes, language="fr", profil=None, prenom=""):
+    def write_montage(
+        self,
+        sujets,
+        jour,
+        constats,
+        muettes,
+        language="fr",
+        profil=None,
+        prenom="",
+        stack_declaree=False,
+    ):
         self.appels.append(
             {
-                "sections": sections,
+                "sujets": sujets,
                 "jour": jour,
+                "constats": constats,
                 "muettes": muettes,
                 "language": language,
                 "profil": profil,
                 "prenom": prenom,
+                "stack_declaree": stack_declaree,
             }
         )
         if self._erreur:
@@ -96,24 +138,72 @@ class FakeProvider:
         return self._texte
 
 
-class CeQuiPartAuModeleTests(unittest.TestCase):
-    def test_the_categories_keep_the_order_they_were_given(self):
+class OrdreDuJourTests(unittest.TestCase):
+    """L'ordre du récit se refait à l'échelle de la journée, pas à celle des dossiers."""
+
+    def test_the_best_scored_subject_opens_the_day_whatever_its_category(self):
+        """Le défaut qu'on corrige : la catégorie décidait de ce qu'on entendait en premier."""
         provider = FakeProvider()
 
         MontageService(provider).ecrire(
             EPHEMERIDE,
-            [racontee("Cyber", "Une faille sur Traefik."), racontee("Marché", "Un rachat.")],
+            [
+                racontee("Marché", "Un rachat.", (("Un rachat", 7, "marche"),)),
+                racontee("Cyber", "Une faille.", (("Une faille critique", 10, "cyber"),)),
+            ],
         )
 
         appel, = provider.appels
         self.assertEqual(
-            [
-                {"categorie": "Cyber", "resume": "Une faille sur Traefik."},
-                {"categorie": "Marché", "resume": "Un rachat."},
-            ],
-            appel["sections"],
+            ["Une faille critique", "Un rachat"], [sujet["title"] for sujet in appel["sujets"]]
         )
 
+    def test_related_subjects_from_two_categories_end_up_side_by_side(self):
+        """« Sujet connexe » : la thématique est déjà notée, elle ne coûte aucun appel."""
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(
+            EPHEMERIDE,
+            [
+                racontee("Cyber", "x", (("Faille grave", 10, "cyber"), ("NIS2", 8, "reglementaire"))),
+                racontee("Veille", "y", (("DORA", 9, "reglementaire"), ("Faille mineure", 7, "cyber"))),
+            ],
+        )
+
+        appel, = provider.appels
+        # Le groupe cyber ouvre — il porte le meilleur score — puis le réglementaire
+        # d'un bloc, ses deux articles réunis alors qu'ils venaient de deux catégories.
+        self.assertEqual(
+            ["Faille grave", "Faille mineure", "DORA", "NIS2"],
+            [sujet["title"] for sujet in appel["sujets"]],
+        )
+
+    def test_a_subject_carries_its_angle_and_its_theme(self):
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(
+            EPHEMERIDE, [racontee("Cyber", "x", (("Une faille", 9, "cyber"),))]
+        )
+
+        sujet, = provider.appels[0]["sujets"]
+        self.assertEqual("cyber", sujet["thematique"])
+        self.assertEqual("Ce que Une faille change.", sujet["angle"])
+        self.assertEqual("Le corps de l'article.", sujet["content"])
+
+    def test_no_category_name_travels_with_a_subject(self):
+        """Elle n'a plus rien à décider une fois l'ordre posé, et le modèle l'annoncerait."""
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(EPHEMERIDE, [racontee("Cyber", "Une faille.")])
+
+        sujet, = provider.appels[0]["sujets"]
+        self.assertNotIn("categorie", sujet)
+        # Ni URL ni nom de flux : ce qui n'est pas dans le contexte ne peut pas être prononcé.
+        self.assertNotIn("url", sujet)
+        self.assertNotIn("source", sujet)
+
+
+class CeQuiPartAuModeleTests(unittest.TestCase):
     def test_the_opening_line_carries_the_day_the_letter_is_sent(self):
         """La même date, la même fête et le même fait que l'introduction de l'email."""
         provider = FakeProvider()
@@ -143,24 +233,36 @@ class CeQuiPartAuModeleTests(unittest.TestCase):
         )
 
         appel, = provider.appels
-        self.assertEqual(["Cyber"], [section["categorie"] for section in appel["sections"]])
+        self.assertEqual(["Sujet Cyber"], [sujet["title"] for sujet in appel["sujets"]])
+        self.assertEqual([], appel["constats"])
         self.assertEqual(["News"], appel["muettes"])
 
-    def test_a_certfr_category_that_matches_nothing_is_still_told(self):
-        """Elle n'a pas de marqueur et sa phrase est un résultat, pas de la plomberie :
-        « sept avis, aucun ne touche la stack » est exactement ce qu'on veut entendre."""
+    def test_a_certfr_category_is_relayed_as_a_constat_never_as_a_subject(self):
+        """Sa phrase est produite sans modèle : la refaire dire ferait revenir l'invention."""
         provider = FakeProvider()
-        avis = CategoryDigest(
-            category="CERT-FR",
-            articles=[article()],
-            summary_text="7 avis CERT-FR aujourd'hui, aucun ne touche la stack.",
+        phrase = "7 avis CERT-FR aujourd'hui, aucun ne touche la stack."
+
+        MontageService(provider).ecrire(
+            EPHEMERIDE, [racontee("Cyber", "Une faille."), deterministe("CERT-FR", phrase)]
         )
 
-        MontageService(provider).ecrire(EPHEMERIDE, [avis])
+        appel, = provider.appels
+        self.assertEqual([phrase], appel["constats"])
+        # Ses avis ne sont pas notés : ils n'ont rien à faire valoir dans l'ordre du jour.
+        self.assertEqual(["Sujet Cyber"], [sujet["title"] for sujet in appel["sujets"]])
+        self.assertEqual([], appel["muettes"])
+
+    def test_a_certfr_category_alone_still_produces_a_text(self):
+        """Une journée où seul le déterministe a parlé : un constat sans aucun sujet."""
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(
+            EPHEMERIDE, [deterministe("CERT-FR", "7 avis, 2 touchent la stack.")]
+        )
 
         appel, = provider.appels
-        self.assertEqual(["CERT-FR"], [section["categorie"] for section in appel["sections"]])
-        self.assertEqual([], appel["muettes"])
+        self.assertEqual([], appel["sujets"])
+        self.assertEqual(["7 avis, 2 touchent la stack."], appel["constats"])
 
     def test_the_profile_and_the_first_name_travel_with_the_call(self):
         provider = FakeProvider()
@@ -173,6 +275,58 @@ class CeQuiPartAuModeleTests(unittest.TestCase):
         self.assertEqual("Vigneronne", appel["profil"])
         self.assertEqual("Adrien", appel["prenom"])
         self.assertEqual("fr", appel["language"])
+
+
+class StackTests(unittest.TestCase):
+    """La stack ne trie rien ici : elle règle le détail donné sur les versions d'une CVE."""
+
+    STACK = Stack.declaree(["Keycloak"])
+
+    def test_a_touched_component_is_named_on_the_subject(self):
+        provider = FakeProvider()
+
+        MontageService(provider, stack=self.STACK).ecrire(
+            EPHEMERIDE,
+            [
+                racontee(
+                    "Cyber",
+                    "x",
+                    (("CVE-2026-1234", 9, "cyber"),),
+                    contenus={"CVE-2026-1234": "Keycloak 26.0 à 26.3 sont touchées."},
+                )
+            ],
+        )
+
+        sujet, = provider.appels[0]["sujets"]
+        self.assertEqual(["Keycloak"], sujet["stack"])
+        self.assertTrue(provider.appels[0]["stack_declaree"])
+
+    def test_an_untouched_advisory_carries_no_stack_field(self):
+        provider = FakeProvider()
+
+        MontageService(provider, stack=self.STACK).ecrire(
+            EPHEMERIDE,
+            [
+                racontee(
+                    "Cyber",
+                    "x",
+                    (("CVE-2026-9999", 9, "cyber"),),
+                    contenus={"CVE-2026-9999": "FortiOS 7.4 est touché."},
+                )
+            ],
+        )
+
+        sujet, = provider.appels[0]["sujets"]
+        self.assertNotIn("stack", sujet)
+        # La graduation reste annoncée : c'est elle qui allège cette CVE-là.
+        self.assertTrue(provider.appels[0]["stack_declaree"])
+
+    def test_without_a_declared_stack_nothing_is_graduated(self):
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(EPHEMERIDE, [racontee("Cyber", "Une faille.")])
+
+        self.assertFalse(provider.appels[0]["stack_declaree"])
 
 
 class ResultatTests(unittest.TestCase):
@@ -255,11 +409,44 @@ class PromptTests(unittest.TestCase):
         """La consigne cardinale : c'est ici qu'un « 7.4.5 » devient un « 7.4 »."""
         from rssresume.llm.prompts import montage_user
 
-        prompt = montage_user([{"categorie": "Cyber", "resume": "x"}], "Lundi.", [], "fr")
+        prompt = montage_user([{"title": "x", "content": "y"}], "Lundi.", [], [], "fr")
 
         self.assertIn("caractère pour caractère", prompt)
         # Les données de la journée sont dans la zone encadrée, comme partout ailleurs.
         self.assertIn("<<<DONNEES ARTICLES>>>", prompt)
+
+    def test_the_user_prompt_holds_the_order_and_hides_the_categories(self):
+        """L'ordre est fait par le code : le modèle ne le refait pas et ne le défait pas."""
+        from rssresume.llm.prompts import montage_user
+
+        prompt = montage_user([{"title": "x", "content": "y"}], "Lundi.", [], [], "fr")
+
+        self.assertIn("dans l'ordre exact où ils doivent être racontés", prompt)
+        self.assertIn("ne nomme aucune catégorie, n'annonce aucune rubrique", prompt)
+        # La fusion des doublons se fait ici, et c'est ce qui rapproche deux catégories.
+        self.assertIn("Le même FAIT, pas le même thème", prompt)
+
+    def test_the_user_prompt_relays_the_constats_without_rewriting_them(self):
+        from rssresume.llm.prompts import montage_user
+
+        prompt = montage_user([], "Lundi.", ["7 avis, aucun ne touche la stack."], [], "fr")
+
+        self.assertIn("Le bloc « constats » porte des phrases DÉJÀ écrites", prompt)
+        self.assertIn("jamais les reformuler", prompt)
+        self.assertIn("7 avis, aucun ne touche la stack.", prompt)
+
+    def test_the_user_prompt_grades_the_cve_detail_on_the_declared_stack(self):
+        from rssresume.llm.prompts import montage_user
+
+        sujets = [{"title": "x", "content": "y"}]
+
+        self.assertIn(
+            "la plage touchée ET la version corrigée",
+            montage_user(sujets, "Lundi.", [], [], "fr"),
+        )
+        graduee = montage_user(sujets, "Lundi.", [], [], "fr", stack_declaree=True)
+        self.assertIn("Le champ « stack » nomme les composants", graduee)
+        self.assertIn("AUCUN numéro de version, aucune plage, aucune branche", graduee)
 
 
 if __name__ == "__main__":

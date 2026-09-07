@@ -277,7 +277,9 @@ MERGE_INSTRUCTION = (
 )
 
 #: Les vulnérabilités sortent du régime commun : sur elles, la clarté factuelle passe avant
-#: le style, et les règles de fusion comme les paliers de longueur les diluaient.
+#: le style, et les règles de fusion comme les paliers de longueur les diluaient. Ce bloc-ci
+#: vaut pour toutes ; le détail des versions, lui, dépend de ce qu'on exploite et se règle
+#: dans les deux blocs suivants.
 CVE_INSTRUCTION = (
     "Les vulnérabilités suivent une règle à part, où la précision prime sur le style. "
     "UNE vulnérabilité = UN sujet à elle seule : deux CVE différentes ne se fondent jamais dans la "
@@ -286,18 +288,53 @@ CVE_INSTRUCTION = (
     "touchés, ce que la faille permet, si elle est déjà exploitée, et ce qu'il y a à faire. "
     "Nomme toujours l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit "
     "dans l'avis, et jamais sous une catégorie — « FortiOS », pas « le pare-feu » ; « VMware "
-    "vCenter Server », pas « l'hyperviseur ». Donne les numéros de version en toutes lettres de "
-    "l'avis : la plage touchée ET la version corrigée, « les versions 7.4.0 à 7.4.4, corrigé en "
-    "7.4.5 ». C'est sur ces deux points — le nom exact et les versions — que l'auditeur décide "
-    "s'il est concerné : ils passent avant tout le reste, et une CVE sans eux ne sert à rien. "
-    "Quand l'avis nomme plusieurs produits ou plusieurs branches, cite-les tous. "
+    "vCenter Server », pas « l'hyperviseur ». "
     "Une à deux phrases factuelles, sans mise en scène ni formule d'accroche, et ce quel que soit "
     "le nombre d'articles du jour — les paliers de longueur ci-dessus ne s'appliquent pas ici. "
     "Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y "
     "ces éléments plutôt que de paraphraser le titre. Ce qui n'y figure pas ne se dit pas : une "
-    "version ou une date inventée sur un avis de sécurité est pire que l'absence d'information — "
-    "quand l'avis ne donne pas les versions, dis-le en trois mots plutôt que de les deviner."
+    "version ou une date inventée sur un avis de sécurité est pire que l'absence d'information."
 )
+
+#: Le détail des versions quand rien ne dit ce que la personne exploite : tout, pour toutes.
+#: C'est le seul régime tenable sans stack déclarée — faute de savoir ce qui tourne chez
+#: elle, écarter une CVE reviendrait à décider à sa place qu'elle n'est pas concernée.
+CVE_VERSIONS_INSTRUCTION = (
+    "Donne les numéros de version en toutes lettres de l'avis : la plage touchée ET la version "
+    "corrigée, « les versions 7.4.0 à 7.4.4, corrigé en 7.4.5 ». C'est sur ces deux points — le "
+    "nom exact et les versions — que l'auditeur décide s'il est concerné : ils passent avant tout "
+    "le reste, et une CVE sans eux ne sert à rien. Quand l'avis nomme plusieurs produits ou "
+    "plusieurs branches, cite-les tous. Quand l'avis ne donne pas les versions, dis-le en trois "
+    "mots plutôt que de les deviner."
+)
+
+#: Le même détail, mais gradué sur la stack déclarée. Un numéro de version ne sert qu'à
+#: répondre « est-ce que ma machine est dans la plage » : sur un produit qu'on n'exploite
+#: pas, la question ne se pose pas, et six versions récitées à voix haute enterrent la
+#: seule CVE de la matinée qui demandait une action. Le champ « stack » est posé par le
+#: code, jamais par le modèle : c'est un appariement, pas un jugement.
+CVE_STACK_INSTRUCTION = (
+    "Le champ « stack » nomme les composants que la personne exploite et que cet article cite. "
+    "C'est lui, et lui seul, qui décide du détail donné sur les versions. "
+    "Quand il est là, la faille est sur une machine qui tourne chez elle : donne les numéros de "
+    "version en toutes lettres de l'avis, la plage touchée ET la version corrigée, « les versions "
+    "7.4.0 à 7.4.4, corrigé en 7.4.5 », et cite tous les produits et toutes les branches que "
+    "l'avis nomme. C'est là-dessus qu'elle décide d'agir ce matin : ces éléments passent avant "
+    "tout le reste, et une CVE sans eux ne sert à rien. Quand l'avis ne donne pas les versions, "
+    "dis-le en trois mots plutôt que de les deviner. "
+    "Quand le champ est absent, elle n'exploite pas ce produit : la vulnérabilité se situe, elle "
+    "ne s'applique pas. UNE phrase — l'identifiant, le produit, ce que la faille permet, et "
+    "qu'elle soit déjà exploitée si l'avis le dit. AUCUN numéro de version, aucune plage, aucune "
+    "branche, aucune version corrigée, et rien à faire à annoncer : ces précisions n'ont aucun "
+    "usage pour elle, et récitées à voix haute elles noient celles qui la concernent vraiment."
+)
+
+
+def cve_instruction(stack_declaree: bool) -> str:
+    """La règle des vulnérabilités, graduée si l'on sait ce que la personne exploite."""
+    detail = CVE_STACK_INSTRUCTION if stack_declaree else CVE_VERSIONS_INSTRUCTION
+    return f"{CVE_INSTRUCTION} {detail}"
+
 
 #: Une catégorie est un fichier audio à elle seule, écouté d'affilée : sans une phrase
 #: qui l'ouvre et une qui la ferme, l'auditeur tombe au milieu d'un sujet et repart au
@@ -326,8 +363,16 @@ CLOSING_INSTRUCTION = (
 )
 
 
-def digest_user(category: str, articles: list[dict], language: str) -> str:
-    """Message utilisateur du digest : les consignes de rédaction, puis les articles."""
+def digest_user(
+    category: str, articles: list[dict], language: str, stack_declaree: bool = False
+) -> str:
+    """Message utilisateur du digest : les consignes de rédaction, puis les articles.
+
+    `stack_declaree` ne se déduit pas des articles : une stack déclarée qu'aucun avis du
+    jour ne touche doit quand même faire tomber toutes les CVE au régime allégé. La
+    déduire de la présence du champ « stack » rendrait le détail complet à tout le monde
+    précisément les jours où rien ne concerne l'auditeur.
+    """
     consignes = (
         STYLE_INSTRUCTION,
         RHYTHM_INSTRUCTION,
@@ -336,7 +381,7 @@ def digest_user(category: str, articles: list[dict], language: str) -> str:
         ORDER_INSTRUCTION,
         MERGE_INSTRUCTION,
         NO_SOURCE_INSTRUCTION,
-        CVE_INSTRUCTION,
+        cve_instruction(stack_declaree),
         OPENING_INSTRUCTION,
         CLOSING_INSTRUCTION,
     )
@@ -360,21 +405,25 @@ def depth_instruction(article_count: int) -> str:
 # Montage : l'audio unique d'une journée
 # ---------------------------------------------------------------------------
 #
-# Un second passage, et il faut qu'il le reste. Les résumés de catégorie sont déjà
-# écrits et partent tels quels dans l'email : le montage ne les refait pas, il les
-# enchaîne. C'est aussi l'endroit exact où un numéro de version se déforme — d'où une
-# consigne de fidélité qui passe avant toutes les consignes de style.
+# Le montage enchaînait des résumés de catégorie déjà écrits, dans l'ordre des
+# catégories. Il reçoit maintenant les SUJETS de la journée, toutes catégories
+# confondues et déjà remis dans un seul ordre : c'est une rédaction sur la source, pas
+# un second passage sur du texte résumé. Les numéros de version ne traversent plus deux
+# réécritures — la consigne de fidélité reste malgré tout, c'est le seul endroit du
+# pipeline où une CVE se dit à voix haute.
 
 MONTAGE_INTRO = (
-    "Tu montes le résumé de veille quotidien de la personne dont voici le profil, en un seul "
-    "texte lu à voix haute d'une traite. Les résumés de chaque catégorie sont DÉJÀ écrits : "
-    "ton travail est de les enchaîner en une seule prise de parole, pas de les refaire.\n\n"
+    "Tu rédiges le résumé de veille quotidien de la personne dont voici le profil, en un seul "
+    "texte lu à voix haute d'une traite. Tu reçois les sujets de sa journée, toutes catégories "
+    "confondues et déjà classés : ton travail est d'en faire une seule prise de parole. Ce "
+    "profil est le SEUL critère de ce qui mérite d'être dit :\n\n"
 )
 
 MONTAGE_RULES = (
-    "Tu réécris les LIAISONS, pas les faits. Aucun fait, aucun chiffre, aucun nom de produit ne "
-    "doit apparaître dans ton texte s'il n'est pas dans les résumés qu'on te donne — et aucun "
-    "de ceux qui y sont ne doit disparaître. "
+    "Privilégie ce qui a des conséquences concrètes pour ce profil : ce qui change, à quelle "
+    "échéance, et ce que cela implique concrètement. Ce qui n'a aucune conséquence pour lui se "
+    "dit en une incise, ou ne se dit pas. Aucun fait, aucun chiffre, aucun nom de produit ne "
+    "doit apparaître dans ton texte s'il n'est pas dans les sujets qu'on te donne. "
     "Tu parles comme quelqu'un qui raconte de vive voix ce qu'il a lu ce matin, à une seule "
     "personne, en tête à tête."
 )
@@ -414,26 +463,35 @@ SOMMAIRE_INSTRUCTION = (
     "jamais la même. Pas de plan annoncé, pas de « nous verrons ensuite »."
 )
 
+#: L'ordre est fait par le code, à l'échelle de la journée : score décroissant, sujets
+#: connexes côte à côte. Le modèle ne le refait pas, et surtout ne le défait pas — c'est
+#: le seul endroit du texte où l'urgence de la matinée est visible.
 MONTAGE_ORDER_INSTRUCTION = (
-    "Reprends ensuite chaque catégorie dans l'ordre où elle t'est donnée, et garde cet ordre. "
-    "N'annonce JAMAIS les catégories comme des rubriques — ni leur nom, ni « côté sécurité », "
-    "ni « on passe à » : ce serait remettre une liste au milieu d'un texte qui doit se couler. "
-    "Le passage de l'une à l'autre se fait par une transition d'une poignée de mots, qui dit "
-    "pourquoi on y va : un contraste, une conséquence, un changement de terrain."
+    "Les sujets te sont donnés sous « sujets », dans l'ordre exact où ils doivent être "
+    "racontés : le plus important d'abord, et les sujets qui se répondent côte à côte. Garde "
+    "cet ordre, n'en remonte aucun, n'en repousse aucun. "
+    "Ils viennent de catégories différentes et cela ne s'entend pas : ne nomme aucune "
+    "catégorie, n'annonce aucune rubrique — ni « côté sécurité », ni « on passe à », ni « dans "
+    "l'actualité réglementaire ». Le passage d'un sujet au suivant se fait par une transition "
+    "d'une poignée de mots, qui dit pourquoi on y va : un contraste, une conséquence, un "
+    "changement de terrain. Quand deux sujets voisins se répondent, dis-le en passant de l'un "
+    "à l'autre plutôt qu'en les traitant comme deux nouvelles sans rapport."
 )
 
-#: Chaque résumé de catégorie a été écrit pour être écouté seul, donc avec sa phrase
-#: d'ouverture et sa phrase de fin. Mis bout à bout, cela fait autant d'ouvertures et de
-#: conclusions que de catégories — c'est le premier défaut qui s'entend.
-SINGLE_VOICE_INSTRUCTION = (
-    "Chaque résumé reçu porte sa propre phrase d'ouverture et sa propre phrase de fin, parce "
-    "qu'il a été écrit pour être écouté seul. Ne les reprends pas : ton texte n'a qu'une "
-    "ouverture, la tienne, et qu'une clôture. Fonds dans le fil ce qu'elles disent d'utile, "
-    "et laisse tomber le reste."
+#: Les catégories déterministes (`rssresume/certfr/`) rendent une phrase produite sans
+#: modèle, par appariement sur la liste des composants exploités. La refaire dire au
+#: modèle, c'est réintroduire l'invention exactement là où on l'avait écartée.
+CONSTAT_INSTRUCTION = (
+    "Le bloc « constats » porte des phrases DÉJÀ écrites, produites sans modèle par "
+    "comparaison avec la liste des composants que la personne exploite. Reprends-les telles "
+    "quelles ou presque : tu peux les amener d'un mot et les poser où elles s'entendent le "
+    "mieux, jamais les reformuler, jamais en retirer un composant, un impact ou un nombre, "
+    "jamais en ajouter. Elles ne comptent pas dans les paliers de longueur ci-dessus."
 )
 
-#: La consigne cardinale du montage. Un second passage sur du texte déjà résumé est
-#: exactement l'endroit où « 7.4.5 » devient « 7.4 » et où deux CVE se confondent.
+#: La consigne cardinale du montage. Le texte part en synthèse vocale, et c'est le seul
+#: endroit du pipeline où « 7.4.5 » se dit à voix haute : une version approchée y a
+#: exactement le même coût qu'une version inventée.
 FIDELITY_INSTRUCTION = (
     "Les identifiants de vulnérabilité, les noms d'éditeurs et de produits et les numéros de "
     "version se recopient à l'identique, caractère pour caractère : « CVE-2026-1234 », "
@@ -461,29 +519,44 @@ CONCLUSION_INSTRUCTION = (
 
 
 def montage_user(
-    sections: list[dict], jour: str, muettes: list[str], language: str
+    sujets: list[dict],
+    jour: str,
+    constats: list[str],
+    muettes: list[str],
+    language: str,
+    stack_declaree: bool = False,
 ) -> str:
-    """Message utilisateur du montage : les consignes, puis la journée déjà résumée.
+    """Message utilisateur du montage : les consignes, puis la journée entière.
 
-    Aucune consigne de longueur, délibérément : le texte dit tout ce que les résumés
-    portent, et c'est la synthèse vocale qui le découpe en autant d'appels qu'il faut.
+    Le palier de longueur se compte sur les sujets et non sur les catégories : c'est en
+    sujets que la journée s'écoute, et vingt articles répartis sur six dossiers FreshRSS
+    font un audio qu'on n'écoute pas jusqu'au bout.
     """
     consignes = (
         GREETING_INSTRUCTION,
         EPHEMERIDE_INSTRUCTION,
         SOMMAIRE_INSTRUCTION,
         MONTAGE_ORDER_INSTRUCTION,
-        SINGLE_VOICE_INSTRUCTION,
+        depth_instruction(len(sujets)),
+        ANGLE_INSTRUCTION,
+        MERGE_INSTRUCTION,
+        cve_instruction(stack_declaree),
         FIDELITY_INSTRUCTION,
+        CONSTAT_INSTRUCTION,
         MUTE_INSTRUCTION,
         STYLE_INSTRUCTION,
         RHYTHM_INSTRUCTION,
         NO_SOURCE_INSTRUCTION,
         CONCLUSION_INSTRUCTION,
     )
-    journee = {"jour": jour, "categories": sections, "categories_sans_rien": muettes}
+    journee = {
+        "jour": jour,
+        "sujets": sujets,
+        "constats": constats,
+        "categories_sans_rien": muettes,
+    }
     return (
-        f"Monte le résumé de cette journée en {language}, en un seul texte lu d'une traite.\n\n"
+        f"Écris le résumé de cette journée en {language}, en un seul texte lu d'une traite.\n\n"
         + "\n".join(consignes)
         + "\n\nJournée:\n"
         + fenced(json.dumps(journee, ensure_ascii=False))

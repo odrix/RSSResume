@@ -29,6 +29,8 @@ from rssresume.models import (
     Note,
     Selection,
     SelectionRule,
+    groupees_par_thematique,
+    note_de,
 )
 from rssresume.montage import MontageService
 from rssresume.newsletter import Lettre
@@ -42,7 +44,7 @@ from rssresume.protocols import (
     ScorerProtocol,
     SummaryGeneratorProtocol,
 )
-from rssresume.tools import console
+from rssresume.tools import console, cve
 from rssresume.tools.text import no_article_message, no_selection_message, slugify
 
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
@@ -321,6 +323,7 @@ class DigestService:
                 articles=articles,
                 summary_text=no_article_message(category),
                 marker_path=marker_path,
+                deterministe=True,
             )
 
         revue = self._certfr_service.lire(articles)
@@ -330,6 +333,7 @@ class DigestService:
             articles=articles,
             summary_text=revue.phrase,
             selected=revue.touches,
+            deterministe=True,
         )
 
     def _build_category(
@@ -362,7 +366,13 @@ class DigestService:
         journal.set_notes(notes, new_notes)
         selection = self._select(articles, notes, regle)
         journal.set_seuil_applique(selection.seuil)
-        selected = self._grouped_by_theme(selection.retenus, notes)
+        # Enrichis ici et non chez le résumeur : les avis de vulnérabilité arrivent
+        # souvent réduits à leur titre, et leur page est maintenant lue par trois
+        # lecteurs — le résumé de la catégorie, l'appariement sur la stack, et l'audio
+        # de journée. La lire une fois et garder le texte dans `selected` évite d'aller
+        # la chercher trois fois, et surtout évite que l'un des trois travaille sur un
+        # titre là où les deux autres ont l'avis complet.
+        selected = cve.enrich(groupees_par_thematique(selection.retenus, notes))
 
         if not selected:
             # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
@@ -386,6 +396,7 @@ class DigestService:
                 # C'est ici que la liste de veille sert le plus : la catégorie n'a rien
                 # à raconter, mais elle a lu des articles, et certains valent un lien.
                 watchlist=self._watchlist(articles, selected, notes),
+                notes=notes,
             )
 
         summary_text = self._summary_generator.summarize(category, selected, notes)
@@ -414,6 +425,7 @@ class DigestService:
             stale_item_ids=stale,
             audio_path=audio_path,
             watchlist=self._watchlist(articles, selected, notes),
+            notes=notes,
         )
 
     @classmethod
@@ -463,7 +475,7 @@ class DigestService:
     @staticmethod
     def _note_of(article: Article, notes: dict[str, Note]) -> Note:
         """Note de l'article, note neutre si le scoring est désactivé."""
-        return notes.get(article.item_id) or Note(score=0)
+        return note_de(article, notes)
 
     @classmethod
     def _score_of(cls, article: Article, notes: dict[str, Note]) -> int:
@@ -568,23 +580,6 @@ class DigestService:
             f"(seuil {selection.seuil}){repli}"
         )
         return selection
-
-    @classmethod
-    def _grouped_by_theme(cls, articles: list[Article], notes: dict[str, Note]) -> list[Article]:
-        """Articles regroupés par thématique, le groupe du meilleur article en tête.
-
-        Le tri par score seul faisait sauter du réglementaire au cyber, puis au marché,
-        puis de nouveau au réglementaire : à l'écoute, aucune transition n'est possible.
-        Regrouper ne coûte aucun appel — la thématique est déjà notée — et l'urgence
-        reste respectée : un groupe est classé sur son meilleur article, et l'ordre à
-        l'intérieur du groupe reste le score décroissant.
-        """
-        groupes: dict[str, list[Article]] = {}
-        for article in articles:  # déjà triés par score décroissant
-            groupes.setdefault(cls._note_of(article, notes).thematique, []).append(article)
-        # Tri stable : à meilleur score égal, le groupe apparu le premier reste devant.
-        ordre = sorted(groupes, key=lambda theme: -cls._score_of(groupes[theme][0], notes))
-        return [article for theme in ordre for article in groupes[theme]]
 
     def _write_tags(
         self,

@@ -7,10 +7,11 @@ Le générateur ne sait rien du fournisseur au-delà de son contrat : il reçoit
 
 from __future__ import annotations
 
+from rssresume.certfr import Stack
 from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
 from rssresume.llm import LLMProvider
 from rssresume.models import Article, Note
-from rssresume.tools import console, cve
+from rssresume.tools import console
 from rssresume.tools.text import no_article_message, truncate_sentences
 
 FALLBACK_ARTICLES = 5
@@ -22,13 +23,19 @@ class SummaryGenerator:
 
     def __init__(self, provider: LLMProvider | None = None, language: str = "fr",
                  profil: str | None = None,
-                 char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT):
+                 char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT,
+                 stack: Stack | None = None):
         self._provider = provider
         self._language = language
         self._profil = profil
         #: Plafond de caractères par article. Le résumé était le seul chemin sans borne
         #: d'entrée du pipeline : douze articles de fond partaient intégralement.
         self._char_limit = char_limit
+        #: La même liste de composants que celle des avis CERT-FR, et pour le même usage :
+        #: répondre « est-ce que ça me touche ». Ici elle ne trie rien — l'article est
+        #: raconté dans tous les cas — elle règle seulement le détail donné sur les
+        #: versions d'une CVE. Vide, le résumé reste au régime d'avant : tout, pour toutes.
+        self._stack = stack if stack is not None else Stack()
 
     def summarize(
         self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
@@ -36,9 +43,10 @@ class SummaryGenerator:
         if not articles or self._provider is None:
             return self._summarize_fallback(category, articles)
 
-        # Les avis de vulnérabilité arrivent souvent réduits à leur titre : leur page
-        # est lue avant le résumé, sans quoi la CVE ne serait que paraphrasée.
-        articles = cve.enrich(articles)
+        # Les avis de vulnérabilité arrivent enrichis du texte de leur page : c'est
+        # `digest.py` qui la lit, une fois, avant de partager les mêmes articles entre le
+        # résumé de la catégorie et l'audio de journée. Le faire ici allait la chercher
+        # deux fois et laissait l'un des deux lecteurs travailler sur le seul titre.
         notes = notes or {}
         payload = [self._to_payload(article, notes.get(article.item_id)) for article in articles]
         volume = sum(len(item["content"]) for item in payload)
@@ -52,7 +60,9 @@ class SummaryGenerator:
             f"({len(articles)} article(s), {volume} caractère(s) envoyés"
             + (f", {tronques} tronqué(s) à {self._char_limit})" if tronques else ")")
         )
-        return self._provider.write_digest(category, payload, self._language, self._profil)
+        return self._provider.write_digest(
+            category, payload, self._language, self._profil, not self._stack.vide
+        )
 
     def _to_payload(self, article: Article, note: Note | None) -> dict:
         """Article tel qu'il part au résumeur : son contenu, plus ce que le scoring en sait.
@@ -70,6 +80,13 @@ class SummaryGenerator:
             # article quand le résumé en envoyait le texte entier, douze fois.
             "content": truncate_sentences(article.content_text, self._char_limit),
         }
+        # Apparié sur le titre ET le contenu, comme les avis CERT-FR : un billet
+        # « Multiples vulnérabilités dans les produits IBM » ne nomme le composant
+        # réellement touché que dans son texte. Le champ est absent quand rien ne
+        # correspond, et c'est cette absence que le prompt lit.
+        concernes = self._stack.concernes(f"{article.title}\n{article.content_text}")
+        if concernes:
+            payload["stack"] = list(concernes)
         if note:
             payload["thematique"] = note.thematique
             if note.angle:

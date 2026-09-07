@@ -29,7 +29,7 @@ flowchart TD
     T --> J["&lt;categorie&gt;.log.json<br/>articles + scores + coûts"]
     J -->|catégorie suivante| B
     J --> P{mode global ?}
-    P -->|oui| Q[MontageService<br/>les résumés enchaînés]
+    P -->|oui| Q[MontageService<br/>tous les sujets du jour<br/>score décroissant, thématiques groupées]
     Q --> R[AudioGenerator<br/>journee.mp3]
     R --> H
     P -->|non| H[Email<br/>audio en pièces jointes]
@@ -273,19 +273,39 @@ seule**, jamais fondue avec une autre — même jour, même source et même prod
 et les paliers de longueur ne s'y appliquent pas. Chacune se dit en une à deux phrases factuelles,
 dans un ordre fixe : identifiant, produit et versions, ce que la faille permet, exploitée ou non,
 ce qu'il y a à faire. Le **nom commercial exact** de l'éditeur et du produit — « FortiOS », pas
-« le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur » — et les **numéros de version**,
-plage touchée *et* version corrigée, passent avant tout le reste : c'est là-dessus, et seulement
-là-dessus, que l'auditeur décide s'il est concerné. Quand l'avis ne les donne pas, le prompt demande
-de le dire en trois mots plutôt que de les deviner — une version inventée sur un avis de sécurité
-est pire que l'absence d'information. C'est le seul endroit du digest où la précision passe avant le
-style : les règles de prose, de fusion et de longueur diluaient exactement ce qui rend un avis utile.
+« le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur » — passe avant tout le reste.
+C'est le seul endroit du digest où la précision passe avant le style : les règles de prose, de
+fusion et de longueur diluaient exactement ce qui rend un avis utile.
+
+**Le détail des versions est gradué sur la stack déclarée.** Un numéro de version ne sert qu'à
+répondre à une question : *est-ce que ma machine est dans la plage*. Sur un produit qu'on
+n'exploite pas, la question ne se pose pas — et six versions récitées à voix haute enterrent la
+seule CVE de la matinée qui demandait une action. Chaque article est donc apparié sur la liste
+`stack` du document de profil, avec la **même mécanique déterministe** que les avis CERT-FR
+(`certfr/stack.py`, suite de mots contiguë, casse et accents retirés), et le résultat voyage dans
+le payload :
+
+| | Ce qui est dit |
+| --- | --- |
+| l'article cite un composant exploité — champ `stack` présent | tout le détail : plage touchée **et** version corrigée, tous les produits et toutes les branches que l'avis nomme. Quand l'avis ne les donne pas, le prompt demande de le dire en trois mots plutôt que de les deviner |
+| l'article n'en cite aucun — champ `stack` absent | **une** phrase : l'identifiant, le produit, ce que la faille permet, exploitée ou non. Aucun numéro de version, aucune plage, aucune branche, rien à faire à annoncer. La faille se situe, elle ne s'applique pas |
+
+**Stack vide, rien n'est gradué.** Faute de savoir ce qui tourne chez la personne, écarter une CVE
+reviendrait à décider à sa place qu'elle n'est pas concernée : le prompt retombe alors sur le
+régime d'origine — tout le détail, pour toutes. Et la graduation ne se déduit **pas** de la
+présence du champ dans les articles du jour : une stack déclarée qu'aucun avis ne touche doit
+quand même alléger toute la matinée, sans quoi le détail complet reviendrait précisément les jours
+où rien ne concerne l'auditeur.
 
 Un avis de vulnérabilité arrive souvent réduit à son titre :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
-touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. Avant le résumé, la page de
-l'avis est donc lue (`tools/cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en
-deux phrases le produit et les versions concernés, ce que la faille permet, si elle est exploitée et
-ce qu'il y a à faire.
+touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. La page de l'avis est donc
+lue (`tools/cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en deux
+phrases le produit et les versions concernés, ce que la faille permet, si elle est exploitée et
+ce qu'il y a à faire. La lecture a lieu **dans `digest.py`**, juste après la sélection, et le texte
+reste sur l'article retenu : il a trois lecteurs — le résumé de la catégorie, l'appariement sur la
+stack ci-dessus, et l'audio de journée du mode `global` —, et lue au moment du résumé elle était
+rechargée pour chacun, quand elle ne laissait pas les deux autres travailler sur le seul titre.
 
 La lecture est ciblée pour ne pas coûter cher : uniquement les articles qui mentionnent une CVE
 **et** dont le flux fournit moins de 1200 caractères — au-delà, le détail est déjà là. Le texte
@@ -475,17 +495,28 @@ RSSRESUME_AUDIO_MODE=global      # défaut : category
 font six fichiers, six ouvertures, six clôtures, et une manipulation de lecteur entre chaque. C'est
 ce qui a motivé l'autre mode.
 
-`global` n'en donne qu'un. Aucune catégorie ne synthétise plus rien ; leurs résumés — **déjà
-écrits, et inchangés** — partent dans un montage qui les enchaîne en une seule prise de parole.
+`global` n'en donne qu'un. Aucune catégorie ne synthétise plus rien : une fois toutes les
+catégories traitées, les **sujets** de la journée — les articles retenus, toutes catégories
+confondues — sont remis dans un seul ordre et racontés d'une traite.
 
-**C'est un second passage, et il faut qu'il le reste.** Le montage ne refait pas les résumés : il
-réécrit les *liaisons*. Rien ne doit apparaître dans son texte qui ne soit dans ce qu'on lui
-donne, et rien de ce qui y est ne doit disparaître. C'est aussi l'endroit exact où un « 7.4.5 »
-devient un « 7.4 » et où deux CVE se confondent, d'où une consigne de fidélité placée avant toutes
-les consignes de style : identifiants, noms de produits et numéros de version se recopient
-caractère pour caractère. Le garde-fou n'est pas que dans le prompt : l'email continue de montrer
-les résumés de catégorie **mot pour mot**, et `journee.json` garde le texte lu, ce qui permet de
-confronter les deux sans réécouter.
+**L'ordre est refait à l'échelle de la journée, et c'est tout l'enjeu.** Le montage enchaînait
+d'abord les résumés de catégorie déjà écrits, dans l'ordre des catégories : un seul fichier, une
+seule voix, mais l'ordre restait celui des dossiers FreshRSS. Le sujet le plus grave de la matinée
+pouvait tomber en huitième position parce que sa catégorie était la dernière, et deux articles qui
+parlaient de la même chose depuis deux catégories différentes restaient séparés par tout le reste
+de la journée. L'ordre est donc calculé par `models.groupees_par_thematique`, sur la journée
+entière : **score décroissant**, puis regroupement par thématique — le groupe classé sur son
+meilleur article, l'ordre interne restant le score. Le même code range les articles d'une
+catégorie pour son résumé ; ce qui change ici, c'est le périmètre.
+
+Le montage travaille donc sur la **source**, plus sur du texte déjà résumé. Trois conséquences :
+les numéros de version ne traversent plus deux réécritures, la fusion des doublons se fait là où
+elle a du sens — sur des articles, pas sur de la prose —, et deux dépêches de deux catégories qui
+couvrent le même fait arrivent enfin côte à côte. La consigne de fidélité reste malgré tout : ce
+texte est le seul endroit du pipeline où une CVE se dit à voix haute, et une version approchée y a
+exactement le même coût qu'une version inventée. Le garde-fou n'est pas que dans le prompt —
+l'email continue de montrer les résumés de catégorie, et `journee.json` garde le texte lu, ce qui
+permet de confronter les deux sans réécouter.
 
 Ce que le montage produit, dans l'ordre :
 
@@ -494,13 +525,24 @@ Ce que le montage produit, dans l'ordre :
 | une salutation | nomme la personne si la clé `prenom` du document de profil est remplie. La formule est libre et change d'un jour à l'autre : c'est la première chose entendue tous les matins |
 | l'éphéméride | la même que celle qui ouvre l'email, dite à voix haute plutôt que récitée. Le prompt interdit d'y ajouter ou d'y corriger quoi que ce soit — la ligne est fabriquée hors du modèle |
 | une phrase de sommaire | ce qui vient, de quoi décider d'écouter jusqu'au bout |
-| les catégories | dans l'ordre, **sans être annoncées comme des rubriques** — ce serait remettre une liste au milieu d'un texte qui doit se couler —, séparées par une transition de quelques mots |
+| les sujets | dans l'ordre reçu, **sans qu'aucune catégorie soit nommée ni annoncée comme une rubrique** — ce serait remettre une liste au milieu d'un texte qui doit se couler —, séparés par une transition de quelques mots. Quand deux sujets voisins se répondent, le passage de l'un à l'autre le dit |
+| les constats | les phrases des catégories déterministes, relayées telles quelles (voir ci-dessous) |
 | une conclusion | deux à quatre points actionnables, et ce qu'il y a à faire. Les mêmes interdits qu'ailleurs : ni « restez vigilant », ni résumé du résumé |
 
-Chaque résumé reçu porte sa propre ouverture et sa propre clôture, puisqu'il a été écrit pour être
-écouté seul. Mis bout à bout, cela ferait autant d'ouvertures que de catégories : le prompt du
-montage a la consigne de ne pas les reprendre. Le prompt de digest, lui, **n'est pas touché** —
-l'email garde ses sections identiques dans les deux modes.
+Le prompt du digest de catégorie, lui, **n'est pas touché** : l'email garde ses sections
+identiques dans les deux modes. Ce que l'œil lit et ce que l'oreille entend sont deux textes,
+écrits pour deux usages — et le palier de profondeur du montage se compte sur les sujets de la
+journée, pas sur ceux d'une catégorie.
+
+### Les catégories déterministes ne sont pas refaites
+
+Une catégorie routée vers `certfr/` rend une phrase produite **sans modèle**, par appariement sur
+la liste des composants exploités. Ses avis n'ont ni score ni thématique : ils n'ont rien à faire
+valoir dans l'ordre du jour, et la refaire dire au modèle réintroduirait l'invention exactement là
+où ce module l'a écartée. Elle part donc à part, dans un bloc `constats`, avec la consigne de la
+reprendre telle quelle — on peut l'amener d'un mot et la poser où elle s'entend le mieux, jamais
+la reformuler, jamais en retirer un composant, un impact ou un nombre. Elle ne compte pas non plus
+dans le palier de longueur.
 
 ### Quelles catégories entrent dans le montage
 
@@ -520,10 +562,12 @@ trouvé.
 
 ### Le repli
 
-Sans clé pour le fournisseur de l'action `montage`, ou si l'appel échoue, les résumés partent bout
-à bout : la salutation, l'éphéméride, les textes à la suite, et rien d'autre. Ni transitions ni
-conclusion — les fabriquer sans modèle rendrait exactement la formule passe-partout que le prompt
-interdit, et une conclusion fausse est pire qu'une conclusion absente.
+Sans clé pour le fournisseur de l'action `montage`, ou si l'appel échoue, les **résumés de
+catégorie** partent bout à bout : la salutation, l'éphéméride, les textes à la suite, et rien
+d'autre. Ni transitions ni conclusion — les fabriquer sans modèle rendrait exactement la formule
+passe-partout que le prompt interdit, et une conclusion fausse est pire qu'une conclusion absente.
+C'est le seul chemin où ces résumés servent encore à l'oreille : sans fournisseur, il n'y a
+personne pour rédiger quoi que ce soit, et ces textes-là existent déjà.
 
 La journée est déjà payée en scoring, en résumés et en tags : la perdre sur le dernier appel
 serait le plus cher des abandons. `Montage.origine` garde la trace — `montage` ou `assemblage` —,
@@ -564,10 +608,16 @@ partir la lettre sans lui, exactement comme le fait déjà `_digest_relu` pour u
 
 ### Ce que cela coûte
 
-Un appel de complétion de plus par journée — son entrée est la somme des résumés, quelques
-milliers de caractères —, et autant de caractères de synthèse qu'avant, répartis sur moins
-d'appels. Sensiblement neutre. Le montage a **son propre poste** dans le journal, et non celui du
-résumé : les confondre empêcherait précisément de voir ce que ce mode coûte en plus.
+Un appel de complétion de plus par journée, et autant de caractères de synthèse qu'avant,
+répartis sur moins d'appels. Ce n'est plus neutre depuis que le montage part des articles : son
+entrée était la somme des résumés, quelques milliers de caractères ; c'est désormais le texte des
+articles retenus de la journée, soit à peu près le volume que les N appels de résumé consomment
+déjà. **Le poste « résumé » du mois double, en gros.** Deux leviers si c'est trop cher, et aucun
+n'est câblé par défaut : abaisser `RSSRESUME_ARTICLE_CHAR_LIMIT`, qui borne cette passe comme
+celle des catégories, ou baisser `RSSRESUME_MAX_DIGEST_ITEMS`, qui décide du nombre de sujets.
+
+Le montage a **son propre poste** dans le journal, et non celui du résumé : les confondre
+empêcherait précisément de voir ce que ce mode coûte en plus.
 
 ## Le traitement déterministe des avis CERT-FR
 
@@ -960,7 +1010,7 @@ provider.score_articles(articles, profil)      # -> [{id, score, thematique, ang
 provider.summarize_article(article, profil)    # -> str
 provider.write_digest(category, articles, …)   # -> str
 provider.write_ephemeride(day)                 # -> str
-provider.write_montage(sections, jour, …)      # -> str
+provider.write_montage(sujets, jour, …)        # -> str
 provider.speak(text)                           # -> bytes
 ```
 

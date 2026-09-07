@@ -35,6 +35,10 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
             language=config.summary_language,
             profil=config.profil,
             char_limit=config.article_char_limit,
+            # La même stack que celle des avis CERT-FR, et lue au même endroit : elle ne
+            # décide ici d'aucune sélection, seulement du détail donné sur les versions
+            # d'une CVE selon qu'elle touche ou non ce qu'on exploite.
+            stack=config.stack,
         ),
         audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
         email_sender=mail.sender(config),
@@ -49,6 +53,10 @@ def build_service(config: AppConfig, include_read: bool = False) -> DigestServic
             language=config.summary_language,
             profil=config.profil,
             prenom=config.prenom,
+            # Il lit maintenant les mêmes articles que le résumé de catégorie : mêmes
+            # bornes d'entrée, et la même stack pour graduer le détail des versions.
+            char_limit=config.article_char_limit,
+            stack=config.stack,
         ),
         # Sans fournisseur, et c'est tout l'intérêt : les catégories que
         # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de

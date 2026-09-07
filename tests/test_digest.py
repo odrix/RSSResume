@@ -28,6 +28,54 @@ def make_article(category="Tech", title="Nouveau modèle", item_id="item-1"):
     )
 
 
+class EnrichissementCveTests(unittest.TestCase):
+    """La page d'un avis est lue UNE fois, et son texte reste dans les articles retenus.
+
+    Elle a trois lecteurs — le résumé de la catégorie, l'appariement sur la stack, et
+    l'audio de journée. Lue au moment du résumé, elle était rechargée pour chacun, et
+    surtout les deux autres travaillaient sur le seul titre.
+    """
+
+    def _run(self, articles):
+        avis = Article(
+            item_id="cve-1",
+            category="Tech",
+            title="CVE-2026-1234 : RCE dans X",
+            url="https://example.com/avis",
+            published_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=dt.timezone.utc),
+            feed_title="Alertes",
+            content_text="Un avis.",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = DigestService(
+                config=make_config(tmpdir),
+                freshrss_client=FakeFreshRSSClient({"Tech": articles or [avis], "News": []}),
+                summary_generator=SummaryGenerator(None),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+            )
+            return service.run(DAY, send_email=False)
+
+    def test_the_advisory_page_is_read_once_and_kept_on_the_article(self):
+        from rssresume.tools import cve
+
+        with mock.patch.object(
+            cve, "fetch_detail", return_value="Versions 1.0 à 1.4 touchées."
+        ) as fetch:
+            digests = self._run(None)
+
+        fetch.assert_called_once_with("https://example.com/avis")
+        self.assertIn("Versions 1.0 à 1.4 touchées.", digests[0].selected[0].content_text)
+
+    def test_an_article_without_a_cve_is_left_alone(self):
+        from rssresume.tools import cve
+
+        with mock.patch.object(cve, "fetch_detail") as fetch:
+            self._run([make_article()])
+
+        fetch.assert_not_called()
+
+
 class MarkAsReadTests(unittest.TestCase):
     def _run(self, articles_by_category, **kwargs):
         with tempfile.TemporaryDirectory() as tmpdir:

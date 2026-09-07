@@ -3,6 +3,7 @@ import os
 import unittest
 from unittest import mock
 
+from rssresume.certfr import Stack
 from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig
 from rssresume.llm import prompts
 from rssresume.tools import cve
@@ -32,13 +33,14 @@ def make_article(title="Titre", content="Contenu test pour le résumé.", url="h
     )
 
 
-def make_generator(profil=None, char_limit=DEFAULT_ARTICLE_CHAR_LIMIT):
+def make_generator(profil=None, char_limit=DEFAULT_ARTICLE_CHAR_LIMIT, stack=None):
     """Le générateur avec un fournisseur simulé : seul `write_digest` est observé."""
     return SummaryGenerator(
         mock.Mock(name="openai", write_digest=mock.Mock(return_value="résumé")),
         language="fr",
         profil=profil or DEFAULT_PROFIL,
         char_limit=char_limit,
+        stack=stack,
     )
 
 
@@ -63,16 +65,16 @@ class PromptCase(unittest.TestCase):
     """Les prompts réellement assemblés, sans réseau : le fournisseur est une doublure."""
 
     @staticmethod
-    def _payload(articles, notes=None, profil=None):
-        """Les articles tels qu'ils arrivent au fournisseur : (catégorie, articles, langue, profil)."""
-        generator = make_generator(profil)
+    def _payload(articles, notes=None, profil=None, stack=None):
+        """Ce qui arrive au fournisseur : (catégorie, articles, langue, profil, stack déclarée)."""
+        generator = make_generator(profil, stack=stack)
         generator.summarize("Tech", articles, notes)
         return generator._provider.write_digest.call_args.args
 
-    def _prompt(self, articles, notes=None):
+    def _prompt(self, articles, notes=None, stack=None):
         """Le prompt utilisateur, assemblé par `prompts.digest_user`."""
-        category, payload, language, _ = self._payload(articles, notes)
-        return prompts.digest_user(category, payload, language)
+        category, payload, language, _, declaree = self._payload(articles, notes, stack=stack)
+        return prompts.digest_user(category, payload, language, declaree)
 
     def _system(self, articles, profil=None):
         return prompts.digest_system(self._payload(articles, profil=profil)[3])
@@ -173,7 +175,7 @@ class PromptTests(PromptCase):
         # décide s'il est concerné, et c'est ce qui manquait à l'écoute.
         self.assertIn("sous leur nom commercial exact", prompt)
         self.assertIn("la plage touchée ET la version corrigée", prompt)
-        self.assertIn("quand l'avis ne donne pas les versions", prompt)
+        self.assertIn("Quand l'avis ne donne pas les versions", prompt)
 
     def test_merging_applies_to_the_same_fact_not_the_same_topic(self):
         prompt = self._prompt([make_article()])
@@ -181,14 +183,18 @@ class PromptTests(PromptCase):
         self.assertIn("Le même FAIT, pas le même thème", prompt)
         self.assertIn("deux vulnérabilités différentes", prompt)
 
-    def test_cve_article_is_enriched_before_the_prompt(self):
-        article = make_article(title="CVE-2026-1234 : RCE dans X", content="Un avis.")
-        with mock.patch.object(cve, "fetch_detail", return_value="Versions 1.0 à 1.4 touchées.") as fetch:
-            prompt = self._prompt([article])
+    def test_an_enriched_advisory_travels_whole(self):
+        """L'avis arrive déjà complété par sa page — `digest.py` la lit une fois pour tous.
 
-        fetch.assert_called_once_with("https://example.com/a")
-        self.assertIn("Versions 1.0 à 1.4 touchées.", prompt)
+        Ce que ce test garde ici : le résumeur n'ampute pas ce complément. La lecture de
+        la page, elle, se vérifie dans le pipeline (`test_digest`), là où elle a lieu.
+        """
+        article = make_article(
+            title="CVE-2026-1234 : RCE dans X",
+            content="Un avis.\n\nDétail lu sur la page de l'avis :\nVersions 1.0 à 1.4 touchées.",
+        )
 
+        self.assertIn("Versions 1.0 à 1.4 touchées.", self._prompt([article]))
 
     def test_angle_and_thematique_are_handed_to_the_summarizer(self):
         """Le scoring les a déjà payés : c'est le contexte qui manquait au résumé."""
@@ -233,6 +239,90 @@ class PromptTests(PromptCase):
             self.assertNotIn('"angle"', prompt)
         # La consigne reste, elle : c'est elle qui dit quoi faire quand l'angle manque.
         self.assertIn("Quand il manque, dégage l'angle du contenu.", sans_note)
+
+
+class CveStackTests(PromptCase):
+    """Le détail des versions, gradué sur ce que la personne exploite vraiment.
+
+    Une CVE sur un produit qu'on n'a pas ne se tait pas — elle situe l'actualité — mais
+    ses six numéros de version récités à voix haute enterrent la seule de la matinée qui
+    demandait une action. La graduation est déterministe : le code apparie, le prompt
+    n'a plus qu'à lire un champ présent ou absent.
+    """
+
+    STACK = Stack.declaree(["Keycloak", {"nom": "Traefik", "alias": ["Traefik Proxy"]}])
+
+    def test_without_a_declared_stack_every_cve_keeps_its_versions(self):
+        """Faute de savoir ce qui tourne chez elle, on ne décide pas à sa place."""
+        prompt = self._prompt([make_article(title="CVE-2026-1234 : RCE dans FortiOS")])
+
+        self.assertIn("la plage touchée ET la version corrigée", prompt)
+        self.assertNotIn("Le champ « stack »", prompt)
+
+    def test_a_touched_component_is_named_in_the_payload(self):
+        article = make_article(
+            title="CVE-2026-1234 : élévation de privilèges dans Keycloak",
+            content="Les versions 26.0 à 26.3 sont touchées.",
+        )
+
+        payload = self._payload([article], stack=self.STACK)[1]
+
+        self.assertEqual(["Keycloak"], payload[0]["stack"])
+        # Et il arrive bien jusqu'au prompt, où la consigne le lit.
+        self.assertIn('"stack"', self._prompt([article], stack=self.STACK))
+
+    def test_an_alias_in_the_body_is_enough_to_match(self):
+        """Le titre ne nomme pas toujours le composant : « les produits IBM » l'a montré."""
+        article = make_article(
+            title="Multiples vulnérabilités dans plusieurs produits",
+            content="L'avis vise Traefik Proxy, en version 3.1.",
+        )
+
+        payload = self._payload([article], stack=self.STACK)[1]
+
+        self.assertEqual(["Traefik"], payload[0]["stack"])
+
+    def test_an_untouched_advisory_carries_no_stack_field(self):
+        article = make_article(title="CVE-2026-9999 : RCE dans FortiOS", content="Un avis.")
+
+        payload = self._payload([article], stack=self.STACK)[1]
+
+        self.assertNotIn("stack", payload[0])
+
+    def test_a_declared_stack_switches_the_rule_to_the_graduated_one(self):
+        prompt = self._prompt(
+            [make_article(title="CVE-2026-1234 : RCE dans FortiOS")], stack=self.STACK
+        )
+
+        self.assertIn("Le champ « stack » nomme les composants que la personne exploite", prompt)
+        # Ce qui est touché garde tout le détail.
+        self.assertIn("la plage touchée ET la version corrigée", prompt)
+        # Ce qui ne l'est pas le perd, et la consigne le dit sans nuance.
+        self.assertIn("AUCUN numéro de version, aucune plage, aucune branche", prompt)
+        self.assertIn("UNE phrase", prompt)
+
+    def test_the_rule_holds_on_a_day_where_nothing_is_touched(self):
+        """Le point qui se déduirait mal des articles : la stack existe, rien ne la touche.
+
+        Déduire la graduation de la présence du champ rendrait le détail complet à tout
+        le monde exactement les jours où aucune CVE ne concerne l'auditeur — l'inverse
+        de ce qu'on veut.
+        """
+        prompt = self._prompt(
+            [make_article(title="CVE-2026-9999 : RCE dans FortiOS")], stack=self.STACK
+        )
+
+        self.assertNotIn('"stack"', prompt)
+        self.assertIn("Le champ « stack »", prompt)
+
+    def test_the_common_rules_survive_in_both_regimes(self):
+        """Un sujet par CVE, le nom commercial exact, rien d'inventé : jamais gradué."""
+        article = [make_article(title="CVE-2026-1234 : RCE dans FortiOS")]
+
+        for prompt in (self._prompt(article), self._prompt(article, stack=self.STACK)):
+            self.assertIn("UNE vulnérabilité = UN sujet à elle seule", prompt)
+            self.assertIn("sous leur nom commercial exact", prompt)
+            self.assertIn("les paliers de longueur ci-dessus ne s'appliquent pas ici", prompt)
 
 
 class DepthTierTests(PromptCase):

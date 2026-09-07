@@ -148,12 +148,19 @@ class LLMProvider:
         articles: list[dict],
         language: str = "fr",
         profil: str | None = None,
+        stack_declaree: bool = False,
     ) -> str:
-        """Le texte du digest d'une catégorie, celui qui part en synthèse vocale."""
+        """Le texte du digest d'une catégorie, celui qui part en synthèse vocale.
+
+        `stack_declaree` dit si l'on sait ce que la personne exploite, et rien d'autre :
+        c'est ce qui décide du détail donné sur les versions d'une CVE. La liste elle-même
+        ne monte pas jusqu'ici — elle a déjà servi, article par article, à poser le champ
+        « stack » du payload.
+        """
         return self._chat(
             DIGEST,
             prompts.digest_system(profil),
-            prompts.digest_user(category, articles, language),
+            prompts.digest_user(category, articles, language, stack_declaree),
         )
 
     def write_ephemeride(self, day) -> str:
@@ -167,23 +174,26 @@ class LLMProvider:
 
     def write_montage(
         self,
-        sections: list[dict],
+        sujets: list[dict],
         jour: str,
+        constats: list[str],
         muettes: list[str],
         language: str = "fr",
         profil: str | None = None,
         prenom: str = "",
+        stack_declaree: bool = False,
     ) -> str:
         """Le texte de l'audio unique d'une journée, celui qui part en synthèse vocale.
 
         Un appel par journée et non par catégorie, comme l'éphéméride — et seulement en
-        mode `global` : le mode par catégorie ne le paie jamais. L'entrée n'est pas faite
-        d'articles mais des résumés déjà écrits : ce chemin ne relit aucun contenu de flux.
+        mode `global` : le mode par catégorie ne le paie jamais. L'entrée est faite des
+        sujets de toutes les catégories, déjà remis dans un seul ordre, et des constats
+        que les catégories déterministes ont rédigés sans modèle.
         """
         return self._chat(
             MONTAGE,
             prompts.montage_system(profil, prenom),
-            prompts.montage_user(sections, jour, muettes, language),
+            prompts.montage_user(sujets, jour, constats, muettes, language, stack_declaree),
         )
 
     def speak(self, text: str) -> bytes:

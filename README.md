@@ -181,21 +181,25 @@ En `category` — le défaut, et le comportement historique — chaque catégori
 articles retenus produit son `<slug>.mp3`, et l'email les joint tous.
 
 En `global`, aucune catégorie ne produit de fichier. Une fois toutes les catégories
-traitées, leurs résumés — déjà écrits — partent dans un **montage** qui les enchaîne en
-une seule prise de parole :
+traitées, les articles retenus de la journée — **toutes catégories confondues** — sont
+remis dans un seul ordre et racontés d'une traite :
 
 - une salutation, qui vous nomme si la clé `prenom` du document de profil est remplie ;
 - l'éphéméride du jour, la même que celle qui ouvre l'email, dite à voix haute ;
 - une phrase qui annonce ce qui vient, de quoi décider d'écouter jusqu'au bout ;
-- les catégories dans l'ordre, sans être annoncées comme des rubriques, avec une
-  transition de quelques mots entre elles ;
+- les sujets par score décroissant, ceux qui se répondent côte à côte, sans qu'aucune
+  catégorie soit nommée, avec une transition de quelques mots entre eux ;
+- la phrase des catégories déterministes (avis CERT-FR), relayée telle quelle ;
 - une conclusion sur les deux à quatre points actionnables de la journée.
 
-Le montage **réécrit les liaisons, pas les faits** : identifiants de vulnérabilité, noms
-de produits et numéros de version se recopient à l'identique. L'email, lui, ne change
-pas — il continue de montrer les résumés de chaque catégorie mot pour mot, avec leurs
-liens et leur liste « à surveiller ». Seule la pièce jointe est différente : un
-`journee.mp3` unique, nommé une fois sous l'introduction.
+L'ordre est calculé, pas demandé au modèle : le score du scoring d'abord, puis un
+regroupement par thématique, à l'échelle de la journée et non d'une catégorie. C'est ce
+qui évite qu'un sujet grave passe en huitième position parce que son dossier FreshRSS
+est le dernier, et ce qui rapproche deux dépêches du même fait venues de deux catégories.
+
+L'email, lui, ne change pas — il continue de montrer les résumés de chaque catégorie mot
+pour mot, avec leurs liens et leur liste « à surveiller ». Seule la pièce jointe est
+différente : un `journee.mp3` unique, nommé une fois sous l'introduction.
 
 C'est un appel de complétion de plus par journée, et autant de caractères de synthèse
 qu'avant répartis sur moins d'appels : le coût est sensiblement le même. Il apparaît

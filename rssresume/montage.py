@@ -1,14 +1,30 @@
-"""L'audio unique d'une journée : un seul texte pour toutes les catégories.
+"""L'audio unique d'une journée : un seul texte pour tous les sujets, toutes catégories.
 
-Un second passage, et il faut qu'il le reste. Les résumés de catégorie sont déjà écrits
-et partent tels quels dans l'email : le montage ne les remplace pas, il les enchaîne —
-une salutation devant, l'éphéméride du jour, des transitions entre les catégories, et
-une conclusion sur ce qui reste à faire.
+Le montage enchaînait les résumés de catégorie déjà écrits, dans l'ordre des catégories.
+Un seul fichier, une seule voix — mais l'ordre restait celui des dossiers FreshRSS : le
+sujet le plus grave de la matinée pouvait tomber en huitième position parce que sa
+catégorie était la dernière, et deux articles qui parlaient de la même chose depuis deux
+catégories différentes restaient séparés par tout le reste de la journée.
 
-Un module à part de `summaries.py`, et non une méthode de plus dedans : rien n'y
-ressemble. D'un côté un résumé d'articles, de l'autre un montage de résumés ; d'un côté
-un repli extractif qui relit du contenu de flux, de l'autre un assemblage qui n'en relit
-aucun ; et deux actions distinctes chez le fournisseur, donc deux postes de dépense.
+Il part donc maintenant des **sujets**, pas des résumés : les articles retenus de toutes
+les catégories, remis dans un seul ordre — score décroissant, sujets connexes côte à
+côte (`models.groupees_par_thematique`). C'est une passe de rédaction sur la source, plus
+un second passage sur du texte déjà résumé : les numéros de version ne traversent plus
+deux réécritures, et la fusion des doublons se fait là où elle a du sens, sur des
+articles et non sur de la prose.
+
+Les résumés de catégorie ne disparaissent pas pour autant : c'est eux que l'email montre,
+et c'est eux que l'assemblage local remet bout à bout quand aucun modèle n'est joignable.
+Ce que l'œil lit et ce que l'oreille entend sont deux textes, écrits pour deux usages.
+
+Les catégories déterministes font exception : leur constat est déjà rédigé, sans modèle,
+et se relaie tel quel plutôt que d'être refait — refaire un tri déterministe avec un LLM
+est exactement ce que `rssresume/certfr/` a été écrit pour éviter.
+
+Un module à part de `summaries.py`, et non une méthode de plus dedans : d'un côté le
+résumé d'une catégorie, écrit pour être lu ; de l'autre la journée entière, écrite pour
+être entendue d'une traite — avec sa salutation, son éphéméride et sa conclusion. Et
+deux actions distinctes chez le fournisseur, donc deux postes de dépense.
 
 Le couple `MontageService` / `models.Montage` suit celui de `EphemerideService` /
 `models.Ephemeride` : un service qui sait descendre d'une marche quand le modèle manque,
@@ -17,16 +33,22 @@ et un objet de valeur que le journal écrit et que `--send-only` relit.
 
 from __future__ import annotations
 
+from rssresume.certfr import Stack
+from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
 from rssresume.llm import LLMError, LLMProvider
 from rssresume.models import (
     ORIGINE_ASSEMBLAGE,
     ORIGINE_MONTAGE,
+    Article,
     CategoryDigest,
     Ephemeride,
     Montage,
+    Note,
+    groupees_par_thematique,
 )
 from rssresume.newsletter import date_longue
 from rssresume.tools import console
+from rssresume.tools.text import truncate_sentences
 
 
 class MontageService:
@@ -43,6 +65,8 @@ class MontageService:
         language: str = "fr",
         profil: str | None = None,
         prenom: str = "",
+        char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT,
+        stack: Stack | None = None,
     ):
         self._provider = provider
         self._language = language
@@ -50,11 +74,17 @@ class MontageService:
         #: Vide, la salutation ne nomme personne. C'est une salutation en moins, pas une
         #: erreur : la clé `prenom` du document de profil est facultative.
         self._prenom = prenom
+        #: Le même plafond que celui du résumé de catégorie : cette passe lit désormais
+        #: les mêmes articles, et c'est le seul chemin d'entrée qu'il reste à borner.
+        self._char_limit = char_limit
+        #: Les composants exploités, pour la seule règle qui en dépend : le détail donné
+        #: sur les versions d'une CVE selon qu'elle touche ou non ce qui tourne chez soi.
+        self._stack = stack if stack is not None else Stack()
 
     def ecrire(
         self, ephemeride: Ephemeride | None, digests: list[CategoryDigest]
     ) -> Montage:
-        """Le texte de la journée, monté depuis les résumés déjà produits.
+        """Le texte de la journée, écrit d'une traite depuis les sujets de toutes les catégories.
 
         Le jour dont il est question est celui de l'éphéméride — le jour de l'ENVOI, pas
         celui que le digest raconte. C'est déjà le jour sur lequel l'email s'ouvre, et
@@ -68,20 +98,33 @@ class MontageService:
             return Montage(texte="", origine=ORIGINE_ASSEMBLAGE)
 
         jour = self._jour(ephemeride)
-        sections = [
-            {"categorie": digest.category, "resume": digest.summary_text.strip()}
-            for digest in racontees
-        ]
+        sections = self._sections(racontees)
         if self._provider is None:
+            return self._assembler(jour, sections, muettes)
+
+        sujets = self._sujets(racontees)
+        constats = [
+            digest.summary_text.strip() for digest in racontees if digest.deterministe
+        ]
+        if not sujets and not constats:
+            # Toutes les catégories racontées sont passées par un modèle absent au moment
+            # de la sélection : il n'y a ni article ni constat à dire.
             return self._assembler(jour, sections, muettes)
 
         console.detail(
             f"montage via {self._provider.name} — {self._provider.model('montage')} "
-            f"({len(sections)} catégorie(s) enchaînée(s))"
+            f"({len(sujets)} sujet(s) toutes catégories, {len(constats)} constat(s))"
         )
         try:
             texte = self._provider.write_montage(
-                sections, jour, muettes, self._language, self._profil, self._prenom
+                sujets,
+                jour,
+                constats,
+                muettes,
+                self._language,
+                self._profil,
+                self._prenom,
+                not self._stack.vide,
             )
         except LLMError as exc:
             # La journée est déjà payée : scoring, résumés, tags. La perdre parce que le
@@ -90,6 +133,63 @@ class MontageService:
             console.detail(f"montage indisponible ({exc}) — assemblage local des résumés")
             return self._assembler(jour, sections, muettes)
         return Montage(texte=texte.strip(), origine=ORIGINE_MONTAGE)
+
+    def _sujets(self, racontees: list[CategoryDigest]) -> list[dict]:
+        """Les articles retenus de toutes les catégories, dans l'ordre où ils se racontent.
+
+        L'ordre est refait à l'échelle de la journée et non hérité des catégories : c'est
+        toute la différence entre un seul fichier et un seul récit. La catégorie d'origine
+        n'accompagne pas le sujet, délibérément — elle n'a plus rien à décider une fois
+        l'ordre posé, et un modèle qui la voit finit par l'annoncer.
+        """
+        notes: dict[str, Note] = {}
+        articles: list[Article] = []
+        for digest in racontees:
+            if digest.deterministe:
+                # Son constat est déjà écrit, et ses avis n'ont pas été notés : ils
+                # n'ont ni score ni thématique à faire valoir dans l'ordre du jour.
+                continue
+            notes.update(digest.notes)
+            articles.extend(digest.selected)
+        return [
+            self._sujet(article, notes.get(article.item_id))
+            for article in groupees_par_thematique(articles, notes)
+        ]
+
+    def _sujet(self, article: Article, note: Note | None) -> dict:
+        """Un sujet tel qu'il part au montage : le même payload que celui du résumé.
+
+        Le même, et c'est voulu : les deux textes doivent dire les mêmes faits, et deux
+        façons de préparer un article finiraient par ne plus donner à lire et à entendre
+        la même journée. Ni URL ni nom de flux, pour la raison habituelle — ce qui n'est
+        pas dans le contexte ne peut pas être prononcé.
+        """
+        sujet = {
+            "title": article.title,
+            "content": truncate_sentences(article.content_text, self._char_limit),
+        }
+        concernes = self._stack.concernes(f"{article.title}\n{article.content_text}")
+        if concernes:
+            sujet["stack"] = list(concernes)
+        if note:
+            sujet["thematique"] = note.thematique
+            if note.angle:
+                # Absent des articles dont le score vient du cache de tags.
+                sujet["angle"] = note.angle
+        return sujet
+
+    @staticmethod
+    def _sections(racontees: list[CategoryDigest]) -> list[dict]:
+        """Les résumés déjà écrits, pour le seul assemblage local.
+
+        Ils ne partent plus au modèle — il travaille sur les articles — mais ils restent
+        ce que le repli met bout à bout : sans fournisseur, il n'y a personne pour rédiger
+        quoi que ce soit, et ces textes-là existent déjà.
+        """
+        return [
+            {"categorie": digest.category, "resume": digest.summary_text.strip()}
+            for digest in racontees
+        ]
 
     @staticmethod
     def _trier(

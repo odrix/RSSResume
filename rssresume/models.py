@@ -104,6 +104,36 @@ class Note:
     angle: str = ""
 
 
+def note_de(article: "Article", notes: dict[str, Note]) -> Note:
+    """La note de cet article, une note neutre quand le scoring est désactivé."""
+    return notes.get(article.item_id) or Note(score=0)
+
+
+def groupees_par_thematique(
+    articles: Iterable["Article"], notes: dict[str, Note]
+) -> list["Article"]:
+    """Articles triés score décroissant, puis regroupés par thématique.
+
+    Le tri par score seul faisait sauter du réglementaire au cyber, puis au marché, puis
+    de nouveau au réglementaire : à l'écoute, aucune transition n'est possible. Regrouper
+    ne coûte aucun appel — la thématique est déjà notée — et l'urgence reste respectée :
+    un groupe est classé sur son meilleur article, et l'ordre à l'intérieur du groupe
+    reste le score décroissant.
+
+    Ici et non dans `digest.py` : le même ordre sert deux fois, à l'échelle d'une
+    catégorie pour son résumé, et à l'échelle de la journée entière pour l'audio unique
+    du mode `global`. Deux implémentations finiraient par ne plus raconter dans le même
+    ordre ce que l'œil et l'oreille reçoivent.
+    """
+    classes = sorted(articles, key=lambda article: note_de(article, notes).score, reverse=True)
+    groupes: dict[str, list["Article"]] = {}
+    for article in classes:
+        groupes.setdefault(note_de(article, notes).thematique, []).append(article)
+    # Tri stable : à meilleur score égal, le groupe apparu le premier reste devant.
+    ordre = sorted(groupes, key=lambda theme: -note_de(groupes[theme][0], notes).score)
+    return [article for theme in ordre for article in groupes[theme]]
+
+
 @dataclasses.dataclass(frozen=True)
 class Ephemeride:
     """Ce qui ouvre l'email : un jour, sa fête, et un fait survenu à cette date.
@@ -205,6 +235,16 @@ class CategoryDigest:
     #: déjà lus et déjà notés : les taire revenait à jeter la moitié de ce que la
     #: journée a coûté, alors qu'un titre et un lien suffisent à les rendre utiles.
     watchlist: list[Article] = dataclasses.field(default_factory=list)
+    #: Toutes les notes de la catégorie, calculées ou relues des tags. `new_notes` n'en
+    #: est que la part à écrire dans FreshRSS. Portées ici parce que l'audio de journée
+    #: en a besoin après coup : c'est le score et la thématique qui décident dans quel
+    #: ordre les sujets de toutes les catégories s'enchaînent. {item_id: Note}
+    notes: dict[str, Note] = dataclasses.field(default_factory=dict)
+    #: Vrai pour une catégorie routée hors du pipeline LLM (`rssresume/certfr/`). Son
+    #: `summary_text` n'est pas un résumé mais un constat déjà rédigé, qu'on relaie sans
+    #: le refaire : le montage doit pouvoir la distinguer d'une catégorie résumée, dont
+    #: il reprend les articles et non le texte.
+    deterministe: bool = False
 
     @property
     def links(self) -> list[Link]:

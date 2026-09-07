@@ -66,17 +66,32 @@ Le champ « angle » dit en quoi l'article compte pour cet auditeur précis : c'
 Les articles arrivent regroupés par thématique (« thematique ») et dans l'ordre où ils doivent être racontés : garde cet ordre. Enchaîne les articles d'une même thématique sans les annoncer comme une rubrique, et marque le passage d'une thématique à la suivante par une transition d'une poignée de mots.
 Plusieurs articles peuvent couvrir le même événement depuis des sources différentes. Traite-les comme UN SEUL sujet : le fait dit une seule fois, et ce que chaque article apporte de plus gardé au même endroit. Ne produis jamais deux passages distincts pour le même fait, même quand les titres, les angles ou les formulations diffèrent. Les paliers de longueur ci-dessus se comptent en sujets après fusion, pas en articles reçus. Le même FAIT, pas le même thème : deux vulnérabilités différentes, deux décisions réglementaires différentes, deux incidents différents restent deux sujets distincts.
 Ne nomme jamais le média, le flux, le site ni le journaliste qui a publié l'information : ni entre parenthèses, ni en incise, ni sous la forme « selon X » ou « d'après X ». L'auditeur veut le fait, pas qui l'a rapporté. Une organisation nommée parce qu'elle EST l'acteur du fait — l'ANSSI qui publie un avis, la CNIL qui sanctionne, un éditeur qui corrige son produit — n'est pas une source : elle se dit normalement, c'est le sujet de la phrase.
-Les vulnérabilités suivent une règle à part, où la précision prime sur le style. UNE vulnérabilité = UN sujet à elle seule : deux CVE différentes ne se fondent jamais dans la même phrase, même publiées le même jour, par la même source, sur le même produit. Pour chacune, dis simplement, dans cet ordre : l'identifiant, le produit et les versions touchés, ce que la faille permet, si elle est déjà exploitée, et ce qu'il y a à faire. Nomme toujours l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit dans l'avis, et jamais sous une catégorie — « FortiOS », pas « le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur ». Donne les numéros de version en toutes lettres de l'avis : la plage touchée ET la version corrigée, « les versions 7.4.0 à 7.4.4, corrigé en 7.4.5 ». C'est sur ces deux points — le nom exact et les versions — que l'auditeur décide s'il est concerné : ils passent avant tout le reste, et une CVE sans eux ne sert à rien. Quand l'avis nomme plusieurs produits ou plusieurs branches, cite-les tous. Une à deux phrases factuelles, sans mise en scène ni formule d'accroche, et ce quel que soit le nombre d'articles du jour — les paliers de longueur ci-dessus ne s'appliquent pas ici. Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y ces éléments plutôt que de paraphraser le titre. Ce qui n'y figure pas ne se dit pas : une version ou une date inventée sur un avis de sécurité est pire que l'absence d'information — quand l'avis ne donne pas les versions, dis-le en trois mots plutôt que de les deviner.
+Les vulnérabilités suivent une règle à part, où la précision prime sur le style. UNE vulnérabilité = UN sujet à elle seule : deux CVE différentes ne se fondent jamais dans la même phrase, même publiées le même jour, par la même source, sur le même produit. Pour chacune, dis simplement, dans cet ordre : l'identifiant, le produit et les versions touchés, ce que la faille permet, si elle est déjà exploitée, et ce qu'il y a à faire. Nomme toujours l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit dans l'avis, et jamais sous une catégorie — « FortiOS », pas « le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur ». Une à deux phrases factuelles, sans mise en scène ni formule d'accroche, et ce quel que soit le nombre d'articles du jour — les paliers de longueur ci-dessus ne s'appliquent pas ici. Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y ces éléments plutôt que de paraphraser le titre. Ce qui n'y figure pas ne se dit pas : une version ou une date inventée sur un avis de sécurité est pire que l'absence d'information. {règle des versions}
 Ouvre par UNE seule phrase courte, adressée à la personne qui écoute, qui situe la journée dans cette catégorie : combien il y a à dire, et ce qui en fait le poids — une urgence, une gravité, une surprise, ou au contraire une journée calme. Cette phrase se juge sur les articles que tu as sous les yeux, elle n'est jamais la même d'un jour à l'autre : « Trois avis ce matin, dont un qui vous concerne directement. », « Journée creuse, un seul sujet mais il compte. », « Beaucoup de bruit aujourd'hui, rien d'urgent. » Pas de salutation, pas de « voici le résumé du jour », pas de « dans cette catégorie », pas d'annonce du plan. Enchaîne ensuite directement sur le premier sujet.
 Termine par UNE seule phrase courte, adressée à la même personne, qui découle des sujets du jour et d'eux seuls : ce qu'il reste à faire, ce qui est à surveiller demain, ou le fait qu'il n'y a rien à faire — « Le correctif Fortinet, c'est la seule chose à faire aujourd'hui. », « Rien qui demande une action de votre part. », « À suivre demain, la décision de la CNIL. » Pas de conclusion passe-partout : ni rappel que la sécurité est un enjeu, ni appel à la vigilance, ni « restez attentif », ni résumé du résumé, ni « bonne journée » seul. Cette phrase et la phrase d'ouverture ne doivent pas dire la même chose.
 
 Articles:
 <<<DONNEES ARTICLES>>>
-[{"title": "{titre de l'article}", "content": "{texte intégral de l'article}", "thematique": "{thématique du scoring}", "angle": "{angle du scoring}"}, …]
+[{"title": "{titre de l'article}", "content": "{texte intégral de l'article}", "stack": ["{composant exploité que l'article cite}"], "thematique": "{thématique du scoring}", "angle": "{angle du scoring}"}, …]
 <<<FIN DONNEES ARTICLES>>>
 ```
 
 Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés s'ils apparaissent dans le texte d'un article (`prompts.fenced`).
+
+### La règle des versions, en deux variantes
+
+Le dernier bloc du paragraphe CVE dépend de la clé `stack` du document de profil, et **d'elle
+seule** — pas du contenu des articles du jour.
+
+| Stack déclarée | Texte injecté à la place de `{règle des versions}` |
+| --- | --- |
+| non (le défaut) | `Donne les numéros de version en toutes lettres de l'avis : la plage touchée ET la version corrigée, « les versions 7.4.0 à 7.4.4, corrigé en 7.4.5 ». C'est sur ces deux points — le nom exact et les versions — que l'auditeur décide s'il est concerné : ils passent avant tout le reste, et une CVE sans eux ne sert à rien. Quand l'avis nomme plusieurs produits ou plusieurs branches, cite-les tous. Quand l'avis ne donne pas les versions, dis-le en trois mots plutôt que de les deviner.` |
+| oui | `Le champ « stack » nomme les composants que la personne exploite et que cet article cite. C'est lui, et lui seul, qui décide du détail donné sur les versions. Quand il est là […] donne les numéros de version en toutes lettres de l'avis, la plage touchée ET la version corrigée […]. Quand le champ est absent, elle n'exploite pas ce produit : la vulnérabilité se situe, elle ne s'applique pas. UNE phrase […]. AUCUN numéro de version, aucune plage, aucune branche, aucune version corrigée, et rien à faire à annoncer […].` (texte complet dans `prompts.CVE_STACK_INSTRUCTION`) |
+
+Faute de stack, on ne peut pas décider à la place de l'auditeur qu'une CVE ne le concerne pas :
+c'est pourquoi l'absence de liste rend le détail complet à tout le monde. Et la variante ne se
+choisit pas sur la présence du champ dans le lot du jour — une stack déclarée qu'aucun avis ne
+touche doit quand même alléger la matinée entière.
 
 ---
 
@@ -90,6 +105,7 @@ Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés 
 | `{palier de profondeur}` | `depth_instruction(len(articles))` | une des trois phrases du tableau ci-dessous, selon le **nombre d'articles retenus** |
 | `{titre de l'article}` | `Article.title` | brut |
 | `{texte intégral de l'article}` | `Article.content_text` | HTML retiré, coupé à `RSSRESUME_ARTICLE_CHAR_LIMIT` (8 000 par défaut) sur la dernière **phrase entière**, avec ` […]` en marque de coupe — bien au-delà des 400 caractères du scoring, et au-dessus des 6 000 d'un avis enrichi. Complété pour les CVE, voir plus bas |
+| `{composant exploité que l'article cite}` | `Stack.concernes(titre + contenu)` | les noms canoniques de la clé `stack` du document de profil que le texte de l'article cite, dans l'ordre déclaré. **La clé entière disparaît du JSON quand rien ne correspond** — et c'est cette absence qui allège la CVE |
 | `{thématique du scoring}` | `Note.thematique` | `reglementaire`, `cyber`, `marche`, `stack` ou `autre`. Absent si le scoring est désactivé |
 | `{angle du scoring}` | `Note.angle` | **la clé entière disparaît du JSON quand l'angle est vide**, ce qui est le cas de tout article dont la note a été relue des tags |
 
@@ -103,7 +119,10 @@ Le JSON des articles est encadré par les deux marqueurs, qui sont neutralisés 
 
 ### L'enrichissement CVE
 
-Avant la construction du prompt, `cve.enrich()` peut allonger `{texte intégral de l'article}`.
+`cve.enrich()` peut allonger `{texte intégral de l'article}`. Elle est appelée dans `digest.py`,
+juste après la sélection, et non à la construction du prompt : le texte enrichi reste sur
+l'article retenu, où trois lecteurs le reprennent — ce prompt, l'appariement sur la stack, et
+l'audio de journée du mode `global`.
 Trois conditions cumulatives : l'article a une URL, il mentionne une CVE (titre ou contenu), et
 son contenu fait **moins de 1 200 caractères**. La page est alors lue, nettoyée de ses
 `<script>`/`<style>`, coupée à **6 000 caractères**, et ajoutée ainsi :
@@ -141,7 +160,7 @@ Résume les articles du jour pour la catégorie 'Cybersécurité' en fr.
 
 Articles:
 <<<DONNEES ARTICLES>>>
-[{"title": "CVE-2026-1111 : exécution de code à distance dans FortiOS", "content": "Le CERT-FR publie un avis.\n\nDétail lu sur la page de l'avis :\nUne vulnérabilité critique affecte FortiOS versions 7.4.0 à 7.4.4. Un défaut de validation permet…", "thematique": "cyber", "angle": "Une RCE sur un équipement de bordure présent dans son infrastructure."}, {"title": "NIS2 : le décret d'application est publié", "content": "Le décret précise les obligations de notification…", "thematique": "reglementaire"}]
+[{"title": "CVE-2026-1111 : exécution de code à distance dans FortiOS", "content": "Le CERT-FR publie un avis.\n\nDétail lu sur la page de l'avis :\nUne vulnérabilité critique affecte FortiOS versions 7.4.0 à 7.4.4. Un défaut de validation permet…", "stack": ["FortiOS"], "thematique": "cyber", "angle": "Une RCE sur un équipement de bordure présent dans son infrastructure."}, {"title": "NIS2 : le décret d'application est publié", "content": "Le décret précise les obligations de notification…", "thematique": "reglementaire"}]
 <<<FIN DONNEES ARTICLES>>>
 ```
 
