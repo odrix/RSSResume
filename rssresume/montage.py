@@ -172,6 +172,7 @@ class MontageService:
         if concernes:
             sujet["stack"] = list(concernes)
         if note:
+            sujet["score"] = note.score
             sujet["thematique"] = note.thematique
             if note.angle:
                 # Absent des articles dont le score vient du cache de tags.

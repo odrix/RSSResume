@@ -206,6 +206,17 @@ class PromptTests(PromptCase):
         self.assertIn("reglementaire", prompt)
         self.assertIn("Le champ « angle »", prompt)
 
+    def test_the_score_travels_with_the_subject_for_depth(self):
+        """Le score notait déjà l'article ; sans lui dans le payload, rien ne pouvait
+
+        graduer la profondeur du résumé dessus — la consigne qui le lit resterait sans
+        rien à lire.
+        """
+        prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber", "Un angle.")})
+
+        self.assertIn('"score": 9', prompt)
+        self.assertIn("Chaque sujet porte un champ « score »", prompt)
+
     def test_prompt_keeps_the_thematic_order_it_receives(self):
         """Le regroupement est fait par le code : le modèle ne doit ni le défaire ni l'annoncer."""
         prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber", "Un angle.")})
@@ -222,6 +233,7 @@ class PromptTests(PromptCase):
         """Un score relu des tags revient sans angle : le champ est simplement omis."""
         prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber")})
 
+        self.assertIn('"score": 9', prompt)
         self.assertIn('"thematique": "cyber"', prompt)
         self.assertNotIn('"angle"', prompt)
 
@@ -235,6 +247,7 @@ class PromptTests(PromptCase):
         hors_lot = self._prompt([make_article()], {"autre-item": Note(9, "cyber", "Un angle.")})
 
         for prompt in (sans_note, hors_lot):
+            self.assertNotIn('"score"', prompt)
             self.assertNotIn('"thematique"', prompt)
             self.assertNotIn('"angle"', prompt)
         # La consigne reste, elle : c'est elle qui dit quoi faire quand l'angle manque.

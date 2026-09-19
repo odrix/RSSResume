@@ -76,12 +76,13 @@ SCORING_RULES = """Tu reçois une liste d'articles (id, titre, résumé court). 
 - "angle" : UNE phrase expliquant en quoi l'article compte (ou non) pour ce profil précis.
 
 Barème :
-0-2  hors sujet pour ce profil
-3-4  connexe, mais sans conséquence pour ce profil
-5-6  intéressant à connaître, non actionnable
-7-8  pertinent, à lire aujourd'hui
-9-10 critique ou directement actionnable (obligation à respecter, faille sur ses propres
-     outils, mouvement d'un concurrent direct)
+0    hors sujet pour ce profil
+1-2  ne concerne pas ce profil
+3-4  intérêt faible
+5-6  à mentionner en passant : une curiosité, un fait à connaître, sans le creuser
+7-8  pertinent, un résumé suffit (obligation à respecter, faille sur ses propres outils,
+     mouvement d'un concurrent direct)
+9-10 majeur pour ce profil : mérite d'être développé plus que les autres
 
 Règles impératives :
 - Traite TOUS les articles reçus, sans exception ni échantillonnage. Un article hors sujet
@@ -190,8 +191,18 @@ DEPTH_TIERS = (
     (8, "Une à deux phrases par sujet."),
 )
 DEPTH_DEFAULT = (
-    "Une phrase par sujet, en fondant dans la même phrase ceux qui traitent de la même chose, "
-    "et en gardant un peu plus de place pour les deux ou trois plus importants."
+    "Une phrase par sujet, en fondant dans la même phrase ceux qui traitent de la même chose."
+)
+
+#: Le palier ci-dessus fixe l'enveloppe globale, sur le seul volume ; le score de chaque
+#: sujet décide comment elle se répartit entre eux — deux sujets à huit ne pèsent pas comme
+#: un neuf et un quatre, et l'enveloppe seule ne le distinguait pas.
+SCORE_DEPTH_INSTRUCTION = (
+    "Chaque sujet porte un champ « score » de 0 à 10, hérité de la notation du matin : "
+    "utilise-le pour répartir, entre les sujets, la place que t'accorde la consigne de "
+    "longueur ci-dessus. À 9 ou 10, développe un peu plus que les autres. À 7 ou 8, un "
+    "résumé suffit, sans plus. En dessous de 7, une mention brève, ou fondue dans la phrase "
+    "d'un sujet voisin plutôt qu'une place à part."
 )
 
 #: Le profil de pertinence est le même que celui du scoring : sans lui, le résumeur
@@ -377,6 +388,7 @@ def digest_user(
         STYLE_INSTRUCTION,
         RHYTHM_INSTRUCTION,
         depth_instruction(len(articles)),
+        SCORE_DEPTH_INSTRUCTION,
         ANGLE_INSTRUCTION,
         ORDER_INSTRUCTION,
         MERGE_INSTRUCTION,
@@ -538,6 +550,7 @@ def montage_user(
         SOMMAIRE_INSTRUCTION,
         MONTAGE_ORDER_INSTRUCTION,
         depth_instruction(len(sujets)),
+        SCORE_DEPTH_INSTRUCTION,
         ANGLE_INSTRUCTION,
         MERGE_INSTRUCTION,
         cve_instruction(stack_declaree),

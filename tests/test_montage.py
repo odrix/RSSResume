@@ -186,6 +186,7 @@ class OrdreDuJourTests(unittest.TestCase):
         )
 
         sujet, = provider.appels[0]["sujets"]
+        self.assertEqual(9, sujet["score"])
         self.assertEqual("cyber", sujet["thematique"])
         self.assertEqual("Ce que Une faille change.", sujet["angle"])
         self.assertEqual("Le corps de l'article.", sujet["content"])
@@ -434,6 +435,15 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Le bloc « constats » porte des phrases DÉJÀ écrites", prompt)
         self.assertIn("jamais les reformuler", prompt)
         self.assertIn("7 avis, aucun ne touche la stack.", prompt)
+
+    def test_the_user_prompt_grades_depth_on_each_subject_score(self):
+        """Le palier de volume fixe l'enveloppe ; le score de chaque sujet la répartit."""
+        from rssresume.llm.prompts import montage_user
+
+        prompt = montage_user([{"title": "x", "content": "y", "score": 9}], "Lundi.", [], [], "fr")
+
+        self.assertIn("Chaque sujet porte un champ « score »", prompt)
+        self.assertIn('"score": 9', prompt)
 
     def test_the_user_prompt_grades_the_cve_detail_on_the_declared_stack(self):
         from rssresume.llm.prompts import montage_user

@@ -67,8 +67,9 @@ class SummaryGenerator:
     def _to_payload(self, article: Article, note: Note | None) -> dict:
         """Article tel qu'il part au résumeur : son contenu, plus ce que le scoring en sait.
 
-        L'angle et la thématique sont déjà payés par le scoring. Les jeter obligeait le
-        résumeur à redécouvrir seul pourquoi chaque article était là.
+        Le score, l'angle et la thématique sont déjà payés par le scoring. Les jeter
+        obligeait le résumeur à redécouvrir seul pourquoi chaque article était là, et à
+        quel point s'y attarder.
         """
         payload = {
             "title": article.title,
@@ -88,6 +89,7 @@ class SummaryGenerator:
         if concernes:
             payload["stack"] = list(concernes)
         if note:
+            payload["score"] = note.score
             payload["thematique"] = note.thematique
             if note.angle:
                 # Absent des articles dont le score vient du cache de tags.
