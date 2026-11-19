@@ -481,6 +481,11 @@ passage ne lit rien et ne résume rien. Le dossier et `RSSRESUME_PROFILE_FILE` p
 font échouer le lancement : déplacer le document dans le dossier et retirer la variable.
 `RSSRESUME_PROFILE` fait échouer le lancement dans tous les cas.
 
+Avec `RSSRESUME_PROFILES_DB`, les profils viennent d'une base SQLite plutôt que d'un dossier :
+c'est elle qu'édite l'[API HTTP](#api-http), et le passage la sert exactement comme le dossier
+— même validation, même `--profil`, sortie sous `output/<id>/`. Elle est exclusive des trois
+autres variables.
+
 ### Renvoyer l'email d'une journée
 
 Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est l'envoi
@@ -681,16 +686,20 @@ défauts de l'horaire, et imposer `RSSRESUME_OUTPUT_DIR=/data`. Il l'emporte sur
 travail ferait sinon écrire le conteneur dans `/app`, que l'utilisateur non-root ne
 possède pas — et la sortie du jour n'atterrirait pas dans le volume.
 
-Le compose impose aussi `RSSRESUME_PROFILES_DIR=/data/profils` : les profils vivent dans le
-volume, un `{username}.json` par personne, là où le site les édite. Le dossier doit exister —
-absent, le lancement échoue — et `RSSRESUME_PROFILE_FILE` comme `RSSRESUME_PROFILE` doivent
-**quitter** l'onglet Environment : posées avec le dossier, elles font échouer le lancement.
-Migrer une installation à un seul document, puis retirer la variable :
+Le compose impose aussi `RSSRESUME_PROFILES_DB=/data/profils.sqlite3` : les profils vivent
+en base dans le volume, là où l'API les édite (voir [API HTTP](#api-http)). La base remplace
+le dossier `/data/profils` : `RSSRESUME_PROFILES_DIR`, `RSSRESUME_PROFILE_FILE` et
+`RSSRESUME_PROFILE` doivent **quitter** l'onglet Environment — posées avec la base, elles font
+échouer le lancement. Migrer des documents existants, une fois, puis retirer la variable :
 
 ```bash
-docker exec <conteneur> sh -c 'mkdir -p /data/profils'
 docker cp input/moi/profile.json <conteneur>:/data/profils/adrien.json
+docker exec <conteneur-api> python -m rssresume.api importer /data/profils
 ```
+
+L'import conserve l'`id` des documents (il en génère un sinon, et l'affiche), ne modifie pas
+les fichiers, et se rejoue sans rien réécrire. Tant qu'il n'a pas eu lieu, la base est vide
+et le passage ne sert personne.
 
 `input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
 `rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone.
@@ -707,6 +716,45 @@ digest. Pour rejouer une journée à la main, sans attendre l'heure :
 docker exec -it <conteneur> python -m rssresume --date 2026-08-23
 ```
 
+## API HTTP
+
+Le site qui édite les profils et fait écouter les journées parle à un second processus,
+`python -m rssresume.api` — le service `api` du compose, même image, même volume. Il ne lance
+aucun digest et n'appelle aucun fournisseur : il écrit la base que le passage relit, et sert
+les audios que le passage a écrits. Bibliothèque standard seulement (`http.server`, `sqlite3`).
+
+| Variable | Effet | Défaut |
+| --- | --- | --- |
+| `RSSRESUME_API_TOKEN` | jeton exigé en `Authorization: Bearer …` ; absent ou < 32 caractères, le serveur ne démarre pas | — |
+| `RSSRESUME_PROFILES_DB` | la base des profils (obligatoire pour l'API) | — |
+| `RSSRESUME_OUTPUT_DIR` | où lire les journées, `<id>/<date>/` | `output` |
+| `RSSRESUME_API_HOST` / `RSSRESUME_API_PORT` | adresse d'écoute | `0.0.0.0` / `8080` |
+
+Toutes les routes exigent le jeton (401 sinon). Réponses en JSON UTF-8 ; une erreur est
+`{"erreur": "…"}`, avec 400, 401, 404, 405, 409, 413, 416 ou 422.
+
+| Méthode et route | Réponse |
+| --- | --- |
+| `GET /api/v1/profils` | `[{"id","username","prenom","email","modifie_le"}]`, trié par nom |
+| `POST /api/v1/profils` | corps `{"username","profil","stack","email","prenom"}` → 201 profil complet, id généré ; 409 nom pris ; 422 invalide |
+| `GET /api/v1/profils/{username}` | `{"id","username","profil","stack","email","prenom","modifie_le"}` ; 404 |
+| `PUT /api/v1/profils/{username}` | corps `{"profil","stack","email","prenom"}` → 200 ; 404 ; 422 (id et nom ne changent pas) |
+| `DELETE /api/v1/profils/{username}` | 204 ; 404 — les journées restent sur le disque |
+| `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord |
+| `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |
+
+Un document est validé par `profil_depuis_dict`, la fonction même que le passage appelle : l'API
+refuse exactement ce que la tournée refuserait, avec le même message. Le corps d'une écriture
+est limité à 64 Kio (413) et doit être `application/json`.
+
+Pour l'essayer en local :
+
+```bash
+RSSRESUME_PROFILES_DB=input/profils.sqlite3 RSSRESUME_API_TOKEN=$(python -c "import secrets;print(secrets.token_urlsafe(48))") \
+  python -m rssresume.api
+python -m rssresume.api importer input/profils    # migrer des documents JSON, une fois
+```
+
 ## Organisation du code
 
 Un module par thème technique, dans [rssresume/](rssresume/) :
@@ -719,6 +767,12 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |
 | `profil.py` | le document de la personne : profil de pertinence, stack, destinataire |
+| `annuaire_sqlite.py` | `AnnuaireSqlite` : les profils en base SQLite, lus par la tournée, écrits par l'API |
+| **`api/`** | **l'API HTTP du site** (`python -m rssresume.api`) |
+| `api/serveur.py` | serveur, jeton, corps JSON, envoi des audios par plages |
+| `api/routes.py` | une classe par forme d'URL |
+| `api/sorties.py` | les journées et les audios d'un profil, lus sur le disque sans en sortir |
+| `api/importation.py` | migration d'un dossier de profils JSON vers la base |
 | `digest.py` | orchestration du digest quotidien |
 | `summaries.py` | résumé d'une catégorie : celui du fournisseur, ou le repli extractif |
 | `montage.py` | le texte d'un seul audio pour la journée, en mode `global` |

@@ -50,6 +50,9 @@ ENV_PROFIL_FILE = "RSSRESUME_PROFILE_FILE"
 #: Le dossier des documents, un `{username}.json` par personne. Exclusif des deux
 #: variables précédentes : voir `Annuaire.depuis_env`.
 ENV_PROFILES_DIR = "RSSRESUME_PROFILES_DIR"
+#: La base SQLite des profils, celle qu'édite l'API (`annuaire_sqlite.AnnuaireSqlite`).
+#: Exclusive des trois variables précédentes, pour la même raison que le dossier.
+ENV_PROFILES_DB = "RSSRESUME_PROFILES_DB"
 
 #: Un nom court, en minuscules, sans point ni espace : il devient un nom de répertoire
 #: et un préfixe de label FreshRSS, deux endroits où une majuscule ou un espace ne se
@@ -426,6 +429,8 @@ class Annuaire:
     def depuis_env(cls) -> "Annuaire":
         """L'annuaire que l'environnement décrit. Ambigu : `ValueError`, au lancement.
 
+        - `RSSRESUME_PROFILES_DB` : un profil par ligne de la base, exclusive de tout le
+          reste (`_annuaire_sqlite`) ;
         - `RSSRESUME_PROFILES_DIR` : un profil par fichier du dossier ;
         - sinon `RSSRESUME_PROFILE_FILE` : ce document est l'unique profil, nommé
           d'après son fichier (`input/adrien.json` → `adrien`) ;
@@ -440,6 +445,9 @@ class Annuaire:
         répertoire ni préfixe de tags. Posée, elle lève plutôt que d'être ignorée — sans
         quoi une installation qui en dépendait cesserait d'envoyer son digest sans un mot.
         """
+        base = (os.getenv(ENV_PROFILES_DB) or "").strip()
+        if base:
+            return _annuaire_sqlite(base)
         dossier = (os.getenv(ENV_PROFILES_DIR) or "").strip()
         fichier = (os.getenv(ENV_PROFIL_FILE) or "").strip()
         if dossier:
@@ -462,6 +470,29 @@ class Annuaire:
         if fichier:
             return AnnuaireFichier(pathlib.Path(fichier))
         return AnnuaireVide()
+
+
+def _annuaire_sqlite(base: str) -> Annuaire:
+    """La base de profils, seule source déclarée. Combinée à une autre : `ValueError`.
+
+    Même arbitrage que le dossier : pendant la migration, le dossier et la base coexistent
+    sur le disque, et servir l'un en ignorant l'autre ferait apparaître ou disparaître des
+    personnes sans un mot. Import différé : `annuaire_sqlite` dépend de ce module.
+    """
+    autres = [
+        nom
+        for nom in (ENV_PROFILES_DIR, ENV_PROFIL_FILE, ENV_PROFIL)
+        if (os.getenv(nom) or "").strip()
+    ]
+    if autres:
+        raise ValueError(
+            f"{ENV_PROFILES_DB} et {' / '.join(autres)} sont posées ensemble. Avec une base "
+            f"de profils, importer les documents (python -m rssresume.api importer <chemin>) "
+            f"puis retirer {' / '.join(autres)} de l'environnement."
+        )
+    from rssresume.annuaire_sqlite import AnnuaireSqlite
+
+    return AnnuaireSqlite(pathlib.Path(base))
 
 
 class AnnuaireDossier(Annuaire):

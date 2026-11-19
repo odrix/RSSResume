@@ -1,7 +1,10 @@
 # Déploiement Dokploy (type « Compose »).
 #
-# Un seul service, sans port ni domaine : ce n'est pas un serveur, c'est un travailleur
-# qui dort jusqu'à `RSSRESUME_SCHEDULE` puis envoie le digest de la veille.
+# Deux services sur la même image et le même volume :
+# - `rssresume`, le travailleur, sans port ni domaine : il dort jusqu'à
+#   `RSSRESUME_SCHEDULE` puis envoie le digest de la veille à chaque profil ;
+# - `api`, le serveur HTTP qu'appelle le site : il édite la base de profils que le
+#   travailleur lit, et sert les audios qu'il a écrits. Aucun port publié.
 services:
   rssresume:
     build: .
@@ -17,11 +20,14 @@ services:
       # peut pas faire écrire le conteneur dans /app, que l'utilisateur non-root ne
       # possède pas. La sortie va dans le volume, et nulle part ailleurs.
       RSSRESUME_OUTPUT_DIR: /data/output
-      # Un `{username}.json` par personne, dans le volume : le site les y édite, et la
-      # sortie de chacune va sous /data/output/{username}/. Exclusif de
-      # RSSRESUME_PROFILE_FILE et RSSRESUME_PROFILE : les laisser dans l'environnement
-      # fait échouer le lancement.
-      RSSRESUME_PROFILES_DIR: /data/profils
+      # Les profils, en base dans le volume : l'API les y écrit, le passage les y relit à
+      # chaque fois, et la sortie de chacun va sous /data/output/{id}/. La base remplace
+      # le dossier /data/profils (RSSRESUME_PROFILES_DIR) : les documents qui s'y
+      # trouvent s'importent une fois, `python -m rssresume.api importer /data/profils`,
+      # et restent sur le disque, intacts, comme sauvegarde. Exclusive de
+      # RSSRESUME_PROFILES_DIR, RSSRESUME_PROFILE_FILE et RSSRESUME_PROFILE : les laisser
+      # dans l'environnement fait échouer le lancement.
+      RSSRESUME_PROFILES_DB: /data/profils.sqlite3
       # L'heure du passage et la journée digérée (J-1 par défaut : à 7 h du matin,
       # « aujourd'hui » ne contient que les articles parus depuis minuit).
       RSSRESUME_SCHEDULE: ${RSSRESUME_SCHEDULE:-04:00}
@@ -31,6 +37,29 @@ services:
       TZ: ${RSSRESUME_TIMEZONE:-Europe/Paris}
     volumes:
       # Audio et journaux du jour : l'email les emporte, le volume les garde.
+      - rssresume-data:/data
+
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "rssresume.api"]
+    # Le même fichier que le travailleur : `RSSRESUME_API_TOKEN` s'y pose, dans l'onglet
+    # « Environment ». Absent ou de moins de 32 caractères, le service refuse de démarrer.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Les mêmes chemins que le travailleur, et imposés pour la même raison : l'API lit
+      # ce qu'il écrit, à l'endroit où il l'écrit.
+      RSSRESUME_OUTPUT_DIR: /data/output
+      RSSRESUME_PROFILES_DB: /data/profils.sqlite3
+      RSSRESUME_API_PORT: "8080"
+      TZ: ${RSSRESUME_TIMEZONE:-Europe/Paris}
+    # `expose` et non `ports` : joignable par le nom de service (`http://api:8080`) depuis
+    # le réseau du déploiement, jamais depuis Internet. Le site est le seul client.
+    expose:
+      - "8080"
+    volumes:
       - rssresume-data:/data
 
 volumes:

@@ -966,6 +966,7 @@ d'eux et charger une personne, et des sous-classes qui ne disent que la source.
 
 | `Annuaire.depuis_env()` choisit | Quand | Profils |
 | --- | --- | --- |
+| `AnnuaireSqlite` | `RSSRESUME_PROFILES_DB`, exclusive de tout le reste | une ligne par personne, éditée par l'API |
 | `AnnuaireDossier` | `RSSRESUME_PROFILES_DIR` | un `{username}.json` par personne |
 | `AnnuaireFichier` | `RSSRESUME_PROFILE_FILE` seule | ce document, nommé d'après son fichier |
 | `AnnuaireVide` | rien de déclaré | personne : ni lecture FreshRSS, ni résumé, ni marquage |
@@ -1020,9 +1021,84 @@ Le client FreshRSS est partagé par la tournée et décliné par personne (`Fres
 catégories et articles du jour ne sont lus qu'une fois, jetons compris, et chacun tague sous son
 propre préfixe. Rendre la même lecture à tous est juste parce que rien n'est marqué lu entre deux.
 
-Pour brancher une autre source de profils — une base, par exemple —, une sous-classe d'`Annuaire`
-qui redéfinit `usernames()` et `profil(username)` suffit, choisie dans `Annuaire.depuis_env()` ; la
-validation d'un document, `profil_depuis_dict`, est publique pour être partagée.
+Une autre source de profils n'est qu'une sous-classe d'`Annuaire` qui redéfinit `usernames()` et
+`profil(username)`, choisie dans `Annuaire.depuis_env()`. C'est ainsi qu'est branchée la base.
+
+## La base de profils et l'API
+
+Le site édite les profils pendant que la tournée les lit, depuis un autre processus. Un dossier de
+fichiers ne donne pas ce qu'il faut pour cela — une écriture entière ou pas du tout, un nom pris
+une seule fois —, d'où une base SQLite (`annuaire_sqlite.AnnuaireSqlite`), dans le même volume que
+la sortie, et un serveur HTTP (`rssresume/api/`), service à part dans le même compose.
+
+### Le schéma
+
+Une table, `profils` :
+
+| Colonne | Contenu |
+| --- | --- |
+| `id` | clé primaire, l'UUID qui nomme `output/<id>/` |
+| `username` | `UNIQUE`, le nom des tags et de `--profil` |
+| `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom` |
+| `cree_le`, `modifie_le` | horodatages ISO 8601 en UTC |
+
+Le document est validé par `profil_depuis_dict` **à l'écriture** — l'API refuse ce que la tournée
+refuserait, avec le même message — **et à la lecture**, parce qu'une base se modifie aussi à la
+main. Il est normalisé à l'écriture (texte rogné, adresses en liste, clés inconnues retirées) :
+ce que le site relit est ce que la tournée servira. L'`id` et le `username` ne changent jamais
+après la création ; un `PUT` qui les envoie différents est refusé plutôt qu'ignoré.
+
+### Deux processus sur une base
+
+Le travailleur lit, l'API écrit, en même temps. La base est en **mode WAL** : un lecteur n'y
+bloque jamais l'écrivain, ni l'inverse. Chaque opération ouvre sa connexion et la referme — une
+connexion SQLite ne se partage pas entre les fils du serveur, et rien ne reste verrouillé entre
+deux requêtes. Une écriture prend le verrou d'emblée (`BEGIN IMMEDIATE`, attente de 5 s au plus) :
+deux écrivains attendent leur tour au lieu de se découvrir en conflit au commit. L'unicité du nom
+est tranchée par la contrainte `UNIQUE`, pas par une lecture préalable : deux créations
+simultanées du même nom ne passent pas toutes les deux.
+
+La tournée relit la base à chaque passage, comme le dossier : ce que le site écrit à 3 h 59 est
+servi à 4 h. Une suppression retire la personne de la tournée suivante ; ses journées restent
+sur le disque, et un import du document d'origine la recrée sous le même `id`.
+
+### Du dossier à la base
+
+`python -m rssresume.api importer <dossier ou fichier>` verse des documents dans la base :
+
+- l'`id` du document est **conservé** — c'est lui qui nomme les journées passées — ; absent, un
+  `id` neuf est généré et affiché ;
+- les fichiers source ne sont **jamais modifiés** ;
+- un profil déjà en base n'est **jamais réécrit**, reconnu par son `id` ou, sans `id`, par son
+  nom : après la migration, c'est le site qui édite, et réimporter écraserait ses modifications.
+  L'import se rejoue donc sans effet ;
+- un fichier fautif ou mal nommé est compté en erreur (code de sortie 1), les suivants importés.
+
+La base est exclusive de `RSSRESUME_PROFILES_DIR` : les deux posées ensemble font échouer le
+lancement, pour qu'une migration à moitié faite se voie au déploiement. Tant que l'import n'a pas
+eu lieu, la base est vide et la tournée ne sert personne.
+
+### Le serveur
+
+`http.server.ThreadingHTTPServer`, un fil par requête — un audio long à télécharger ne bloque pas
+la liste des profils. Les routes sont des classes (`api/routes.py`), une par forme d'URL, qui ne
+redéfinissent que les méthodes HTTP qu'elles servent ; la base répond 405 au reste. Le contrat
+est décrit dans le [README](README.md#api-http).
+
+- **Authentification** : `Authorization: Bearer <RSSRESUME_API_TOKEN>`, comparé à temps constant
+  (`hmac.compare_digest`), sur toutes les routes, avant même le routage. Un jeton absent ou de
+  moins de 32 caractères empêche le serveur de **démarrer**. Les logs d'accès ne portent que
+  l'adresse, la méthode, le chemin sans chaîne de requête et le statut — jamais un en-tête.
+- **Corps** : `Content-Length` exigé, 64 Kio au plus — refusé (413) avant d'être lu —,
+  `Content-Type: application/json` exigé.
+- **Audios** : lus dans `output/<id>/<date>/`, envoyés par blocs de 64 Kio, jamais chargés en
+  mémoire. `Range` est servi sous ses trois formes (`a-b`, `a-`, `-n`) en 206 ; une plage hors du
+  fichier donne 416 ; un en-tête illisible ou multiple, le fichier entier (ce que la RFC permet).
+- **Chemins** : trois barrières indépendantes entre une URL et le disque. La date doit suivre
+  `AAAA-MM-JJ` **et** passer `date.fromisoformat` ; le nom ne doit contenir ni `/`, ni `\`, ni
+  `..`, et figurer dans la liste des `.mp3` / `.wav` de la journée (liens symboliques exclus) ;
+  enfin le chemin résolu doit rester sous `output/<id>/`. Le nom de profil est validé contre le
+  motif des `username` avant toute requête.
 
 ## Le cache de scoring
 
