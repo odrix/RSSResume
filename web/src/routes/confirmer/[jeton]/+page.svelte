@@ -6,7 +6,6 @@
 
 <svelte:head>
 	<title>Confirmer l'adresse — RSSResume</title>
-	<meta name="referrer" content="no-referrer" />
 </svelte:head>
 
 <h1>Confirmer l'adresse</h1>
