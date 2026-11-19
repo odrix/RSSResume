@@ -474,7 +474,7 @@ date du digest faisait arriver dans la boîte une lettre datée de l'avant-veill
   un appel par journée), puis la table de `ephemeride/histoire.py`, puis le calendrier, qui ne peut
   pas échouer. Le modèle répond `AUCUN` plutôt que de combler quand il ne sait rien de cette date.
 
-Celle qui a servi est écrite dans `output/<username>/<jour>/journee.json`, **avec le jour qu'elle décrit**.
+Celle qui a servi est écrite dans `output/<id>/<jour>/journee.json`, **avec le jour qu'elle décrit**.
 `--send-only` la réutilise si elle parle bien du jour du renvoi — le cas courant, quand l'envoi a
 échoué le matin et qu'on relance une heure plus tard. Renvoyée trois jours plus tard, elle daterait
 la lettre du mauvais jour et annoncerait la fête d'un autre : elle est alors recalculée sur la
@@ -772,7 +772,7 @@ range et hiérarchise, il ne remplace pas la lecture de l'avis.
 ## Le journal d'une catégorie
 
 Écrit à la fermeture de chaque catégorie, **avant** l'email et le marquage comme lu, à côté de son
-audio : `output/<username>/<jour>/<categorie>.log.json`.
+audio : `output/<id>/<jour>/<categorie>.log.json`.
 
 Il fixe ce qu'une exécution finie ne conservait nulle part :
 
@@ -977,9 +977,28 @@ répertoire et préfixe des labels ; un `.json` mal nommé est signalé (`consol
 et sauté, sans coûter la journée des autres. Les documents, eux, sont lus au moment de servir
 leur personne : un document fautif ne coûte que sa journée.
 
+Une personne a deux noms, qui ne servent pas à la même chose :
+
+| | Forme | Sert à |
+| --- | --- | --- |
+| `username` | le nom du fichier | préfixe des tags FreshRSS, `--profil`, les logs |
+| `id` | un UUID, clé `id` du document | le répertoire de sortie `output/<id>/` |
+
+La sortie suit l'`id` pour que renommer quelqu'un ne le sépare pas de ses journées, et pour que
+l'API — qui rangera les profils en base sous la même clé — désigne les mêmes répertoires.
+`profil_depuis_dict` valide l'`id` quand il est présent (UUID canonique en minuscules) ;
+`nouvel_id()` en produit un. Un document du dossier qui n'en a pas en reçoit un, **écrit dans le
+fichier** (JSON indenté, clés conservées, une ligne de log) : généré à chaque passage, il
+changerait chaque matin. D'où deux règles, appliquées profil par profil :
+
+- un document en texte brut ne peut pas porter d'`id` : ce profil échoue, avec un message qui
+  demande de le convertir en JSON ;
+- deux documents au même `id` échouent tous les deux (`Annuaire.lecteur`) : servir l'un
+  écrirait dans le répertoire de l'autre.
+
 `AppConfig.from_env()` reste la configuration de l'installation ; `AppConfig.pour(lecteur)` y
 applique une personne — profil, stack, prénom, destinataires — et fait descendre la sortie à
-`output/<username>/`. Tout ce qui lit `output_dir` suit sans rien savoir des profils.
+`output/<id>/`. Tout ce qui lit `output_dir` suit sans rien savoir des profils.
 
 La tournée (`tournee.Tournee`) sert la journée à chaque profil dans l'ordre alphabétique :
 

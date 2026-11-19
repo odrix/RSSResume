@@ -46,11 +46,12 @@ Le détail de chaque étape, les schémas et les tags posés : **[FONCTIONNEMENT
 
 ## Fichiers produits
 
-Un sous-répertoire par profil, puis par journée au format `yyyy-MM-dd` :
+Un sous-répertoire par profil, nommé par son identifiant (`id`, un UUID), puis par journée au
+format `yyyy-MM-dd` :
 
 ```
 output/
-└── adrien/                      # le nom du profil
+└── 5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f/   # l'id du profil, pas son nom
     └── 2026-08-23/
         ├── tech.mp3             # catégorie avec articles retenus (.wav sans fournisseur)
         ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
@@ -60,13 +61,19 @@ output/
         └── journee.json         # l'éphéméride du jour, et le montage s'il y en a eu un
 ```
 
+L'identifiant plutôt que le nom : renommer quelqu'un ne le sépare pas de ses journées. Il est lu
+à la clé `id` du document ; absent, il est généré et écrit dans le fichier au premier passage.
+
 Les journées produites avant les profils sont directement sous `output/<date>/`. Pour que
-`--send-only` et `--journal` les retrouvent, les déplacer une fois sous le nom du profil
-(ici `adrien` ; dans le conteneur, depuis `/data/output`) :
+`--send-only` et `--journal` les retrouvent, les déplacer une fois sous l'identifiant du profil
+(ici `adrien` ; la première commande génère l'id s'il manque, et l'affiche) :
 
 ```bash
-cd output && mkdir -p adrien && mv [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] adrien/
+ID=$(python -c "from rssresume.profil import charger_profil; print(charger_profil('input/profils', 'adrien').id)")
+cd output && mkdir -p "$ID" && mv [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] "$ID"/
 ```
+
+Dans le conteneur, voir [todo-dockploy.md](todo-dockploy.md).
 
 En mode `global`, les `<categorie>.mp3` laissent la place à un seul `journee.mp3`, dont le texte
 est conservé dans `journee.json`. Tout le reste est identique.
@@ -451,7 +458,11 @@ fait échouer le lancement ; les fichiers qui ne sont pas des `.json` sont ignor
 
 Chaque passage digère la journée pour chaque profil, dans l'ordre alphabétique :
 
-- la sortie va dans `output/<username>/<date>/`, l'email à l'adresse du profil ;
+- la sortie va dans `output/<id>/<date>/`, l'email à l'adresse du profil. L'`id` est un UUID
+  lu dans le document ; absent, il est généré et **écrit dans le fichier** (JSON indenté, clés
+  conservées). Un document en texte brut ne peut pas le porter : ce profil est sauté, avec un
+  message qui demande de le convertir en JSON. Deux documents au même `id` sont sautés tous les
+  deux, pour ne pas mélanger leurs journées ;
 - les tags FreshRSS sont **préfixés** par le nom (`adrien-score-07`) : deux personnes ne
   notent pas un article pareil. Les anciens tags sans préfixe sont ignorés — passer aux
   profils coûte donc **un re-scoring unique** des articles relus ;
@@ -480,7 +491,7 @@ repayer pour retrouver un texte déjà écrit sur le disque n'aurait aucun sens 
 python -m rssresume --send-only --date 2026-08-29
 ```
 
-Tout ce que l'email porte est relu de `output/<username>/<date>/*.log.json` : le résumé, les liens
+Tout ce que l'email porte est relu de `output/<id>/<date>/*.log.json` : le résumé, les liens
 des articles retenus dans l'ordre du digest, et les `.mp3` en pièces jointes. Ni FreshRSS
 ni le moindre fournisseur n'est appelé, et **rien n'est marqué comme lu** — le renvoi ne
 touche à aucun état.
@@ -509,7 +520,7 @@ docker exec <conteneur> python -m rssresume --journal --date 2026-08-30
 ```
 
 ```
-Journée du 2026-08-30 — /data/output/adrien/2026-08-30
+Journée du 2026-08-30 — /data/output/5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f/2026-08-30
 audio : journee.mp3 (montage)
 
 catégorie                               statut                art.  ret.  seuil       coût
@@ -580,9 +591,12 @@ Seule `profil` est exigée. `stack` absente, aucun avis n'est apparié et le dig
 `prenom` ne sert qu'à la salutation de l'audio en mode `global` : absente, le montage
 ouvre sans nommer personne. Remplie avec autre chose qu'un texte, elle fait échouer le
 lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
+`id` est l'identifiant stable du profil, un UUID en minuscules (`5f0c2d8e-…`) : il nomme le
+répertoire de sortie. Absent, il est généré et écrit dans le fichier au premier passage ;
+présent mais mal formé, il fait échouer ce profil.
 
-Le fichier est lu comme un **objet JSON** s'il commence par une accolade, comme du texte brut
-sinon — l'accolade décide, pas l'extension, qui n'est qu'une promesse que rien ne vérifie.
+Le document doit être un **objet JSON** : un texte brut ne peut pas porter son `id`, et le profil
+est alors sauté avec un message qui demande de le convertir.
 
 Sans document déclaré, **rien ne tourne** : ni lecture FreshRSS, ni résumé, ni email — le
 passage journalise « aucun profil ». `RSSRESUME_PROFILE`, le profil en clair sur une ligne,

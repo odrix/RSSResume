@@ -320,8 +320,9 @@ class AppConfig:
 
         Ce qui est personnel — profil, stack, prénom, destinataires — vient du document
         de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
-        `{output}/{username}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
-        `--journal`) suit sans savoir qu'il y a plusieurs personnes.
+        `{output}/{id}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
+        `--journal`) suit sans savoir qu'il y a plusieurs personnes. L'identifiant et non
+        le nom : renommer quelqu'un ne doit pas le séparer de ses journées.
 
         S'applique à la configuration de l'installation, et une seule fois : appliquée
         deux fois, la sortie descendrait de deux crans.
@@ -332,7 +333,7 @@ class AppConfig:
         return dataclasses.replace(
             self,
             username=lecteur.username,
-            output_dir=self.output_dir / lecteur.username,
+            output_dir=self.output_dir / lecteur.id,
             profil=personne.texte,
             stack=personne.stack,
             prenom=personne.prenom,

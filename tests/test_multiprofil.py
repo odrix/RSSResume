@@ -16,12 +16,14 @@ import os
 import pathlib
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import LABEL_STREAM_PREFIX, Etiquettes, FreshRSSClient
 from rssresume.models import Article, Note
 from rssresume.profil import (
+    CLE_ID,
     ENV_PROFIL,
     ENV_PROFIL_FILE,
     ENV_PROFILES_DIR,
@@ -32,7 +34,9 @@ from rssresume.profil import (
     Lecteur,
     Profil,
     charger_profil,
+    id_valide,
     lister_profils,
+    nouvel_id,
     profil_depuis_dict,
     username_valide,
     valider_username,
@@ -42,6 +46,7 @@ from rssresume.tournee import Tournee
 from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
 JOUR = dt.date(2026, 8, 23)
+ID_BEA = "5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f"
 
 
 def ecrire(dossier, nom, document):
@@ -104,6 +109,66 @@ class ProfilDepuisDictTests(unittest.TestCase):
             with self.assertRaises(ValueError) as leve:
                 profil_depuis_dict(document, origine="bea")
             self.assertIn("bea", str(leve.exception))
+
+
+class IdentifiantTests(unittest.TestCase):
+    """La clé `id` : un UUID canonique, qui nomme la sortie et que l'API partagera."""
+
+    def test_a_new_id_is_a_canonical_uuid4(self):
+        identifiant = nouvel_id()
+
+        self.assertTrue(id_valide(identifiant))
+        self.assertEqual(4, uuid.UUID(identifiant).version)
+        self.assertNotEqual(identifiant, nouvel_id())
+
+    def test_only_the_canonical_lowercase_form_is_valid(self):
+        for valeur in (ID_BEA.upper(), "{" + ID_BEA + "}", ID_BEA.replace("-", ""), "x", 3, None):
+            self.assertFalse(id_valide(valeur), valeur)
+
+    def test_the_document_id_is_read_and_checked(self):
+        self.assertEqual(ID_BEA, profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B"}).id)
+        self.assertEqual("", profil_depuis_dict({"profil": "B"}).id)
+        with self.assertRaises(ValueError):
+            profil_depuis_dict({CLE_ID: "pas-un-uuid", "profil": "B"})
+        with self.assertRaises(ValueError):
+            profil_depuis_dict({CLE_ID: ID_BEA.upper(), "profil": "B"})
+
+    def test_a_missing_id_is_generated_and_written_back_keeping_the_other_keys(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fichier = ecrire(tmpdir, "bea.json", {"profil": "Veille", "email": "b@example.com", "_note": "é"})
+
+            premier = charger_profil(pathlib.Path(tmpdir), "bea")
+            second = charger_profil(pathlib.Path(tmpdir), "bea")
+
+            self.assertTrue(id_valide(premier.id))
+            self.assertEqual(premier.id, second.id)
+            texte = fichier.read_text(encoding="utf-8")
+            relu = json.loads(texte)
+            self.assertEqual(premier.id, relu[CLE_ID])
+            self.assertEqual({CLE_ID, "profil", "email", "_note"}, set(relu))
+            # Indenté, et lisible tel quel par qui édite le fichier à la main.
+            self.assertIn('\n  "profil": "Veille"', texte)
+            self.assertIn("é", texte)
+
+    def test_a_plain_text_document_cannot_carry_an_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ecrire(tmpdir, "bea.json", "Un profil en texte brut")
+
+            with self.assertRaises(ValueError) as leve:
+                charger_profil(pathlib.Path(tmpdir), "bea")
+            self.assertIn("JSON", str(leve.exception))
+
+    def test_duplicate_ids_are_refused_on_both_sides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ecrire(tmpdir, "adrien.json", {CLE_ID: ID_BEA, "profil": "A"})
+            ecrire(tmpdir, "bea.json", {CLE_ID: ID_BEA, "profil": "B"})
+            ecrire(tmpdir, "carl.json", {"profil": "C"})
+            annuaire = AnnuaireDossier(pathlib.Path(tmpdir))
+
+            for nom in ("adrien", "bea"):
+                with self.assertRaises(ValueError):
+                    annuaire.lecteur(nom)
+            self.assertTrue(id_valide(annuaire.lecteur("carl").id))
 
 
 class AnnuaireDossierTests(unittest.TestCase):
@@ -223,21 +288,28 @@ class DepuisEnvTests(unittest.TestCase):
 class ConfigPourTests(unittest.TestCase):
     def test_the_personal_part_comes_from_the_profile_and_the_output_descends(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            lecteur = Lecteur("bea", Profil("Profil B", emails=["b@example.com"], prenom="Bea"))
+            lecteur = Lecteur(
+                "bea", Profil("Profil B", emails=["b@example.com"], prenom="Bea", identifiant=ID_BEA)
+            )
 
             config = make_config(tmpdir).pour(lecteur)
 
             self.assertEqual("bea", config.username)
-            self.assertEqual(pathlib.Path(tmpdir) / "bea", config.output_dir)
+            # Sous l'identifiant, pas sous le nom : renommer ne sépare pas des journées.
+            self.assertEqual(pathlib.Path(tmpdir) / ID_BEA, config.output_dir)
             self.assertEqual("Profil B", config.profil)
             self.assertEqual(["b@example.com"], config.smtp_to)
             self.assertEqual("Bea", config.prenom)
 
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            lecteur = Lecteur("bea", Profil("B"))
+            lecteur = Lecteur("bea", Profil("B", identifiant=ID_BEA))
             with self.assertRaises(ValueError):
                 make_config(tmpdir).pour(lecteur).pour(lecteur)
+
+    def test_a_reader_needs_an_identifier(self):
+        with self.assertRaises(ValueError):
+            Lecteur("bea", Profil("B"))
 
 
 class EtiquettesTests(unittest.TestCase):
@@ -276,7 +348,7 @@ def posts(client, action):
 
 class ClientParProfilTests(unittest.TestCase):
     def _client(self, tmpdir, username):
-        config = make_config(tmpdir).pour(Lecteur(username, Profil("P")))
+        config = make_config(tmpdir).pour(Lecteur(username, Profil("P", identifiant=nouvel_id())))
         return FreshRSSClient(config)
 
     def test_the_client_tags_under_the_profile_name(self):
@@ -405,7 +477,35 @@ class TourneeTests(unittest.TestCase):
             tournee.run(JOUR, send_email=False)
 
             for nom in ("adrien", "bea"):
-                self.assertTrue((pathlib.Path(tmpdir) / "output" / nom / JOUR.isoformat()).is_dir())
+                # L'identifiant a été généré au premier passage, et écrit dans le document.
+                document = pathlib.Path(tmpdir) / "profils" / f"{nom}.json"
+                identifiant = json.loads(document.read_text(encoding="utf-8"))[CLE_ID]
+                self.assertTrue(
+                    (pathlib.Path(tmpdir) / "output" / identifiant / JOUR.isoformat()).is_dir()
+                )
+
+    def test_two_profiles_sharing_an_id_are_both_skipped(self):
+        """Ils écriraient dans le même répertoire : aucun des deux n'est servi."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            documents = {
+                "adrien": {CLE_ID: ID_BEA, "profil": "A"},
+                "bea": {CLE_ID: ID_BEA, "profil": "B"},
+                "carl": {"profil": "C"},
+            }
+            tournee, client, vus = self._tournee(tmpdir, documents)
+
+            self.assertEqual(["adrien", "bea"], tournee.run(JOUR, send_email=False))
+            self.assertEqual(["carl"], list(vus))
+            self.assertEqual(0, client.appels_marquage)
+
+    def test_a_plain_text_document_fails_only_its_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tournee, _, vus = self._tournee(
+                tmpdir, {"adrien": "Un profil en texte brut", "bea": {"profil": "B"}}
+            )
+
+            self.assertEqual(["adrien"], tournee.run(JOUR, send_email=False))
+            self.assertEqual(["bea"], list(vus))
 
     def test_a_failing_profile_does_not_stop_the_next_one_and_nothing_is_marked(self):
         """Le profil en échec doit pouvoir rejouer sa journée sans `--include-read`."""

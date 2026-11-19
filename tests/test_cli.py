@@ -19,6 +19,7 @@ import os
 import pathlib
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 from rssresume import cli, runlog
@@ -32,13 +33,20 @@ JOUR = dt.date(2026, 8, 30)
 PROFIL = "adrien"
 
 
+def id_de(nom):
+    """Un identifiant stable par nom : la sortie d'un profil est rangée sous lui."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, nom))
+
+
 def dossier_profils(racine, *noms):
     """Un dossier de profils sous `racine`, un document par nom ; rend l'environnement."""
     dossier = pathlib.Path(racine) / "profils"
     dossier.mkdir(exist_ok=True)
     for nom in noms:
         (dossier / f"{nom}.json").write_text(
-            json.dumps({"profil": f"Profil de {nom}", "email": f"{nom}@example.com"}),
+            json.dumps(
+                {"id": id_de(nom), "profil": f"Profil de {nom}", "email": f"{nom}@example.com"}
+            ),
             encoding="utf-8",
         )
     return {ENV_PROFILES_DIR: str(dossier)}
@@ -83,9 +91,9 @@ class AudioModeOptionTests(unittest.TestCase):
 def journee_produite(racine, username=PROFIL):
     """Une journée sur le disque, réduite à ce que le bilan a besoin de lire.
 
-    Sous le répertoire de la personne.
+    Sous le répertoire de la personne, nommé par son identifiant.
     """
-    day_dir = pathlib.Path(racine) / username / JOUR.isoformat()
+    day_dir = pathlib.Path(racine) / id_de(username) / JOUR.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
     (day_dir / f"2-cyber{runlog.LOG_SUFFIX}").write_text(
         json.dumps(
@@ -250,7 +258,7 @@ class ProfilOptionTests(unittest.TestCase):
             self.assertEqual(0, code)
             configs = [appel.args[0] for appel in build.call_args_list]
             self.assertEqual(["adrien", "bea"], [config.username for config in configs])
-            self.assertEqual(pathlib.Path(tmpdir) / "bea", configs[1].output_dir)
+            self.assertEqual(pathlib.Path(tmpdir) / id_de("bea"), configs[1].output_dir)
             self.assertEqual(["bea@example.com"], configs[1].smtp_to)
             self.assertEqual("Profil de bea", configs[1].profil)
 

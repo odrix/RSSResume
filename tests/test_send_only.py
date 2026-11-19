@@ -319,8 +319,12 @@ class SendOnlyArgumentsTests(unittest.TestCase):
             # Le seul profil est celui du document, et sa sortie est à son nom : la
             # journée est écrite là où le renvoi la cherche.
             document = pathlib.Path(tmpdir) / "adrien.json"
-            document.write_text('{"profil": "P", "email": "a@example.com"}', encoding="utf-8")
-            ecrire_journee(pathlib.Path(tmpdir) / "adrien")
+            identifiant = "0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71"
+            document.write_text(
+                f'{{"id": "{identifiant}", "profil": "P", "email": "a@example.com"}}',
+                encoding="utf-8",
+            )
+            ecrire_journee(pathlib.Path(tmpdir) / identifiant)
             with mock.patch.dict(os.environ, {ENV_PROFIL_FILE: str(document)}, clear=True), \
                     mock.patch.object(cli.AppConfig, "from_env", return_value=config):
                 with mock.patch.object(cli, "build_service") as build:

@@ -36,6 +36,7 @@ import json
 import os
 import pathlib
 import re
+import uuid
 from typing import Iterable
 
 from rssresume.certfr.stack import CLE_STACK, Stack, StackError
@@ -60,6 +61,11 @@ EXTENSION_PROFIL = ".json"
 
 #: Les clés du document. `profil` est la seule exigée.
 CLE_PROFIL = "profil"
+#: L'identifiant stable de la personne, un UUID. Le `username` est le nom humain — il
+#: préfixe les tags et se tape dans `--profil` —, l'`id` nomme la sortie : renommer
+#: quelqu'un ne doit pas le séparer de ses journées. Absent d'un document du dossier, il
+#: est généré et écrit dans le fichier au premier passage.
+CLE_ID = "id"
 CLE_EMAIL = "email"
 #: Le prénom, pour la salutation de l'audio de journée. Il est ici et pas ailleurs pour
 #: la même raison que l'adresse : comment on s'adresse à quelqu'un est aussi personnel
@@ -111,7 +117,12 @@ class Profil:
         stack: Stack | None = None,
         emails: Iterable[str] = (),
         prenom: str = "",
+        identifiant: str = "",
     ):
+        #: L'identifiant stable de la personne (un UUID), qui nomme son répertoire de
+        #: sortie. Vide tant que le document n'en porte pas : c'est l'annuaire qui le
+        #: génère et l'écrit, pas la lecture d'un document.
+        self.id = identifiant
         self.texte = texte
         #: Vide quand le document ne déclare rien : aucun avis n'est alors apparié, et
         #: la phrase du digest le dit plutôt que d'annoncer que rien ne nous concerne.
@@ -186,12 +197,38 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
         stack = Stack.declaree(document.get(CLE_STACK))
     except StackError as exc:
         raise ValueError(f"{origine} : {exc}") from exc
+    identifiant = document.get(CLE_ID)
+    if identifiant is not None and not id_valide(identifiant):
+        raise ValueError(
+            f"{origine} : « {CLE_ID} » doit être un UUID sous sa forme canonique en "
+            f"minuscules (par exemple {nouvel_id()}), pas « {identifiant} »."
+        )
     return Profil(
         texte.strip(),
         stack,
         _emails(document.get(CLE_EMAIL), origine),
         _prenom(document.get(CLE_PRENOM), origine),
+        identifiant or "",
     )
+
+
+def nouvel_id() -> str:
+    """Un identifiant de profil neuf : un UUID4, sous sa forme canonique en minuscules."""
+    return str(uuid.uuid4())
+
+
+def id_valide(valeur: object) -> bool:
+    """Vrai pour un UUID écrit sous sa forme canonique, en minuscules.
+
+    La forme est exigée, pas seulement le sens : l'identifiant nomme un répertoire, et
+    deux écritures du même UUID — majuscules, accolades — en désigneraient deux.
+    """
+    if not isinstance(valeur, str):
+        return False
+    try:
+        return str(uuid.UUID(valeur)) == valeur
+    except ValueError:
+        return False
 
 
 def _document(contenu: str, origine: str) -> Profil:
@@ -280,7 +317,13 @@ class Lecteur:
 
     def __init__(self, username: str, profil: Profil):
         self.username = valider_username(username)
+        if not id_valide(profil.id):
+            raise ValueError(f"Profil « {username} » sans identifiant valide (« {CLE_ID} »).")
         self.profil = profil
+
+    @property
+    def id(self) -> str:
+        return self.profil.id
 
 
 class Annuaire:
@@ -302,9 +345,63 @@ class Annuaire:
         raise NotImplementedError
 
     def lecteur(self, username: str) -> Lecteur:
-        """La personne `username`, profil chargé. Inconnue ou fautive : `ValueError`."""
+        """La personne `username`, profil chargé. Inconnue ou fautive : `ValueError`.
+
+        Un identifiant porté par un autre profil lève aussi, des deux côtés : les deux
+        écriraient dans le même répertoire, et ni l'un ni l'autre n'est servi plutôt que
+        de mélanger leurs journées.
+        """
         self._connu(username)
-        return Lecteur(username, self.profil(username))
+        profil = self.profil(username)
+        doublons = [
+            autre for autre in self.usernames() if autre != username and self._id_de(autre) == profil.id
+        ]
+        if doublons:
+            raise ValueError(
+                f"Profil « {username} » : l'identifiant {profil.id} est aussi celui de "
+                f"{', '.join(doublons)}. Aucun n'est servi tant qu'un des documents n'a pas "
+                f"un autre « {CLE_ID} »."
+            )
+        return Lecteur(username, profil)
+
+    def _id_de(self, username: str) -> str | None:
+        """L'identifiant d'un autre profil, `None` s'il est illisible — signalé à son tour."""
+        try:
+            return self.profil(username).id
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _lire_document(fichier: pathlib.Path) -> Profil:
+        """Le profil d'un document, avec son identifiant — généré et écrit s'il manque.
+
+        Le document doit être un objet JSON : un texte brut n'a pas de place où ranger
+        l'identifiant, et sans lui la personne n'a pas de répertoire de sortie.
+
+        L'identifiant manquant est écrit dans le fichier même, clés existantes
+        conservées : généré à chaque passage, il changerait chaque matin, et la
+        personne retrouverait chaque matin un répertoire vide.
+        """
+        try:
+            contenu = fichier.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(f"Profil illisible : {fichier} ({exc})") from exc
+        if not contenu.startswith("{"):
+            raise ValueError(
+                f"{fichier} : un profil est un objet JSON, pas du texte brut — il doit pouvoir "
+                f'porter son « {CLE_ID} ». Le convertir en {{"{CLE_PROFIL}": "…"}}.'
+            )
+        try:
+            document = json.loads(contenu)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{fichier} : JSON invalide : {exc}") from exc
+        profil = profil_depuis_dict(document, str(fichier))
+        if not profil.id:
+            profil.id = nouvel_id()
+            complet = {CLE_ID: profil.id, **document}
+            fichier.write_text(json.dumps(complet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            console.log(f"Profil {fichier} : identifiant {profil.id} généré et écrit dans le document")
+        return profil
 
     def cibles(self, username: str | None = None) -> list[str]:
         """Les noms à servir : tous, ou celui demandé — qui doit exister.
@@ -413,15 +510,15 @@ class AnnuaireDossier(Annuaire):
         return [nom for nom in noms if username_valide(nom)]
 
     def profil(self, username: str) -> Profil:
-        return profil_depuis_fichier(self.chemin(username))
+        return self._lire_document(self.chemin(username))
 
 
 class AnnuaireFichier(Annuaire):
     """L'installation à une seule personne : le document de `RSSRESUME_PROFILE_FILE`.
 
     Son nom est celui du fichier, pour que passer ensuite au dossier de profils ne soit
-    qu'un déplacement : `input/adrien.json` écrit déjà sous `output/adrien/` et tague
-    déjà `adrien-…`.
+    qu'un déplacement : `input/adrien.json` tague déjà `adrien-…`, et son `id` — écrit
+    dans le fichier — le suit dans le dossier avec ses journées.
     """
 
     def __init__(self, fichier: pathlib.Path):
@@ -437,7 +534,7 @@ class AnnuaireFichier(Annuaire):
         return [self.fichier.stem]
 
     def profil(self, username: str) -> Profil:
-        return profil_depuis_fichier(self.fichier)
+        return self._lire_document(self.fichier)
 
 
 class AnnuaireVide(Annuaire):
@@ -460,5 +557,8 @@ def lister_profils(dossier: pathlib.Path) -> list[str]:
 
 
 def charger_profil(dossier: pathlib.Path, username: str) -> Profil:
-    """Le profil de `username` dans un dossier de profils. Raccourci public pour le site."""
+    """Le profil de `username` dans un dossier de profils, identifiant compris.
+
+    Un document sans identifiant en reçoit un, écrit dans le fichier.
+    """
     return AnnuaireDossier(dossier).profil(username)
