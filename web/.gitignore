@@ -1,0 +1,17 @@
+node_modules
+
+# Sorties
+/.svelte-kit
+/build
+
+# Base des comptes en développement
+/data
+
+# Environnement
+.env
+.env.*
+!.env.example
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
