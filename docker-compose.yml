@@ -55,12 +55,27 @@ services:
       RSSRESUME_PROFILES_DB: /data/profils.sqlite3
       RSSRESUME_API_PORT: "8080"
       TZ: ${RSSRESUME_TIMEZONE:-Europe/Paris}
-    # `expose` et non `ports` : joignable par le nom de service (`http://api:8080`) depuis
-    # le réseau du déploiement, jamais depuis Internet. Le site est le seul client.
+    # `expose` et non `ports` : jamais joignable depuis Internet. Le site, seul client, est
+    # une application Dokploy distincte : il ne partage pas le réseau de ce compose, d'où le
+    # rattachement à `dokploy-network`, le réseau que Dokploy donne à toutes ses
+    # applications. L'alias, et non le nom de service : `api` est un nom que d'autres
+    # projets de ce réseau peuvent porter aussi, et la résolution deviendrait une loterie.
+    # Le site appelle donc `http://rssresume-api:8080`.
     expose:
       - "8080"
+    networks:
+      default:
+      dokploy-network:
+        aliases:
+          - rssresume-api
     volumes:
       - rssresume-data:/data
+
+# Créé par Dokploy à son installation. Pour un `docker compose up` local, le créer une fois :
+# `docker network create dokploy-network`.
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   rssresume-data:

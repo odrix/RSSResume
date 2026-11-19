@@ -144,56 +144,38 @@ Ce qui n'est **pas** là, volontairement :
   compte :
 
   ```bash
-  docker compose exec web node -e "const {DatabaseSync}=require('node:sqlite'); \
+  docker exec <conteneur-du-site> node -e "const {DatabaseSync}=require('node:sqlite'); \
     new DatabaseSync('/data-web/comptes.sqlite').prepare(\"UPDATE comptes SET role='admin' WHERE username=?\").run('son-username')"
   ```
 
 ## Déploiement (Dokploy)
 
-Le site est un service de plus dans le `docker-compose.yml` de la racine. Il appelle l'API
-de résumé, qui tourne dans son propre service `api` (même image que `rssresume`, lancée par
-`python -m rssresume.api`, port 8080 interne), par son nom sur le réseau du projet. Bloc à
-ajouter sous `services:` :
+Le site est une **application Dokploy distincte** du compose de l'appli de résumé : il se
+déploie, redémarre et se met à jour sans toucher au travailleur du matin. Il appelle l'API
+de résumé — le service `api` du compose (même image que `rssresume`, lancée par
+`python -m rssresume.api`, port 8080 jamais publié) — par l'alias `rssresume-api` que ce
+service porte sur `dokploy-network`, le réseau commun à toutes les applications Dokploy.
 
-```yaml
-  web:
-    build: ./web
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      RSSRESUME_API_URL: http://api:8080
-      DATABASE_PATH: /data-web/comptes.sqlite
-      PORT: "3000"
-      # Derrière Traefik : l'IP du client pour la limitation des tentatives.
-      ADDRESS_HEADER: X-Forwarded-For
-      XFF_DEPTH: "1"
-    expose:
-      - "3000"
-    volumes:
-      - web-data:/data-web
-    depends_on:
-      - api
-```
+Dans Dokploy, une application de type **Application** :
 
-et sous `volumes:` :
-
-```yaml
-  web-data:
-```
-
-Les services partagent le réseau par défaut du projet compose ; rien d'autre à déclarer.
-Le port 8080 du service `api` n'est publié nulle part : seul le site l'atteint.
-
-Dans Dokploy :
-
-1. onglet **Environment** : `RSSRESUME_API_TOKEN` (le même que celui de l'API),
-   `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM` (domaine vérifié chez Resend), et
-   `ORIGIN=https://<le domaine du site>` ;
-2. onglet **Domains** : un domaine sur le service `web`, port `3000`, HTTPS (Let's Encrypt) ;
-3. déployer, créer le compte de `ADMIN_EMAIL` par la page d'inscription, puis le
+1. **Source** : le dépôt, branche `main` ; **Build Type** `Dockerfile`, **Docker File**
+   `Dockerfile`, **Docker Context Path** `web` (le contexte est le dossier `web/`, pas la
+   racine) ;
+2. onglet **Environment** :
+   - `RSSRESUME_API_URL=http://rssresume-api:8080`
+   - `RSSRESUME_API_TOKEN` : le même que celui du compose de l'appli de résumé
+   - `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM` (domaine vérifié chez Resend)
+   - `ORIGIN=https://<le domaine du site>`
+   - `ADDRESS_HEADER=X-Forwarded-For` et `XFF_DEPTH=1` (derrière Traefik : l'IP du client
+     pour la limitation des tentatives)
+3. onglet **Advanced → Volumes** : un volume monté sur `/data-web` (la base des comptes ;
+   sans lui, chaque redéploiement efface les comptes) ;
+4. onglet **Domains** : le domaine du site, port `3000`, HTTPS (Let's Encrypt) ;
+5. déployer, créer le compte de `ADMIN_EMAIL` par la page d'inscription, puis le
    confirmer par le lien reçu.
+
+Le port 8080 de l'API n'est publié nulle part : seules les applications de
+`dokploy-network` l'atteignent, et le jeton reste exigé.
 
 `RESEND_API_KEY` et `MAIL_FROM` sont **indispensables en production** : sans elles,
 l'image (`NODE_ENV=production`) refuse les inscriptions, puisque aucun lien de

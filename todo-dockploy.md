@@ -29,12 +29,36 @@ source à l'import, puis de sauvegarde : l'import ne modifie pas les fichiers.
 - [ ] Ne pas ajouter `RSSRESUME_PROFILES_DB` ni `RSSRESUME_OUTPUT_DIR` : imposées par le compose.
 - [ ] Retirer le montage `./input/moi:/config:ro` s'il avait été ajouté au compose.
 
-## Côté site
+## Le site : une application Dokploy distincte
 
-- [ ] Poser le même jeton dans l'Environment du site, et l'URL de l'API : `http://api:8080`
-      (nom du service). Ce nom ne se résout que si le site est sur le même réseau que le compose :
-      si le site est une application Dokploy distincte, rattacher le service `api` au réseau
-      `dokploy-network` (ou déployer le site dans le même compose). Aucun port n'est publié.
+Détail dans `web/README.md`, section « Déploiement ». Le service `api` du compose est déjà
+rattaché à `dokploy-network` sous l'alias `rssresume-api` : rien à faire de ce côté.
+
+- [ ] Côté Resend : vérifier le domaine de `MAIL_FROM` (NS, A, MX, SPF/DKIM) — sans lui, aucun
+      lien de confirmation ne part et le site refuse les inscriptions.
+- [ ] Créer une application de type **Application** : dépôt, branche `main`, Build Type
+      `Dockerfile`, Docker File `Dockerfile`, **Docker Context Path `web`**.
+- [ ] Onglet Environment du site :
+      `RSSRESUME_API_URL=http://rssresume-api:8080`
+      `RSSRESUME_API_TOKEN=<le même jeton que le compose>`
+      `ADMIN_EMAIL=adrilesage@gmail.com`
+      `RESEND_API_KEY=<clé Resend>`
+      `MAIL_FROM=RSSResume <…@domaine-vérifié>`
+      `ORIGIN=https://<domaine du site>` (exact, sans « / » final : sinon tous les formulaires
+      répondent 403)
+      `ADDRESS_HEADER=X-Forwarded-For`
+      `XFF_DEPTH=1`
+- [ ] Advanced → Volumes : un volume nommé monté sur `/data-web` (base des comptes).
+- [ ] Domains : le domaine du site, port `3000`, HTTPS.
+- [ ] Déployer **après** le compose (l'API doit exister sur `dokploy-network`).
+- [ ] Vérifier la résolution depuis le site :
+      `docker exec <conteneur-du-site> wget -qO- http://rssresume-api:8080/api/v1/profils`
+      → `{"erreur": "Authentification requise."}` (401 attendu : le réseau passe).
+- [ ] S'inscrire avec `adrilesage@gmail.com`, ouvrir le lien reçu, confirmer : la page Admin
+      apparaît, et le profil créé est visible dans `/api/v1/profils`.
+- [ ] Ce compte crée un **nouveau** profil (nouvel `id`), distinct de `adrien` importé plus haut :
+      choisir un autre username à l'inscription, ou supprimer l'un des deux ensuite
+      (`DELETE /api/v1/profils/<username>`), sinon deux digests partent chaque matin.
 
 ## Juste après le redéploiement (avant le premier passage, 4 h)
 

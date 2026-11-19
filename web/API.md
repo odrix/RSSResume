@@ -10,8 +10,9 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
 
 ## Généralités
 
-- **Base** : `RSSRESUME_API_URL`, `http://api:8080` sur le réseau compose — un service
-  `api` à part, même image que `rssresume`, lancé par `python -m rssresume.api`.
+- **Base** : `RSSRESUME_API_URL`, `http://rssresume-api:8080` — le service `api` du compose
+  de l'appli de résumé (même image que `rssresume`, lancé par `python -m rssresume.api`),
+  joint par son alias sur `dokploy-network`, le site étant une application Dokploy distincte.
 - **Authentification** : chaque requête porte `Authorization: Bearer ${RSSRESUME_API_TOKEN}`.
   Jeton absent ou faux → `401`.
 - **Corps** : JSON UTF-8 (`Content-Type: application/json`), sauf l'audio.
