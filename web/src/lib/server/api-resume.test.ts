@@ -20,17 +20,27 @@ describe('ClientApiResume', () => {
 		const { api } = monter();
 		const cree = await api.creerProfil('moi', SAISIE);
 		expect(cree).toMatchObject({ username: 'moi', ...SAISIE });
+		expect(cree.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
 		const modifie = await api.modifierProfil('moi', {
 			...SAISIE,
 			stack: [{ nom: 'Keycloak', alias: ['RH-SSO'] }]
 		});
 		expect(modifie.stack).toEqual([{ nom: 'Keycloak', alias: ['RH-SSO'] }]);
-		expect((await api.lireProfil('moi')).stack).toEqual(modifie.stack);
+		expect(modifie.id).toBe(cree.id);
+		const lu = await api.lireProfil('moi');
+		expect(lu.stack).toEqual(modifie.stack);
+		expect(lu.id).toBe(cree.id);
 
 		const liste = await api.listerProfils();
 		expect(liste).toEqual([
-			{ username: 'moi', prenom: 'Adrien', email: ['moi@example.com'], modifie_le: modifie.modifie_le }
+			{
+				id: cree.id,
+				username: 'moi',
+				prenom: 'Adrien',
+				email: ['moi@example.com'],
+				modifie_le: modifie.modifie_le
+			}
 		]);
 
 		await api.supprimerProfil('moi');
@@ -48,6 +58,24 @@ describe('ClientApiResume', () => {
 		expect(creation.headers.get('content-type')).toBe('application/json');
 		expect(await creation.json()).toEqual({ username: 'moi', ...SAISIE });
 		expect(lecture.url).toBe('http://api.test/api/v1/profils/a%2F..%2Fb');
+	});
+
+	it("n'envoie jamais l'id ni modifie_le dans un corps POST ou PUT", async () => {
+		const { api, fausseApi } = monter();
+		const cree = await api.creerProfil('moi', SAISIE);
+		// Un profil complet passé là où une saisie est attendue : seuls les champs saisis partent.
+		await api.modifierProfil('moi', { ...cree, profil: 'RSSI' });
+		await api.creerProfil('autre', { ...cree, username: 'ignore' } as typeof SAISIE);
+		const corps = await Promise.all(
+			fausseApi.requetes.filter((r) => r.method !== 'GET').map((r) => r.json())
+		);
+		expect(corps).toHaveLength(3);
+		for (const c of corps) {
+			expect(c).not.toHaveProperty('id');
+			expect(c).not.toHaveProperty('modifie_le');
+		}
+		expect(corps[1]).toEqual({ ...SAISIE, profil: 'RSSI' });
+		expect(corps[2].username).toBe('autre');
 	});
 
 	it("rend le message de l'API avec son statut : 409, 422, 404", async () => {

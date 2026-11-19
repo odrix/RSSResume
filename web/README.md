@@ -18,7 +18,7 @@ Node ≥ 22.17 (l'image utilise Node 24).
 ```bash
 cd web
 npm install
-cp .env.example .env.local   # valeurs de développement, prêtes à l'emploi
+cp .env.example .env.local   # puis RSSRESUME_API_URL=http://localhost:8080
 npm run mock                 # fausse API sur http://localhost:8080 (jeton « dev »)
 npm run dev                  # dans un autre terminal : http://localhost:5173
 ```
@@ -120,8 +120,10 @@ Ce qui n'est **pas** là, volontairement :
 
 ## Déploiement (Dokploy)
 
-Le site est un service de plus dans le `docker-compose.yml` de la racine, sur le même
-réseau que `rssresume` pour l'appeler par son nom. Bloc à ajouter sous `services:` :
+Le site est un service de plus dans le `docker-compose.yml` de la racine. Il appelle l'API
+de résumé, qui tourne dans son propre service `api` (même image que `rssresume`, lancée par
+`python -m rssresume.api`, port 8080 interne), par son nom sur le réseau du projet. Bloc à
+ajouter sous `services:` :
 
 ```yaml
   web:
@@ -131,7 +133,7 @@ réseau que `rssresume` pour l'appeler par son nom. Bloc à ajouter sous `servic
       - path: .env
         required: false
     environment:
-      RSSRESUME_API_URL: http://rssresume:8080
+      RSSRESUME_API_URL: http://api:8080
       DATABASE_PATH: /data-web/comptes.sqlite
       PORT: "3000"
       # Derrière Traefik : l'IP du client pour la limitation des tentatives.
@@ -142,7 +144,7 @@ réseau que `rssresume` pour l'appeler par son nom. Bloc à ajouter sous `servic
     volumes:
       - web-data:/data-web
     depends_on:
-      - rssresume
+      - api
 ```
 
 et sous `volumes:` :
@@ -151,8 +153,8 @@ et sous `volumes:` :
   web-data:
 ```
 
-Les deux services partagent le réseau par défaut du projet compose ; rien d'autre à
-déclarer. Le port 8080 de l'API n'est publié nulle part : seul le site l'atteint.
+Les services partagent le réseau par défaut du projet compose ; rien d'autre à déclarer.
+Le port 8080 du service `api` n'est publié nulle part : seul le site l'atteint.
 
 Dans Dokploy :
 

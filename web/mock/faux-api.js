@@ -10,7 +10,7 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
 
 /**
  * @typedef {string | { nom: string, alias?: string[] }} ComposantStack
- * @typedef {{ username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, modifie_le: string }} ProfilStocke
+ * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, modifie_le: string }} ProfilStocke
  * @typedef {{ date: string, audios: { nom: string, octets: Uint8Array }[] }} JourneeStockee
  */
 
@@ -141,6 +141,8 @@ export class FausseApi {
 		if (invalide) return erreur(422, invalide);
 		/** @type {ProfilStocke} */
 		const profil = {
+			// Attribué ici et jamais lu dans le corps : un `id` envoyé par le client est ignoré.
+			id: crypto.randomUUID(),
 			username: corps.username,
 			profil: corps.profil,
 			stack: corps.stack ?? [],
@@ -176,7 +178,7 @@ export class FausseApi {
 
 /** @param {ProfilStocke} p */
 function resume(p) {
-	return { username: p.username, prenom: p.prenom, email: p.email, modifie_le: p.modifie_le };
+	return { id: p.id, username: p.username, prenom: p.prenom, email: p.email, modifie_le: p.modifie_le };
 }
 
 /** Les règles de `rssresume/profil.py`, en plus court. @param {any} corps */

@@ -37,6 +37,13 @@ export class ErreurApi extends Error {
 	}
 }
 
+/** Les seuls champs qu'un corps POST/PUT porte. Recopiés un à un plutôt qu'étalés : un
+ * `Profil` complet passé par erreur n'enverrait ni `id` ni `modifie_le`, que l'API seule
+ * attribue. */
+function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
+	return { profil: saisie.profil, stack: saisie.stack, email: saisie.email, prenom: saisie.prenom };
+}
+
 export interface OptionsClient {
 	baseUrl: string;
 	jeton: string;
@@ -64,7 +71,7 @@ export class ClientApiResume {
 	}
 
 	creerProfil(username: string, saisie: ProfilSaisi): Promise<Profil> {
-		return this.#json('POST', '/api/v1/profils', { username, ...saisie });
+		return this.#json('POST', '/api/v1/profils', { username, ...corpsProfil(saisie) });
 	}
 
 	lireProfil(username: string): Promise<Profil> {
@@ -72,7 +79,7 @@ export class ClientApiResume {
 	}
 
 	modifierProfil(username: string, saisie: ProfilSaisi): Promise<Profil> {
-		return this.#json('PUT', this.#profil(username), saisie);
+		return this.#json('PUT', this.#profil(username), corpsProfil(saisie));
 	}
 
 	async supprimerProfil(username: string): Promise<void> {

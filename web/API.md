@@ -10,7 +10,8 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
 
 ## Généralités
 
-- **Base** : `RSSRESUME_API_URL`, par exemple `http://rssresume:8080` sur le réseau compose.
+- **Base** : `RSSRESUME_API_URL`, `http://api:8080` sur le réseau compose — un service
+  `api` à part, même image que `rssresume`, lancé par `python -m rssresume.api`.
 - **Authentification** : chaque requête porte `Authorization: Bearer ${RSSRESUME_API_TOKEN}`.
   Jeton absent ou faux → `401`.
 - **Corps** : JSON UTF-8 (`Content-Type: application/json`), sauf l'audio.
@@ -28,6 +29,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
 
 ```json
 {
+  "id": "3f2b8c1e-7d4a-4e9b-a0c5-1b2d3e4f5a6b",
   "username": "adrien",
   "profil": "CTO d'un SaaS B2B…\n\nAxes de veille pertinents :\n- …",
   "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
@@ -39,6 +41,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
 
 | Clé      | Type                                            | Règle                                      |
 | -------- | ----------------------------------------------- | ------------------------------------------ |
+| `id`     | UUID (texte)                                    | attribué par l'API à la création, immuable ; **en sortie seulement** |
 | `profil` | texte                                           | exigé, non vide                            |
 | `stack`  | liste de `"Nom"` ou `{"nom", "alias": [texte]}` | peut être vide                             |
 | `email`  | liste d'adresses                                | toujours une **liste** en sortie ; vide = aucun envoi |
@@ -47,6 +50,10 @@ Le document de la personne, au format de `rssresume/profil.py` :
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
 document stocké avait une adresse seule ou pas de prénom.
 
+`id` figure dans toutes les réponses qui portent un profil (la liste, `GET`, `POST`, `PUT`).
+Les URL restent adressées par **username** ; le site n'envoie jamais `id` (ni `modifie_le`)
+dans un corps `POST` ou `PUT`, et l'API ignore ces clés si elles y figurent.
+
 ## Points d'entrée
 
 ### `GET /api/v1/profils`
@@ -54,7 +61,7 @@ document stocké avait une adresse seule ou pas de prénom.
 → `200`, tous les profils, sans le texte ni la stack :
 
 ```json
-[{"username": "adrien", "prenom": "Adrien", "email": ["moi@example.com"], "modifie_le": "…"}]
+[{"id": "3f2b8c1e-…", "username": "adrien", "prenom": "Adrien", "email": ["moi@example.com"], "modifie_le": "…"}]
 ```
 
 ### `POST /api/v1/profils`
@@ -67,14 +74,14 @@ Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom"}`.
 
 ### `GET /api/v1/profils/{username}`
 
-- `200` → `{"username", "profil", "stack", "email", "prenom", "modifie_le"}`
+- `200` → `{"id", "username", "profil", "stack", "email", "prenom", "modifie_le"}`
 - `404`
 
 ### `PUT /api/v1/profils/{username}`
 
 Corps : `{"profil", "stack", "email", "prenom"}` — remplacement complet, pas de fusion.
 
-- `200` → le profil complet, `modifie_le` mis à jour
+- `200` → le profil complet, `modifie_le` mis à jour, `id` inchangé
 - `404`, `422`
 
 ### `DELETE /api/v1/profils/{username}`

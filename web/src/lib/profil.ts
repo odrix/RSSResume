@@ -12,6 +12,9 @@ export type ComposantStack = string | { nom: string; alias?: string[] };
 
 /** Ce que l'API rend d'un profil, intégralement. */
 export interface Profil {
+	/** UUID attribué par l'API à la création, immuable. Le site adresse pourtant les
+	 * profils par username : c'est lui qui relie un profil à un compte. */
+	id: string;
 	username: string;
 	profil: string;
 	stack: ComposantStack[];
@@ -22,6 +25,7 @@ export interface Profil {
 
 /** Une ligne de la liste des profils : le texte et la stack n'y sont pas. */
 export interface ResumeProfil {
+	id: string;
 	username: string;
 	prenom: string;
 	email: string[];
