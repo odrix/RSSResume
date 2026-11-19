@@ -12,6 +12,8 @@ interface LigneAdmin {
 	emailCompte: string | null;
 	admin: boolean;
 	inscritLe: string | null;
+	/** Faux pour un compte dont l'adresse attend sa confirmation (purgé après sept jours). */
+	confirme: boolean;
 }
 
 /** Profils de l'API et comptes du site, réunis par username. Les deux listes peuvent
@@ -39,7 +41,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			modifieLe: profil.modifie_le,
 			emailCompte: null,
 			admin: false,
-			inscritLe: null
+			inscritLe: null,
+			confirme: true
 		});
 	}
 	for (const compte of ctx.comptes.lister()) {
@@ -50,11 +53,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			modifieLe: null,
 			emailCompte: null,
 			admin: false,
-			inscritLe: null
+			inscritLe: null,
+			confirme: true
 		};
 		ligne.emailCompte = compte.email;
 		ligne.admin = compte.admin;
-		ligne.inscritLe = compte.cree_le;
+		ligne.inscritLe = compte.creeLe;
+		ligne.confirme = compte.confirme;
 		lignes.set(compte.username, ligne);
 	}
 

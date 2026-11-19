@@ -3,7 +3,9 @@
 
 	let { data, form }: PageProps = $props();
 
-	const erreur = (champ: string) => (form?.champ === champ ? form.message : null);
+	const echec = $derived(form && 'champ' in form ? form : null);
+	const envoye = $derived(form && 'envoye' in form ? form.envoye : null);
+	const erreur = (champ: string) => (echec?.champ === champ ? echec.message : null);
 </script>
 
 <svelte:head>
@@ -12,6 +14,19 @@
 
 <h1>Créer un compte</h1>
 
+{#if envoye}
+	<div class="carte" role="status">
+		<p>
+			Un lien de confirmation vient d'être envoyé à <strong>{envoye}</strong>. Ouvrez-le dans les
+			24 heures pour activer votre compte.
+		</p>
+		<p class="attenue">
+			Rien reçu ? Vérifiez les indésirables, ou <a href="/renvoyer-lien?email={encodeURIComponent(envoye)}"
+				>demandez un nouveau lien</a
+			>.
+		</p>
+	</div>
+{:else}
 {#if erreur('general')}
 	<p class="message erreur" role="alert">{erreur('general')}</p>
 {/if}
@@ -24,7 +39,7 @@
 			name="email"
 			autocomplete="email"
 			required
-			value={form?.valeurs.email ?? ''}
+			value={echec?.valeurs?.email ?? ''}
 			aria-invalid={erreur('email') ? 'true' : undefined}
 		/>
 		{#if erreur('email')}<span class="erreur-champ">{erreur('email')}</span>{/if}
@@ -38,7 +53,7 @@
 			autocomplete="username"
 			required
 			pattern={'[a-z0-9][a-z0-9_\\-]{1,31}'}
-			value={form?.valeurs.username ?? ''}
+			value={echec?.valeurs?.username ?? ''}
 			aria-invalid={erreur('username') ? 'true' : undefined}
 		/>
 		{#if erreur('username')}<span class="erreur-champ">{erreur('username')}</span>{/if}
@@ -60,7 +75,7 @@
 
 	<label>
 		Prénom <span class="aide">(facultatif — la salutation de l'audio)</span>
-		<input name="prenom" autocomplete="given-name" value={form?.valeurs.prenom ?? ''} />
+		<input name="prenom" autocomplete="given-name" value={echec?.valeurs?.prenom ?? ''} />
 	</label>
 
 	<label>
@@ -73,7 +88,7 @@
 			name="profil"
 			rows="10"
 			aria-invalid={erreur('profil') ? 'true' : undefined}
-			>{form?.valeurs.profil ?? data.profilParDefaut}</textarea
+			>{echec?.valeurs?.profil ?? data.profilParDefaut}</textarea
 		>
 		{#if erreur('profil')}<span class="erreur-champ">{erreur('profil')}</span>{/if}
 	</label>
@@ -81,3 +96,4 @@
 	<button type="submit">Créer mon compte</button>
 	<p class="attenue">Déjà inscrit ? <a href="/connexion">Se connecter</a></p>
 </form>
+{/if}

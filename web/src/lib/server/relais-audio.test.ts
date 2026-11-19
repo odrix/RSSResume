@@ -22,9 +22,9 @@ describe('RelaisAudio', () => {
 	beforeEach(async () => {
 		env = monter();
 		relais = new RelaisAudio(env.api);
-		moi = await env.comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
-		autre = await env.comptes.creer('autre@example.com', 'autre', 'une phrase de passe');
-		admin = await env.comptes.creer(EMAIL_ADMIN, 'chef', 'une phrase de passe');
+		moi = await env.creerConfirme('moi@example.com', 'moi');
+		autre = await env.creerConfirme('autre@example.com', 'autre');
+		admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
 		await env.api.creerProfil('moi', { profil: 'CTO', stack: [], email: [], prenom: '' });
 		env.fausseApi.ajouterAudio('moi', DATE, NOM, OCTETS);
 		env.fausseApi.requetes.length = 0;

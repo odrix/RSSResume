@@ -12,8 +12,8 @@ function horloge(depart = 1_800_000_000_000) {
 describe('Sessions', () => {
 	it('ouvre une session et retrouve son utilisateur', async () => {
 		const h = horloge();
-		const { comptes, sessions } = monter(h.maintenant);
-		const moi = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		const { creerConfirme, sessions } = monter(h.maintenant);
+		const moi = await creerConfirme('moi@example.com', 'moi');
 		const { jeton, expireLe } = sessions.ouvrir(moi.id);
 		expect(jeton).toMatch(/^[A-Za-z0-9_-]{43}$/);
 		expect(expireLe.getTime()).toBe(h.t + DUREE_SESSION_MS);
@@ -21,9 +21,16 @@ describe('Sessions', () => {
 		expect(sessions.valider('jeton-inconnu')).toBeNull();
 	});
 
-	it("ne stocke pas le jeton en clair", async () => {
-		const { base, comptes, sessions } = monter();
-		const moi = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+	it("refuse la session d'un compte en attente de confirmation", async () => {
+		const { comptes, sessions } = monter();
+		const enAttente = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		const { jeton } = sessions.ouvrir(enAttente.id);
+		expect(sessions.valider(jeton)).toBeNull();
+	});
+
+	it('ne stocke pas le jeton en clair', async () => {
+		const { base, creerConfirme, sessions } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
 		const { jeton } = sessions.ouvrir(moi.id);
 		const ids = base.prepare('SELECT id FROM sessions').all() as { id: string }[];
 		expect(ids).toHaveLength(1);
@@ -33,8 +40,8 @@ describe('Sessions', () => {
 
 	it('expire au bout de trente jours et supprime la session', async () => {
 		const h = horloge();
-		const { base, comptes, sessions } = monter(h.maintenant);
-		const moi = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		const { base, creerConfirme, sessions } = monter(h.maintenant);
+		const moi = await creerConfirme('moi@example.com', 'moi');
 		const { jeton } = sessions.ouvrir(moi.id);
 		h.t += DUREE_SESSION_MS;
 		expect(sessions.valider(jeton)).toBeNull();
@@ -43,8 +50,8 @@ describe('Sessions', () => {
 
 	it("prolonge une session active à moins de quinze jours de l'échéance", async () => {
 		const h = horloge();
-		const { comptes, sessions } = monter(h.maintenant);
-		const moi = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		const { creerConfirme, sessions } = monter(h.maintenant);
+		const moi = await creerConfirme('moi@example.com', 'moi');
 		const { jeton } = sessions.ouvrir(moi.id);
 
 		h.t += 5 * JOUR;
@@ -60,8 +67,8 @@ describe('Sessions', () => {
 	});
 
 	it('ferme une session, et les supprime toutes avec le compte', async () => {
-		const { comptes, sessions } = monter();
-		const moi = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		const { comptes, creerConfirme, sessions } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
 		const a = sessions.ouvrir(moi.id);
 		const b = sessions.ouvrir(moi.id);
 		sessions.fermer(a.jeton);

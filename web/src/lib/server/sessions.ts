@@ -53,7 +53,9 @@ export class Sessions {
 			return null;
 		}
 		const utilisateur = this.comptes.parId(ligne.compte_id);
-		if (!utilisateur) return null;
+		// La connexion refuse déjà un compte en attente ; la session le refuse aussi, pour
+		// que la règle ne dépende pas d'un seul point d'entrée.
+		if (!utilisateur?.confirme) return null;
 		let expireLe = ligne.expire_le;
 		const prolongee = expireLe - maintenant < SEUIL_PROLONGATION_MS;
 		if (prolongee) {

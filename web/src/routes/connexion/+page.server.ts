@@ -7,6 +7,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.utilisateur) redirect(303, destinationSure(url.searchParams.get('suite')));
+	return { confirme: url.searchParams.has('confirme') };
 };
 
 export const actions: Actions = {
@@ -41,6 +42,14 @@ export const actions: Actions = {
 		}
 
 		ctx.limiteParEmail.oublier(email);
+		if (!utilisateur.confirme) {
+			// Seul le titulaire du mot de passe voit ce message : il ne révèle rien à un tiers.
+			return fail(403, {
+				email,
+				nonConfirme: true,
+				message: "Votre adresse n'est pas encore confirmée. Ouvrez le lien reçu par email."
+			});
+		}
 		const { jeton, expireLe } = ctx.sessions.ouvrir(utilisateur.id);
 		poserCookieSession(cookies, jeton, expireLe);
 		redirect(303, destinationSure(url.searchParams.get('suite')));

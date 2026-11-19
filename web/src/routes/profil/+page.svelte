@@ -5,8 +5,12 @@
 	let { data, form }: PageProps = $props();
 
 	// Après un refus, la page réaffiche ce qui a été saisi, pas ce qui est en base.
-	const source = $derived<ProfilSaisi | null>(
-		(form && 'saisie' in form ? form.saisie : null) ?? data.profil
+	const saisieRefusee = $derived(form && 'saisie' in form ? form.saisie : null);
+	const source = $derived<ProfilSaisi | null>(saisieRefusee ?? data.profil);
+	// Les adresses en attente restent dans la liste : enregistrer sans les retirer les garde
+	// en attente, les effacer de la liste annule leur ajout.
+	const adresses = $derived(
+		saisieRefusee ? saisieRefusee.email : [...(data.profil?.email ?? []), ...data.enAttente]
 	);
 
 	// Une ligne libre en fin de liste, pour qu'on puisse ajouter un composant même sans
@@ -34,13 +38,14 @@
 
 <h1>Mon profil</h1>
 
-{#if data.bienvenue && !form}
-	<p class="message succes">
-		Votre compte est créé. Relisez votre profil : c'est lui qui décide de ce que vous recevrez.
-	</p>
-{/if}
 {#if form && 'enregistre' in form}
-	<p class="message succes" role="status">Profil enregistré.</p>
+	<p class="message succes" role="status">
+		Profil enregistré.
+		{#if form.liensEnvoyes?.length}
+			Un lien de confirmation a été envoyé à {form.liensEnvoyes.join(', ')} : l'adresse ne recevra
+			le résumé qu'une fois ce lien ouvert.
+		{/if}
+	</p>
 {/if}
 {#if form && 'message' in form}
 	<p class="message erreur" role="alert">{form.message}</p>
@@ -65,8 +70,14 @@
 
 	<label>
 		Adresses de réception
-		<span class="aide">Une par ligne. Vide, aucun email ne part.</span>
-		<textarea name="email" rows="3">{(source?.email ?? []).join('\n')}</textarea>
+		<span class="aide">
+			Une par ligne. Une adresse ajoutée reçoit d'abord un lien de confirmation ; une adresse
+			retirée ne reçoit plus rien dès l'enregistrement. Vide, aucun email ne part.
+		</span>
+		<textarea name="email" rows="3">{adresses.join('\n')}</textarea>
+		{#if !saisieRefusee && data.enAttente.length}
+			<span class="aide">En attente de confirmation : {data.enAttente.join(', ')}</span>
+		{/if}
 	</label>
 
 	<fieldset class="stack">

@@ -20,9 +20,9 @@ describe('gardes', () => {
 	});
 
 	it("cache l'administration aux membres par un 404", async () => {
-		const { comptes } = monter();
-		const membre = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
-		const admin = await comptes.creer(EMAIL_ADMIN, 'chef', 'une phrase de passe');
+		const { creerConfirme } = monter();
+		const membre = await creerConfirme('moi@example.com', 'moi');
+		const admin = await creerConfirme(EMAIL_ADMIN, 'chef');
 		const lancee = leve(() => exigerAdmin(membre, new URL('http://site.test/admin')));
 		expect(isHttpError(lancee, 404)).toBe(true);
 		expect(exigerAdmin(admin, new URL('http://site.test/admin'))).toBe(admin);

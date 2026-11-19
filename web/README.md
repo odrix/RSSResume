@@ -27,6 +27,10 @@ La fausse API ([mock/faux-api.js](mock/faux-api.js)) tient le contrat en mémoir
 à chaque profil créé deux journées d'audio silencieux, de quoi essayer le lecteur et l'avance
 dans le fichier. Un redémarrage la vide ; les comptes, eux, restent dans `data/comptes.sqlite`.
 
+Sans `RESEND_API_KEY` et hors production (`NODE_ENV` différent de `production`), aucun
+email ne part : chacun — lien de confirmation compris — est écrit dans la console du
+serveur. Copier le lien `…/confirmer/<jeton>` dans le navigateur pour activer un compte.
+
 ## Vérifications
 
 ```bash
@@ -36,10 +40,14 @@ npm run build   # build de production dans build/
 ```
 
 Les tests couvrent la validation (username, mot de passe, email), les sessions (empreinte
-en base, expiration, prolongation), les comptes et le calcul du droit d'administrer, la
-limitation des tentatives, l'inscription (ordre compte/profil, retour arrière, alerte), le
-client d'API contre la fausse API, et le relais audio : contrôle propriétaire/admin,
-chemins forgés, transmission du `Range` et relais des `206`/`416`.
+en base, expiration, prolongation, refus d'un compte en attente), les comptes (droit
+d'administrer réservé aux comptes confirmés, purge à sept jours), les jetons de
+confirmation (empreinte, 24 h, usage unique, remplacement), l'inscription en deux temps
+(profil et alerte à la confirmation seulement, lien expiré, API indisponible, renvoi,
+fermeture sans transport d'email), les destinataires (ajout en attente, confirmation,
+retrait immédiat, plafond, fréquence), les transports d'email, le client d'API contre la
+fausse API (dont le champ `id`, jamais renvoyé), et le relais audio : contrôle
+propriétaire/admin, chemins forgés, transmission du `Range` et relais des `206`/`416`.
 
 ## Arborescence
 
@@ -52,15 +60,18 @@ src/
     contexte.ts              le seul endroit où l'environnement est lu et tout assemblé
     api-resume.ts            client typé de l'API de résumé
     base.ts                  SQLite (node:sqlite) et migrations
-    comptes.ts               comptes, Argon2id, droit de consulter
+    comptes.ts               comptes (en attente / confirmés), Argon2id, droit de consulter
     sessions.ts              sessions par jeton aléatoire
-    inscription.ts           compte + profil + alerte, avec retour arrière
-    alerte.ts                email à l'administrateur par l'API Resend
+    jetons-email.ts          jetons des liens de confirmation
+    inscription.ts           compte en attente, puis profil + alerte à la confirmation
+    destinataires.ts         adresses de réception : confirmées avant d'atteindre l'API
+    courrier.ts              emails du site ; transports Resend, console, absent
     relais-audio.ts          contrôle d'accès et relais du MP3 avec Range
     limiteur.ts              limitation des tentatives
     garde.ts, cookie.ts      gardes de pages, cookie de session
   routes/
     inscription, connexion, deconnexion, profil, resumes/[username], admin
+    confirmer/[jeton], renvoyer-lien   la vérification d'email
     audio/[username]/[date]/[nom]   le relais audio (GET)
 mock/                        fausse API (tests et développement)
 ```
@@ -85,7 +96,7 @@ Ce qui n'est **pas** là, volontairement :
   « experimental », coupé par `--disable-warning=ExperimentalWarning` ;
 - **pas de Lucia** (déprécié) ni de bibliothèque de sessions : une table, un jeton aléatoire
   de 256 bits, son empreinte SHA-256 en base ([sessions.ts](src/lib/server/sessions.ts)) ;
-- **pas de SDK Resend** : un seul `POST` par `fetch` ([alerte.ts](src/lib/server/alerte.ts)) ;
+- **pas de SDK Resend** : un seul `POST` par `fetch` ([courrier.ts](src/lib/server/courrier.ts)) ;
 - **pas de framework CSS** : une feuille de style sobre, thème sombre suivi du système.
 
 ## Sécurité
@@ -100,6 +111,25 @@ Ce qui n'est **pas** là, volontairement :
   `Origin` n'est pas celui du site est refusé (403). SvelteKit 3 ne permet plus de le
   désactiver ; il faut en revanche que **`ORIGIN`** soit la vraie adresse publique.
   Vérifié à la main : un `POST /connexion` avec `Origin: http://evil.example` → 403.
+- **Vérification d'email** :
+  - un compte naît **en attente**. Le lien envoyé porte un jeton de 256 bits ; seule son
+    empreinte SHA-256 est en base. Il est valable 24 h, ne sert qu'une fois, et un nouveau
+    lien annule le précédent ;
+  - ouvrir le lien n'affiche qu'une page avec un bouton : la confirmation est un `POST`,
+    pour qu'un antivirus de messagerie qui suit les liens ne la déclenche pas ;
+  - le **profil n'est créé côté API qu'à la confirmation** : aucun digest ne part vers une
+    adresse non prouvée. L'alerte à `ADMIN_EMAIL` part à ce moment-là aussi ;
+  - tant que le compte est en attente, la connexion est refusée, et la session aussi. Le
+    message n'apparaît qu'après un mot de passe correct. La page « Renvoyer le lien » répond
+    la même chose quelle que soit l'adresse (3 demandes par adresse et 10 par IP et par heure) ;
+  - un compte jamais confirmé est supprimé après 7 jours, au démarrage et à chaque
+    inscription : son adresse et son username sont alors libérés ;
+  - sans `RESEND_API_KEY` ou `MAIL_FROM` en production, les inscriptions sont refusées
+    (« inscriptions momentanément fermées ») et l'erreur est journalisée.
+- **Destinataires du digest** : dans « Mon profil », une adresse ajoutée reçoit son propre
+  lien et attend dans la base du site. L'API ne reçoit que les adresses confirmées. L'adresse
+  du compte, prouvée à l'inscription, passe directement. Retirer une adresse est immédiat.
+  Au plus 10 adresses en attente, et 10 liens par compte et par heure.
 - **Limitation** : 5 échecs de connexion par adresse et 30 par IP sur 15 minutes ;
   5 inscriptions par IP et par heure. En mémoire (un seul processus).
 - **Accès aux résumés** : le propriétaire ou l'administrateur. Les autres reçoivent un 404,
@@ -108,10 +138,10 @@ Ce qui n'est **pas** là, volontairement :
 - **Redirections** : le paramètre `suite` de la connexion n'est suivi que s'il reste sur le site.
 - **En-têtes** : CSP stricte (scripts par nonce, aucune origine tierce), `X-Frame-Options:
   DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`.
-- **Administrateur** : le compte dont l'email est `ADMIN_EMAIL`, ou un compte de rôle
-  `admin` en base. L'inscription est ouverte et les adresses ne sont pas vérifiées :
-  **créez le compte administrateur dès le premier déploiement**, avant d'annoncer le site.
-  Pour donner le rôle à un autre compte :
+- **Administrateur** : un compte **confirmé** dont l'email est `ADMIN_EMAIL`, ou un compte
+  confirmé de rôle `admin` en base. S'inscrire avec l'adresse de l'administrateur ne suffit
+  donc pas : il faut aussi ouvrir le lien reçu dans sa boîte. Pour donner le rôle à un autre
+  compte :
 
   ```bash
   docker compose exec web node -e "const {DatabaseSync}=require('node:sqlite'); \
@@ -162,10 +192,12 @@ Dans Dokploy :
    `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM` (domaine vérifié chez Resend), et
    `ORIGIN=https://<le domaine du site>` ;
 2. onglet **Domains** : un domaine sur le service `web`, port `3000`, HTTPS (Let's Encrypt) ;
-3. déployer, puis **créer aussitôt le compte de `ADMIN_EMAIL`** par la page d'inscription.
+3. déployer, créer le compte de `ADMIN_EMAIL` par la page d'inscription, puis le
+   confirmer par le lien reçu.
 
-Sans `RESEND_API_KEY`, l'inscription marche et l'alerte n'est qu'une ligne dans les
-journaux du conteneur.
+`RESEND_API_KEY` et `MAIL_FROM` sont **indispensables en production** : sans elles,
+l'image (`NODE_ENV=production`) refuse les inscriptions, puisque aucun lien de
+confirmation ne pourrait partir.
 
 Construire et lancer l'image seule :
 

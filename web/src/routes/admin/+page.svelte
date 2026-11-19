@@ -44,6 +44,7 @@
 						{#if ligne.emailCompte}
 							{ligne.emailCompte}
 							{#if ligne.admin}<br /><span class="attenue">admin</span>{/if}
+							{#if !ligne.confirme}<br /><span class="attenue">en attente de confirmation</span>{/if}
 						{:else}
 							<span class="attenue">pas de compte</span>
 						{/if}

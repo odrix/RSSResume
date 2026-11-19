@@ -1,5 +1,9 @@
 /**
  * Les comptes du site : qui peut se connecter, et ce qu'il a le droit de voir.
+ *
+ * Un compte naît en attente : tant que son adresse n'est pas confirmée, il ne se connecte
+ * pas, n'a pas de profil côté API et n'est administrateur de rien. L'inscription est
+ * ouverte ; c'est la confirmation qui prouve qu'on parle au titulaire de l'adresse.
  */
 
 import { hash, verify } from '@node-rs/argon2';
@@ -7,6 +11,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import { normaliserEmail } from './validation.js';
 
 export type Role = 'membre' | 'admin';
+
+/** Un compte jamais confirmé disparaît au bout de ce délai : il libère son adresse et son
+ * username, qu'une faute de frappe ou un usurpateur aurait sinon pris pour toujours. */
+export const DELAI_CONFIRMATION_COMPTE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Argon2id aux réglages par défaut de @node-rs/argon2 (19 Mio, 2 passes), le minimum que
  * recommande l'OWASP. Une classe à part pour que les tests la remplacent par plus rapide. */
@@ -24,14 +32,15 @@ export class HacheurMotDePasse {
 	}
 }
 
-/** La personne connectée. Le droit d'administrer est calculé une fois, au chargement. */
+/** Une personne qui a un compte. Le droit d'administrer est calculé une fois, au chargement. */
 export class Utilisateur {
 	constructor(
 		readonly id: number,
 		readonly email: string,
 		readonly username: string,
 		readonly role: Role,
-		readonly admin: boolean
+		readonly admin: boolean,
+		readonly confirme: boolean
 	) {}
 
 	/** Un résumé se consulte par son propriétaire, ou par l'administrateur. */
@@ -45,12 +54,28 @@ export class Utilisateur {
 	}
 }
 
-export interface LigneCompte {
+/** Ce que la personne a écrit à l'inscription, gardé jusqu'à la création du profil. */
+export interface Brouillon {
+	profil: string;
+	prenom: string;
+}
+
+interface LigneCompte {
 	id: number;
 	email: string;
 	username: string;
 	role: Role;
 	cree_le: string;
+	confirme_le: string | null;
+}
+
+export interface CompteListe {
+	id: number;
+	email: string;
+	username: string;
+	creeLe: string;
+	confirme: boolean;
+	admin: boolean;
 }
 
 export class CompteExistant extends Error {
@@ -58,6 +83,8 @@ export class CompteExistant extends Error {
 		super(champ === 'email' ? 'Cette adresse a déjà un compte.' : "Ce nom d'utilisateur est pris.");
 	}
 }
+
+const COLONNES = 'id, email, username, role, cree_le, confirme_le';
 
 export class Comptes {
 	/** Une empreinte jetable, vérifiée quand l'adresse est inconnue : la réponse prend alors
@@ -68,11 +95,12 @@ export class Comptes {
 		private readonly base: DatabaseSync,
 		/** L'adresse de `ADMIN_EMAIL` ; vide, seul le rôle en base fait un administrateur. */
 		private readonly emailAdmin: string,
-		private readonly hacheur: HacheurMotDePasse = new HacheurMotDePasse()
+		private readonly hacheur: HacheurMotDePasse = new HacheurMotDePasse(),
+		private readonly maintenant: () => number = Date.now
 	) {}
 
-	/** Ce qui empêcherait la création, vérifié avant d'appeler l'API : un profil créé pour
-	 * un compte qui ne peut pas l'être serait un orphelin à supprimer. */
+	/** Ce qui empêcherait la création. Les comptes en attente comptent : leur adresse et
+	 * leur username sont réservés jusqu'à la confirmation ou à la purge. */
 	conflit(email: string, username: string): CompteExistant | null {
 		const ligne = this.base
 			.prepare('SELECT email, username FROM comptes WHERE email = ? OR username = ?')
@@ -81,12 +109,28 @@ export class Comptes {
 		return new CompteExistant(ligne.username === username ? 'username' : 'email');
 	}
 
-	async creer(email: string, username: string, motDePasse: string): Promise<Utilisateur> {
+	/** Crée un compte en attente de confirmation. */
+	async creer(
+		email: string,
+		username: string,
+		motDePasse: string,
+		brouillon: Brouillon = { profil: '', prenom: '' }
+	): Promise<Utilisateur> {
 		const empreinte = await this.hacheur.hacher(motDePasse);
 		try {
 			const resultat = this.base
-				.prepare('INSERT INTO comptes (email, username, hash, cree_le) VALUES (?, ?, ?, ?)')
-				.run(normaliserEmail(email), username, empreinte, new Date().toISOString());
+				.prepare(
+					`INSERT INTO comptes (email, username, hash, cree_le, brouillon_profil, brouillon_prenom)
+					VALUES (?, ?, ?, ?, ?, ?)`
+				)
+				.run(
+					normaliserEmail(email),
+					username,
+					empreinte,
+					new Date(this.maintenant()).toISOString(),
+					brouillon.profil,
+					brouillon.prenom
+				);
 			return this.parId(Number(resultat.lastInsertRowid))!;
 		} catch (erreur) {
 			// Une course entre deux inscriptions : la contrainte UNIQUE tranche.
@@ -96,6 +140,25 @@ export class Comptes {
 		}
 	}
 
+	brouillon(id: number): Brouillon {
+		const ligne = this.base
+			.prepare('SELECT brouillon_profil, brouillon_prenom FROM comptes WHERE id = ?')
+			.get(id) as { brouillon_profil: string | null; brouillon_prenom: string | null } | undefined;
+		return { profil: ligne?.brouillon_profil ?? '', prenom: ligne?.brouillon_prenom ?? '' };
+	}
+
+	/** Le brouillon a servi à créer le profil : il n'a plus de raison d'être gardé. */
+	confirmer(id: number): void {
+		this.base
+			.prepare(
+				`UPDATE comptes SET confirme_le = ?, brouillon_profil = NULL, brouillon_prenom = NULL
+				WHERE id = ? AND confirme_le IS NULL`
+			)
+			.run(new Date(this.maintenant()).toISOString(), id);
+	}
+
+	/** Vérifie le mot de passe, confirmé ou non : c'est à l'appelant de refuser un compte en
+	 * attente, avec un message que seul le titulaire du mot de passe verra. */
 	async authentifier(email: string, motDePasse: string): Promise<Utilisateur | null> {
 		const ligne = this.base
 			.prepare('SELECT id, hash FROM comptes WHERE email = ?')
@@ -110,9 +173,16 @@ export class Comptes {
 	}
 
 	parId(id: number): Utilisateur | null {
+		const ligne = this.base.prepare(`SELECT ${COLONNES} FROM comptes WHERE id = ?`).get(id) as
+			| LigneCompte
+			| undefined;
+		return ligne ? this.#utilisateur(ligne) : null;
+	}
+
+	parEmail(email: string): Utilisateur | null {
 		const ligne = this.base
-			.prepare('SELECT id, email, username, role FROM comptes WHERE id = ?')
-			.get(id) as LigneCompte | undefined;
+			.prepare(`SELECT ${COLONNES} FROM comptes WHERE email = ?`)
+			.get(normaliserEmail(email)) as LigneCompte | undefined;
 		return ligne ? this.#utilisateur(ligne) : null;
 	}
 
@@ -120,14 +190,34 @@ export class Comptes {
 		this.base.prepare('DELETE FROM comptes WHERE id = ?').run(id);
 	}
 
-	lister(): (LigneCompte & { admin: boolean })[] {
-		const lignes = this.base
-			.prepare('SELECT id, email, username, role, cree_le FROM comptes ORDER BY username')
-			.all() as unknown as LigneCompte[];
-		return lignes.map((ligne) => ({ ...ligne, admin: this.#estAdmin(ligne) }));
+	/** Supprime les comptes jamais confirmés depuis plus de sept jours. Ils n'ont pas de
+	 * profil côté API : rien à défaire ailleurs. */
+	purgerNonConfirmes(): number {
+		const limite = new Date(this.maintenant() - DELAI_CONFIRMATION_COMPTE_MS).toISOString();
+		const resultat = this.base
+			.prepare('DELETE FROM comptes WHERE confirme_le IS NULL AND cree_le < ?')
+			.run(limite);
+		return Number(resultat.changes);
 	}
 
-	#estAdmin(ligne: Pick<LigneCompte, 'role' | 'email'>): boolean {
+	lister(): CompteListe[] {
+		const lignes = this.base
+			.prepare(`SELECT ${COLONNES} FROM comptes ORDER BY username`)
+			.all() as unknown as LigneCompte[];
+		return lignes.map((ligne) => ({
+			id: ligne.id,
+			email: ligne.email,
+			username: ligne.username,
+			creeLe: ligne.cree_le,
+			confirme: ligne.confirme_le !== null,
+			admin: this.#estAdmin(ligne)
+		}));
+	}
+
+	/** Seul un compte confirmé administre : sans cette condition, s'inscrire avec l'adresse
+	 * de l'administrateur suffirait à le devenir. */
+	#estAdmin(ligne: LigneCompte): boolean {
+		if (ligne.confirme_le === null) return false;
 		return (
 			ligne.role === 'admin' ||
 			(this.emailAdmin !== '' && normaliserEmail(this.emailAdmin) === ligne.email)
@@ -135,6 +225,13 @@ export class Comptes {
 	}
 
 	#utilisateur(ligne: LigneCompte): Utilisateur {
-		return new Utilisateur(ligne.id, ligne.email, ligne.username, ligne.role, this.#estAdmin(ligne));
+		return new Utilisateur(
+			ligne.id,
+			ligne.email,
+			ligne.username,
+			ligne.role,
+			this.#estAdmin(ligne),
+			ligne.confirme_le !== null
+		);
 	}
 }

@@ -1,7 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { PROFIL_PAR_DEFAUT } from '#lib/profil.js';
 import { contexte } from '#lib/server/contexte.js';
-import { poserCookieSession } from '#lib/server/cookie.js';
 import { ErreurInscription, type SaisieInscription } from '#lib/server/inscription.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -11,7 +10,7 @@ export const load: PageServerLoad = ({ locals }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, url, getClientAddress }) => {
 		const donnees = await request.formData();
 		const saisie: SaisieInscription = {
 			email: String(donnees.get('email') ?? ''),
@@ -38,12 +37,11 @@ export const actions: Actions = {
 			});
 		}
 
-		let jeton: string;
-		let expireLe: Date;
 		try {
-			const utilisateur = await ctx.inscription.inscrire(saisie);
+			const utilisateur = await ctx.inscription.inscrire(saisie, url.origin);
 			ctx.limiteInscriptions.noter(ip);
-			({ jeton, expireLe } = ctx.sessions.ouvrir(utilisateur.id));
+			// Pas de session : le compte ne s'ouvre qu'une fois l'adresse confirmée.
+			return { envoye: utilisateur.email };
 		} catch (erreur) {
 			if (erreur instanceof ErreurInscription) {
 				return fail(erreur.champ === 'general' ? 503 : 400, {
@@ -54,7 +52,5 @@ export const actions: Actions = {
 			}
 			throw erreur;
 		}
-		poserCookieSession(cookies, jeton, expireLe);
-		redirect(303, '/profil?bienvenue=1');
 	}
 };

@@ -23,6 +23,13 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
   `422`. Le message d'un `422` est **affiché tel quel** à la personne dans « Mon profil » :
   il doit être en français et dire quel champ est en cause (`email : adresse invalide (x)`).
 
+## Ce que le site garantit à l'API
+
+- Un profil n'est créé (`POST`) qu'une fois l'adresse du compte confirmée par un lien.
+- `email` ne contient que des adresses confirmées : celle du compte, et celles dont le
+  titulaire a ouvert le lien de confirmation. Une adresse en attente reste dans la base du
+  site et n'est jamais envoyée.
+
 ## Le profil
 
 Le document de la personne, au format de `rssresume/profil.py` :
@@ -89,7 +96,8 @@ Corps : `{"profil", "stack", "email", "prenom"}` — remplacement complet, pas d
 - `204`, sans corps
 - `404`
 
-Le site l'appelle pour défaire une inscription dont le compte n'a pas pu être créé.
+Le site ne l'appelle pas aujourd'hui (le profil n'est créé qu'à la confirmation du compte) ;
+il fait partie du contrat pour l'administration à venir.
 
 ### `GET /api/v1/profils/{username}/journees`
 

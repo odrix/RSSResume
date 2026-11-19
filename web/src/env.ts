@@ -19,15 +19,17 @@ export const variables = defineEnvVars({
 		schema: facultative()
 	},
 	ADMIN_EMAIL: {
-		description: "Adresse de l'administrateur : alertée à chaque inscription, et admin du site.",
+		description:
+			"Adresse de l'administrateur : alertée à chaque compte confirmé, et admin du site une fois son propre compte confirmé.",
 		schema: facultative()
 	},
 	RESEND_API_KEY: {
-		description: "Clé de l'API Resend ; absente, l'alerte d'inscription est seulement journalisée.",
+		description:
+			"Clé de l'API Resend. Absente : en développement les emails vont dans la console, en production les inscriptions sont fermées.",
 		schema: facultative()
 	},
 	MAIL_FROM: {
-		description: "Expéditeur de l'alerte d'inscription, sur un domaine vérifié chez Resend.",
+		description: 'Expéditeur des emails du site, sur un domaine vérifié chez Resend.',
 		schema: facultative()
 	},
 	DATABASE_PATH: {
