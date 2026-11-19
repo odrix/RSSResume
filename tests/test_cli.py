@@ -23,18 +23,33 @@ from unittest import mock
 
 from rssresume import cli, runlog
 from rssresume.config import AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL
-from rssresume.profil import ENV_PROFILES_DIR, USERNAME_DEFAUT
+from rssresume.profil import ENV_PROFIL, ENV_PROFILES_DIR
 from rssresume.tools import console
 from tests.support import make_config
 
 JOUR = dt.date(2026, 8, 30)
+#: La personne servie par défaut dans ces tests : sans profil déclaré, rien ne tourne.
+PROFIL = "adrien"
+
+
+def dossier_profils(racine, *noms):
+    """Un dossier de profils sous `racine`, un document par nom ; rend l'environnement."""
+    dossier = pathlib.Path(racine) / "profils"
+    dossier.mkdir(exist_ok=True)
+    for nom in noms:
+        (dossier / f"{nom}.json").write_text(
+            json.dumps({"profil": f"Profil de {nom}", "email": f"{nom}@example.com"}),
+            encoding="utf-8",
+        )
+    return {ENV_PROFILES_DIR: str(dossier)}
 
 
 def mode_retenu(mode_environnement, options=()):
     """Le mode que `main` a réellement remis au service, l'option ayant eu son mot à dire."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = dataclasses.replace(make_config(tmpdir), audio_mode=mode_environnement)
-        with mock.patch.dict(os.environ, {}, clear=True), \
+        env = dossier_profils(tmpdir, PROFIL)
+        with mock.patch.dict(os.environ, env, clear=True), \
                 mock.patch.object(cli.AppConfig, "from_env", return_value=config):
             with mock.patch.object(cli, "build_service") as build:
                 cli.main([*options, "--date", JOUR.isoformat(), "--dry-run"])
@@ -65,10 +80,10 @@ class AudioModeOptionTests(unittest.TestCase):
                 cli.parse_args(["--audio-mode", "journee"])
 
 
-def journee_produite(racine, username=USERNAME_DEFAUT):
+def journee_produite(racine, username=PROFIL):
     """Une journée sur le disque, réduite à ce que le bilan a besoin de lire.
 
-    Sous le répertoire de la personne : sans document déclaré, c'est `defaut`.
+    Sous le répertoire de la personne.
     """
     day_dir = pathlib.Path(racine) / username / JOUR.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -93,14 +108,16 @@ def journee_produite(racine, username=USERNAME_DEFAUT):
 def lance(argv, racine, debug_env=False, env=None):
     """Exécute `main` sur une configuration de test ; renvoie (code, sortie console).
 
-    L'environnement est vidé — ou remplacé par `env` — pour que les profils servis ne
-    dépendent pas du poste qui lance la suite.
+    L'environnement est remplacé — par `env`, sinon par un dossier qui ne déclare que
+    `PROFIL` — pour que les profils servis ne dépendent pas du poste qui lance la suite.
     """
     config = dataclasses.replace(
         make_config(racine), output_dir=pathlib.Path(racine), debug=debug_env
     )
+    if env is None:
+        env = dossier_profils(racine, PROFIL)
     sortie = io.StringIO()
-    with mock.patch.dict(os.environ, env or {}, clear=True), \
+    with mock.patch.dict(os.environ, env, clear=True), \
             mock.patch.object(cli.AppConfig, "from_env", return_value=config):
         with mock.patch.object(cli, "build_service") as build:
             # Les deux sorties : `console.log` écrit sur la standard, `console.error` sur
@@ -178,14 +195,23 @@ class ProfilOptionTests(unittest.TestCase):
     """`--profil` cible une personne ; sans lui, toutes. Les relectures suivent."""
 
     def _dossier(self, racine, *noms):
-        dossier = pathlib.Path(racine) / "profils"
-        dossier.mkdir()
-        for nom in noms:
-            (dossier / f"{nom}.json").write_text(
-                json.dumps({"profil": f"Profil de {nom}", "email": f"{nom}@example.com"}),
-                encoding="utf-8",
-            )
-        return {ENV_PROFILES_DIR: str(dossier)}
+        return dossier_profils(racine, *noms)
+
+    def test_nothing_declared_reads_and_builds_nothing(self):
+        """Ni dossier ni document : pas d'action, pas de résumé."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch.object(cli.FreshRSSClient, "list_categories") as lecture:
+                code, sortie, build = lance([], tmpdir, env={})
+
+            self.assertEqual(0, code)
+            build.assert_not_called()
+            lecture.assert_not_called()
+            self.assertIn("aucun profil", sortie)
+
+    def test_an_inline_profile_without_a_document_fails_at_launch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError):
+                lance([], tmpdir, env={ENV_PROFIL: "Un profil en ligne"})
 
     def test_the_journal_of_one_profile_is_read_under_its_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:

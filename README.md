@@ -164,8 +164,8 @@ Variables optionnelles :
 - `RSSRESUME_PROFILE_FILE=input/moi/adrien.json` — le document d'une seule personne : profil de
   pertinence, stack surveillée, destinataire du digest (voir ci-dessous). Le nom du fichier
   devient le nom du profil
-- `RSSRESUME_PROFILE` — le profil seul, en clair, quand il n'y a rien d'autre à déclarer
-  (profil nommé `defaut`)
+- sans l'une ni l'autre, aucun profil : le passage ne fait rien. `RSSRESUME_PROFILE` (le profil
+  en clair) n'est plus lue, et fait échouer le lancement si elle est posée
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
 - `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5` — seuil propre à une catégorie, sous
   la forme `Catégorie=score`, plusieurs entrées séparées par des virgules
@@ -446,7 +446,8 @@ stack et son adresse. `RSSRESUME_PROFILES_DIR` désigne un dossier qui contient 
 `{username}.json` par personne, au format du document de profil (clé `profil` exigée,
 `stack`, `email`, `prenom`). Le nom du fichier est le nom du profil : 2 à 32 caractères,
 minuscules, chiffres, `-` ou `_`, commençant par une lettre ou un chiffre. Un `.json` au nom
-invalide, ou un dossier absent, fait échouer le lancement ; les autres fichiers sont ignorés.
+invalide est signalé dans les logs et sauté, les autres profils sont servis ; un dossier absent
+fait échouer le lancement ; les fichiers qui ne sont pas des `.json` sont ignorés.
 
 Chaque passage digère la journée pour chaque profil, dans l'ordre alphabétique :
 
@@ -464,9 +465,10 @@ Chaque passage digère la journée pour chaque profil, dans l'ordre alphabétiqu
   reviennent dans aucune autre journée.
 
 Sans dossier, `RSSRESUME_PROFILE_FILE` reste lu : ce document est l'unique profil, nommé
-d'après son fichier (`input/adrien.json` → `adrien`). Sans l'un ni l'autre, le profil
-s'appelle `defaut`. Le dossier et `RSSRESUME_PROFILE_FILE` (ou `RSSRESUME_PROFILE`) posés
-ensemble font échouer le lancement : déplacer le document dans le dossier et retirer la variable.
+d'après son fichier (`input/adrien.json` → `adrien`). Sans l'un ni l'autre, aucun profil : le
+passage ne lit rien et ne résume rien. Le dossier et `RSSRESUME_PROFILE_FILE` posés ensemble
+font échouer le lancement : déplacer le document dans le dossier et retirer la variable.
+`RSSRESUME_PROFILE` fait échouer le lancement dans tous les cas.
 
 ### Renvoyer l'email d'une journée
 
@@ -580,11 +582,11 @@ ouvre sans nommer personne. Remplie avec autre chose qu'un texte, elle fait éch
 lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
 
 Le fichier est lu comme un **objet JSON** s'il commence par une accolade, comme du texte brut
-sinon — l'accolade décide, pas l'extension, qui n'est qu'une promesse que rien ne vérifie. Pour un
-profil seul, sans stack ni destinataire, `RSSRESUME_PROFILE` suffit et tient sur une ligne.
+sinon — l'accolade décide, pas l'extension, qui n'est qu'une promesse que rien ne vérifie.
 
-Sans document ni variable, `DEFAULT_PROFIL` de [profil.py](rssresume/profil.py) s'applique : un
-profil générique de professionnel de la tech, qui ne nomme ni produit, ni marché, ni équipe.
+Sans document déclaré, **rien ne tourne** : ni lecture FreshRSS, ni résumé, ni email — le
+passage journalise « aucun profil ». `RSSRESUME_PROFILE`, le profil en clair sur une ligne,
+n'est plus lue : posée, elle fait échouer le lancement, pour qu'on la remplace par un document.
 
 Le document est résolu **une fois au démarrage** : annoncé mais illisible, vide, au JSON cassé,
 sans texte à la clé `profil`, avec une entrée de stack fautive ou une adresse qui n'en est pas
@@ -679,8 +681,10 @@ docker cp input/moi/profile.json <conteneur>:/data/profils/adrien.json
 `input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
 `rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone.
 
-Un document fautif ne coûte que la journée de sa personne ; un dossier absent ou un fichier mal
-nommé font échouer le lancement — un conteneur qui ne démarre pas se voit, un matin sans digest non.
+Un document fautif ou un fichier mal nommé ne coûtent que la journée de leur personne, et se
+lisent dans les logs ; un dossier absent fait échouer le lancement — un conteneur qui ne démarre
+pas se voit, un matin sans digest non. Les actions manuelles du déploiement sont listées dans
+[todo-dockploy.md](todo-dockploy.md).
 
 Les logs de Dokploy montrent l'heure du prochain passage, puis le suivi d'exécution du
 digest. Pour rejouer une journée à la main, sans attendre l'heure :

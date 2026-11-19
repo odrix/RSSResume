@@ -39,6 +39,7 @@ import re
 from typing import Iterable
 
 from rssresume.certfr.stack import CLE_STACK, Stack, StackError
+from rssresume.tools import console
 
 #: Le texte du profil seul, pour un profil court. Ne porte ni stack ni destinataire :
 #: une valeur d'environnement est une ligne, pas un document.
@@ -56,9 +57,6 @@ MOTIF_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{1,31}$")
 #: L'extension d'un document du dossier. Les autres fichiers (un README, un `.gitkeep`)
 #: ne sont pas des profils et sont ignorés.
 EXTENSION_PROFIL = ".json"
-#: Le nom de la seule personne d'une installation qui ne déclare aucun document : il
-#: faut bien un répertoire et un préfixe de tags à son profil par défaut.
-USERNAME_DEFAUT = "defaut"
 
 #: Les clés du document. `profil` est la seule exigée.
 CLE_PROFIL = "profil"
@@ -334,12 +332,16 @@ class Annuaire:
         - `RSSRESUME_PROFILES_DIR` : un profil par fichier du dossier ;
         - sinon `RSSRESUME_PROFILE_FILE` : ce document est l'unique profil, nommé
           d'après son fichier (`input/adrien.json` → `adrien`) ;
-        - sinon une seule personne, `defaut`, servie par `load_profil`.
+        - sinon personne : la tournée ne lit rien et ne résume rien.
 
         Le dossier **et** une des variables à profil unique sont refusés ensemble :
         servir l'un en ignorant l'autre ferait disparaître une personne — ou en ferait
         apparaître une — sans que rien ne le dise. C'est l'état transitoire d'une
         migration, et il doit se voir au déploiement.
+
+        `RSSRESUME_PROFILE` n'est plus servie par la tournée : un profil sans nom n'a ni
+        répertoire ni préfixe de tags. Posée, elle lève plutôt que d'être ignorée — sans
+        quoi une installation qui en dépendait cesserait d'envoyer son digest sans un mot.
         """
         dossier = (os.getenv(ENV_PROFILES_DIR) or "").strip()
         fichier = (os.getenv(ENV_PROFIL_FILE) or "").strip()
@@ -353,9 +355,16 @@ class Annuaire:
                     "l'environnement."
                 )
             return AnnuaireDossier(pathlib.Path(dossier))
+        if (os.getenv(ENV_PROFIL) or "").strip():
+            raise ValueError(
+                f"{ENV_PROFIL} n'est plus lue : un profil se déclare dans un document "
+                f'{{"{CLE_PROFIL}": "…"}}, nommé <username>{EXTENSION_PROFIL}, désigné par '
+                f"{ENV_PROFIL_FILE} ou déposé dans {ENV_PROFILES_DIR}. Retirer {ENV_PROFIL} "
+                "de l'environnement."
+            )
         if fichier:
             return AnnuaireFichier(pathlib.Path(fichier))
-        return AnnuaireDefaut()
+        return AnnuaireVide()
 
 
 class AnnuaireDossier(Annuaire):
@@ -367,17 +376,20 @@ class AnnuaireDossier(Annuaire):
 
     def __init__(self, dossier: pathlib.Path):
         self.dossier = pathlib.Path(dossier)
+        #: Les fichiers mal nommés déjà signalés : la liste est relue plusieurs fois par
+        #: tournée, l'erreur n'a à s'écrire qu'une fois.
+        self._signales: set[str] = set()
 
     def chemin(self, username: str) -> pathlib.Path:
         """Où vit — ou vivra — le document de `username`. Le nom est validé d'abord."""
         return self.dossier / f"{valider_username(username)}{EXTENSION_PROFIL}"
 
     def usernames(self) -> list[str]:
-        """Les noms du dossier. Un fichier `.json` au nom invalide lève, sans exception.
+        """Les noms du dossier. Un fichier `.json` au nom invalide est signalé et sauté.
 
-        Ignorer un tel fichier ferait disparaître une personne de la tournée sans un
-        mot ; le lever arrête tout, mais se lit tout de suite dans les logs, et le
-        site — qui valide les noms — ne devrait jamais en écrire.
+        Sauté et non levé : un fichier mal nommé ne doit pas coûter la journée de toutes
+        les autres personnes. Signalé et non ignoré : sans un mot, il ferait disparaître
+        quelqu'un de la tournée.
         """
         if not self.dossier.is_dir():
             raise ValueError(
@@ -389,14 +401,16 @@ class AnnuaireDossier(Annuaire):
             for fichier in self.dossier.iterdir()
             if fichier.is_file() and fichier.suffix == EXTENSION_PROFIL
         )
-        invalides = [nom for nom in noms if not username_valide(nom)]
-        if invalides:
-            raise ValueError(
-                f"{ENV_PROFILES_DIR} : nom(s) de profil invalide(s) dans {self.dossier} : "
-                f"{', '.join(f'{nom}{EXTENSION_PROFIL}' for nom in invalides)}. Attendu : "
-                f"{MOTIF_USERNAME.pattern}."
-            )
-        return noms
+        for nom in noms:
+            if not username_valide(nom) and nom not in self._signales:
+                self._signales.add(nom)
+                console.error(
+                    f"{ENV_PROFILES_DIR} : {self.dossier / (nom + EXTENSION_PROFIL)} ignoré, "
+                    f"« {nom} » n'est pas un nom de profil. Attendu : 2 à 32 caractères, "
+                    "minuscules, chiffres, « - » ou « _ », commençant par une lettre ou un "
+                    "chiffre. Renommer le fichier."
+                )
+        return [nom for nom in noms if username_valide(nom)]
 
     def profil(self, username: str) -> Profil:
         return profil_depuis_fichier(self.chemin(username))
@@ -426,14 +440,18 @@ class AnnuaireFichier(Annuaire):
         return profil_depuis_fichier(self.fichier)
 
 
-class AnnuaireDefaut(Annuaire):
-    """Aucun document déclaré : une seule personne, avec le profil en ligne ou le défaut."""
+class AnnuaireVide(Annuaire):
+    """Aucun document déclaré : personne à servir.
+
+    Plus de profil générique servi par défaut : un digest noté contre un critère que
+    personne n'a écrit, envoyé à personne, ne coûtait que des appels.
+    """
 
     def usernames(self) -> list[str]:
-        return [USERNAME_DEFAUT]
+        return []
 
     def profil(self, username: str) -> Profil:
-        return load_profil()
+        raise ValueError(f"Profil inconnu : « {username} ». Aucun profil n'est déclaré.")
 
 
 def lister_profils(dossier: pathlib.Path) -> list[str]:

@@ -14,7 +14,7 @@ from unittest import mock
 
 from rssresume import cli, runlog
 from rssresume.config import AppConfig
-from rssresume.profil import USERNAME_DEFAUT
+from rssresume.profil import ENV_PROFIL_FILE
 from tests.support import make_config
 
 JOUR = dt.date(2026, 8, 29)
@@ -316,10 +316,12 @@ class SendOnlyArgumentsTests(unittest.TestCase):
     def test_send_only_never_builds_the_service(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig(**{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)})
-            # Sans document déclaré, la seule personne est `defaut`, et sa sortie est à
-            # son nom : la journée est écrite là où le renvoi la cherche.
-            ecrire_journee(pathlib.Path(tmpdir) / USERNAME_DEFAUT)
-            with mock.patch.dict(os.environ, {}, clear=True), \
+            # Le seul profil est celui du document, et sa sortie est à son nom : la
+            # journée est écrite là où le renvoi la cherche.
+            document = pathlib.Path(tmpdir) / "adrien.json"
+            document.write_text('{"profil": "P", "email": "a@example.com"}', encoding="utf-8")
+            ecrire_journee(pathlib.Path(tmpdir) / "adrien")
+            with mock.patch.dict(os.environ, {ENV_PROFIL_FILE: str(document)}, clear=True), \
                     mock.patch.object(cli.AppConfig, "from_env", return_value=config):
                 with mock.patch.object(cli, "build_service") as build:
                     with mock.patch.object(cli.mail, "sender", return_value=FakeSender()):

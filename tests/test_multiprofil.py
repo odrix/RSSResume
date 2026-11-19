@@ -25,11 +25,10 @@ from rssresume.profil import (
     ENV_PROFIL,
     ENV_PROFIL_FILE,
     ENV_PROFILES_DIR,
-    USERNAME_DEFAUT,
     Annuaire,
-    AnnuaireDefaut,
     AnnuaireDossier,
     AnnuaireFichier,
+    AnnuaireVide,
     Lecteur,
     Profil,
     charger_profil,
@@ -117,15 +116,22 @@ class AnnuaireDossierTests(unittest.TestCase):
             self.assertEqual(["adrien", "bea"], lister_profils(pathlib.Path(tmpdir)))
             self.assertEqual("B", charger_profil(pathlib.Path(tmpdir), "bea").texte)
 
-    def test_a_json_file_with_an_invalid_name_is_a_configuration_error(self):
-        """Ignoré, il ferait disparaître une personne de la tournée sans un mot."""
+    def test_a_json_file_with_an_invalid_name_is_reported_and_skipped(self):
+        """Sauté : il ne coûte pas la journée des autres. Signalé une fois : sans un mot,
+        il ferait disparaître une personne de la tournée."""
         with tempfile.TemporaryDirectory() as tmpdir:
             ecrire(tmpdir, "adrien.json", {"profil": "A"})
             ecrire(tmpdir, "Jean Paul.json", {"profil": "J"})
+            annuaire = AnnuaireDossier(pathlib.Path(tmpdir))
 
-            with self.assertRaises(ValueError) as leve:
-                lister_profils(pathlib.Path(tmpdir))
-            self.assertIn("Jean Paul.json", str(leve.exception))
+            with mock.patch("rssresume.profil.console.error") as erreur:
+                self.assertEqual(["adrien"], annuaire.usernames())
+                self.assertEqual(["adrien"], annuaire.usernames())
+
+            erreur.assert_called_once()
+            message = erreur.call_args.args[0]
+            self.assertIn("Jean Paul.json", message)
+            self.assertIn("minuscules", message)
 
     def test_a_missing_directory_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,12 +189,26 @@ class DepuisEnvTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     Annuaire.depuis_env()
 
-    def test_nothing_declared_serves_the_default_profile(self):
+    def test_nothing_declared_serves_nobody(self):
+        """Plus de profil générique servi par défaut : pas d'action, pas de résumé."""
         with mock.patch.dict(os.environ, {}, clear=True):
             annuaire = Annuaire.depuis_env()
 
-            self.assertIsInstance(annuaire, AnnuaireDefaut)
-            self.assertEqual([USERNAME_DEFAUT], annuaire.usernames())
+        self.assertIsInstance(annuaire, AnnuaireVide)
+        self.assertEqual([], annuaire.usernames())
+        self.assertEqual([], annuaire.cibles())
+        with self.assertRaises(ValueError):
+            annuaire.cibles("adrien")
+
+    def test_an_inline_profile_is_refused_rather_than_ignored(self):
+        """Ignorée, elle ferait cesser le digest d'une installation sans un mot."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fichier = ecrire(tmpdir, "adrien.json", {"profil": "A"})
+            for env in ({ENV_PROFIL: "texte"}, {ENV_PROFIL: "texte", ENV_PROFIL_FILE: str(fichier)}):
+                with mock.patch.dict(os.environ, env, clear=True):
+                    with self.assertRaises(ValueError) as leve:
+                        Annuaire.depuis_env()
+                self.assertIn(ENV_PROFIL, str(leve.exception))
 
     def test_the_directory_and_a_single_profile_together_fail_at_launch(self):
         for unique in (ENV_PROFIL_FILE, ENV_PROFIL):
@@ -431,6 +451,17 @@ class TourneeTests(unittest.TestCase):
             tournee.run(JOUR, send_email=False, mark_read=False)
 
             self.assertEqual(0, client.appels_marquage)
+
+    def test_a_badly_named_file_does_not_stop_the_others_nor_the_marking(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            documents = {**self.DEUX, "Jean Paul": {"profil": "J"}}
+            tournee, client, vus = self._tournee(tmpdir, documents)
+
+            with mock.patch("rssresume.profil.console.error"):
+                self.assertEqual([], tournee.run(JOUR, send_email=False))
+
+            self.assertEqual(["adrien", "bea"], sorted(vus))
+            self.assertEqual(1, client.appels_marquage)
 
     def test_an_empty_directory_serves_nobody_without_failing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

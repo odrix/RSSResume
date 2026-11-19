@@ -152,9 +152,9 @@ def main() -> int:
 
     Une clé manquante ou un fuseau inconnu doit faire crasher le conteneur au
     déploiement — visible dans Dokploy — plutôt qu'au premier matin. De même pour les
-    profils : deux sources posées ensemble, un dossier absent ou un fichier mal nommé.
-    Leurs documents, eux, sont relus à chaque passage — le site peut les modifier entre
-    deux — et un document fautif ne coûte que la journée de sa personne.
+    profils : deux sources posées ensemble, un dossier absent. Leurs documents, eux, sont
+    relus à chaque passage — le site peut les modifier entre deux — et un document fautif
+    ou mal nommé ne coûte que la journée de sa personne.
     """
     config = AppConfig.from_env()
     profils = Annuaire.depuis_env().usernames()

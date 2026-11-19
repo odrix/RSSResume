@@ -926,9 +926,12 @@ Le profil est **injectable de l'extérieur**, dans cet ordre de priorité :
 | Source | Usage |
 | --- | --- |
 | argument explicite (`score_articles(..., profil=…)`, `AppConfig.profil`) | appel programmatique, tests |
-| `RSSRESUME_PROFILE` | un profil court, en clair. Ne porte que lui : ni stack, ni destinataire |
-| `RSSRESUME_PROFILE_FILE` | le document, tenu hors du dépôt : `input/`, gitignoré |
-| `DEFAULT_PROFIL` | le profil par défaut du dépôt, générique et anonyme |
+| `RSSRESUME_PROFILE_FILE` / `RSSRESUME_PROFILES_DIR` | le document, tenu hors du dépôt : `input/`, gitignoré, ou le volume |
+| `DEFAULT_PROFIL` | le profil générique du dépôt, pour un appel qui n'en passe aucun ; jamais servi par la tournée |
+
+`RSSRESUME_PROFILE`, le profil en clair sur une ligne, n'est plus lue : un profil sans document
+n'a pas de nom, donc ni répertoire ni préfixe de tags. Posée, elle fait échouer le lancement
+plutôt que d'être ignorée.
 
 Trois conséquences de conception :
 
@@ -965,13 +968,14 @@ d'eux et charger une personne, et des sous-classes qui ne disent que la source.
 | --- | --- | --- |
 | `AnnuaireDossier` | `RSSRESUME_PROFILES_DIR` | un `{username}.json` par personne |
 | `AnnuaireFichier` | `RSSRESUME_PROFILE_FILE` seule | ce document, nommé d'après son fichier |
-| `AnnuaireDefaut` | rien de déclaré | `defaut`, avec `RSSRESUME_PROFILE` ou le profil générique |
+| `AnnuaireVide` | rien de déclaré | personne : ni lecture FreshRSS, ni résumé, ni marquage |
 
 Le dossier **et** une variable à profil unique posés ensemble lèvent au lancement : servir l'un
 en ignorant l'autre ferait disparaître ou apparaître une personne sans que rien ne le dise. Le
 `username` — le nom du fichier — suit `^[a-z0-9][a-z0-9_-]{1,31}$`, parce qu'il nomme un
-répertoire et préfixe des labels ; un `.json` mal nommé lève aussi. Les documents, eux, sont lus
-au moment de servir leur personne : un document fautif ne coûte que sa journée.
+répertoire et préfixe des labels ; un `.json` mal nommé est signalé (`console.error`, une fois)
+et sauté, sans coûter la journée des autres. Les documents, eux, sont lus au moment de servir
+leur personne : un document fautif ne coûte que sa journée.
 
 `AppConfig.from_env()` reste la configuration de l'installation ; `AppConfig.pour(lecteur)` y
 applique une personne — profil, stack, prénom, destinataires — et fait descendre la sortie à
