@@ -15,6 +15,7 @@ import dataclasses
 import datetime as dt
 import io
 import json
+import os
 import pathlib
 import tempfile
 import unittest
@@ -22,6 +23,7 @@ from unittest import mock
 
 from rssresume import cli, runlog
 from rssresume.config import AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL
+from rssresume.profil import ENV_PROFILES_DIR, USERNAME_DEFAUT
 from rssresume.tools import console
 from tests.support import make_config
 
@@ -32,7 +34,8 @@ def mode_retenu(mode_environnement, options=()):
     """Le mode que `main` a réellement remis au service, l'option ayant eu son mot à dire."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = dataclasses.replace(make_config(tmpdir), audio_mode=mode_environnement)
-        with mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+        with mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(cli.AppConfig, "from_env", return_value=config):
             with mock.patch.object(cli, "build_service") as build:
                 cli.main([*options, "--date", JOUR.isoformat(), "--dry-run"])
         return build.call_args.args[0].audio_mode
@@ -62,9 +65,12 @@ class AudioModeOptionTests(unittest.TestCase):
                 cli.parse_args(["--audio-mode", "journee"])
 
 
-def journee_produite(racine):
-    """Une journée sur le disque, réduite à ce que le bilan a besoin de lire."""
-    day_dir = pathlib.Path(racine) / JOUR.isoformat()
+def journee_produite(racine, username=USERNAME_DEFAUT):
+    """Une journée sur le disque, réduite à ce que le bilan a besoin de lire.
+
+    Sous le répertoire de la personne : sans document déclaré, c'est `defaut`.
+    """
+    day_dir = pathlib.Path(racine) / username / JOUR.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
     (day_dir / f"2-cyber{runlog.LOG_SUFFIX}").write_text(
         json.dumps(
@@ -84,13 +90,18 @@ def journee_produite(racine):
     return day_dir
 
 
-def lance(argv, racine, debug_env=False):
-    """Exécute `main` sur une configuration de test ; renvoie (code, sortie console)."""
+def lance(argv, racine, debug_env=False, env=None):
+    """Exécute `main` sur une configuration de test ; renvoie (code, sortie console).
+
+    L'environnement est vidé — ou remplacé par `env` — pour que les profils servis ne
+    dépendent pas du poste qui lance la suite.
+    """
     config = dataclasses.replace(
         make_config(racine), output_dir=pathlib.Path(racine), debug=debug_env
     )
     sortie = io.StringIO()
-    with mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+    with mock.patch.dict(os.environ, env or {}, clear=True), \
+            mock.patch.object(cli.AppConfig, "from_env", return_value=config):
         with mock.patch.object(cli, "build_service") as build:
             # Les deux sorties : `console.log` écrit sur la standard, `console.error` sur
             # l'erreur, et ni l'une ni l'autre n'a sa place dans le compte rendu de la suite.
@@ -161,6 +172,69 @@ class DebugApresExecutionTests(unittest.TestCase):
             _, sortie, _ = lance([], tmpdir)
 
             self.assertNotIn("2 - Cyber", sortie)
+
+
+class ProfilOptionTests(unittest.TestCase):
+    """`--profil` cible une personne ; sans lui, toutes. Les relectures suivent."""
+
+    def _dossier(self, racine, *noms):
+        dossier = pathlib.Path(racine) / "profils"
+        dossier.mkdir()
+        for nom in noms:
+            (dossier / f"{nom}.json").write_text(
+                json.dumps({"profil": f"Profil de {nom}", "email": f"{nom}@example.com"}),
+                encoding="utf-8",
+            )
+        return {ENV_PROFILES_DIR: str(dossier)}
+
+    def test_the_journal_of_one_profile_is_read_under_its_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+            journee_produite(tmpdir, "bea")
+
+            code, sortie, _ = lance(["--journal", "--profil", "bea"], tmpdir, env=env)
+
+            self.assertEqual(0, code)
+            self.assertIn("2 - Cyber", sortie)
+
+    def test_without_the_option_every_profile_is_read_and_a_missing_one_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+            journee_produite(tmpdir, "bea")
+
+            code, sortie, _ = lance(["--journal"], tmpdir, env=env)
+
+            self.assertEqual(1, code)
+            self.assertIn("adrien", sortie)
+            self.assertIn("2 - Cyber", sortie)
+
+    def test_an_unknown_profile_fails_before_anything(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien")
+
+            with self.assertRaises(ValueError):
+                lance(["--journal", "--profil", "inconnu"], tmpdir, env=env)
+
+    def test_a_run_builds_one_service_per_profile_with_its_own_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+
+            code, _, build = lance(["--dry-run"], tmpdir, env=env)
+
+            self.assertEqual(0, code)
+            configs = [appel.args[0] for appel in build.call_args_list]
+            self.assertEqual(["adrien", "bea"], [config.username for config in configs])
+            self.assertEqual(pathlib.Path(tmpdir) / "bea", configs[1].output_dir)
+            self.assertEqual(["bea@example.com"], configs[1].smtp_to)
+            self.assertEqual("Profil de bea", configs[1].profil)
+
+    def test_the_option_serves_only_that_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+
+            _, _, build = lance(["--dry-run", "--profil", "bea"], tmpdir, env=env)
+
+            self.assertEqual(["bea"], [appel.args[0].username for appel in build.call_args_list])
 
 
 if __name__ == "__main__":

@@ -17,6 +17,11 @@ services:
       # peut pas faire écrire le conteneur dans /app, que l'utilisateur non-root ne
       # possède pas. La sortie va dans le volume, et nulle part ailleurs.
       RSSRESUME_OUTPUT_DIR: /data/output
+      # Un `{username}.json` par personne, dans le volume : le site les y édite, et la
+      # sortie de chacune va sous /data/output/{username}/. Exclusif de
+      # RSSRESUME_PROFILE_FILE et RSSRESUME_PROFILE : les laisser dans l'environnement
+      # fait échouer le lancement.
+      RSSRESUME_PROFILES_DIR: /data/profils
       # L'heure du passage et la journée digérée (J-1 par défaut : à 7 h du matin,
       # « aujourd'hui » ne contient que les articles parus depuis minuit).
       RSSRESUME_SCHEDULE: ${RSSRESUME_SCHEDULE:-04:00}

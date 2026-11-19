@@ -7,11 +7,15 @@ import unittest
 from unittest import mock
 
 from rssresume.digest import DigestService
-from rssresume.external.freshrss import score_tag, scoring_tag, theme_tag
+from rssresume.external.freshrss import Etiquettes
 from rssresume.models import Article, Note
 from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, FakeScorer, empreinte, make_config
 
 DAY = dt.date(2026, 8, 23)
+
+#: Les tags sans préfixe : la configuration de test ne sert aucune personne nommée.
+_SANS_PREFIXE = Etiquettes()
+score_tag, scoring_tag, theme_tag = _SANS_PREFIXE.score, _SANS_PREFIXE.scoring, _SANS_PREFIXE.theme
 
 
 def make_article(item_id, tags=()):

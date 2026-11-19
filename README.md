@@ -19,15 +19,16 @@ conclusion sur ce qui reste à faire. Voir [Les deux modes audio](#les-deux-mode
    ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
 7. synthèse audio (fournisseur configuré — OpenAI ou Mistral —, sinon `espeak` en local) : par
    catégorie, ou en un seul fichier une fois toutes les catégories traitées
-8. écriture des tags de la catégorie : `score-NN`, `theme-<thematique>`, `scoring-<hash>`,
-   `digested` sur les retenus
+8. écriture des tags de la catégorie, préfixés par le profil : `<username>-score-NN`,
+   `<username>-theme-<thematique>`, `<username>-scoring-<hash>`, `<username>-digested` sur les retenus
 9. envoi d'un email avec les fichiers audio en pièces jointes et les liens des articles retenus
-10. marquage comme lu de tous les articles récupérés
+10. marquage comme lu de tous les articles récupérés, une fois **tous** les profils servis
 
-Les étapes 2 à 8 se répètent par catégorie. Les tags sont écrits au fil de l'eau — ce sont des
+Les étapes 2 à 9 se répètent pour chaque profil (voir [Plusieurs profils](#plusieurs-profils)),
+et les étapes 2 à 8 par catégorie. Les tags sont écrits au fil de l'eau — ce sont des
 données de cache, une panne en cours de route ne doit pas faire repayer le scoring déjà effectué.
-Le marquage comme lu, lui, n'intervient qu'après l'envoi : un échec d'email laisse les articles non
-lus, et le prochain passage les reprend sans repayer le scoring.
+Le marquage comme lu, lui, n'intervient qu'après l'envoi de tous les profils : un échec laisse les
+articles non lus, et le prochain passage les reprend sans repayer le scoring.
 
 Un article déjà noté n'est **pas renoté** : sa note est relue de ses tags FreshRSS. Le scoring n'est
 recalculé que si le prompt ou le modèle a changé, ce que détecte un tag d'empreinte. Relancer la
@@ -45,17 +46,26 @@ Le détail de chaque étape, les schémas et les tags posés : **[FONCTIONNEMENT
 
 ## Fichiers produits
 
-Un sous-répertoire par journée, au format `yyyy-MM-dd` :
+Un sous-répertoire par profil, puis par journée au format `yyyy-MM-dd` :
 
 ```
 output/
-└── 2026-08-23/
-    ├── tech.mp3             # catégorie avec articles retenus (.wav sans fournisseur)
-    ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
-    ├── culture.no-article   # articles lus, aucun retenu : la liste des scores
-    ├── culture.log.json     # les scores obtenus et le scoring déjà payé
-    ├── news.no-article      # catégorie vide : pas de journal, il ne dirait que des zéros
-    └── journee.json         # l'éphéméride du jour, et le montage s'il y en a eu un
+└── adrien/                      # le nom du profil
+    └── 2026-08-23/
+        ├── tech.mp3             # catégorie avec articles retenus (.wav sans fournisseur)
+        ├── tech.log.json        # journal de la catégorie : articles, scores, coûts
+        ├── culture.no-article   # articles lus, aucun retenu : la liste des scores
+        ├── culture.log.json     # les scores obtenus et le scoring déjà payé
+        ├── news.no-article      # catégorie vide : pas de journal, il ne dirait que des zéros
+        └── journee.json         # l'éphéméride du jour, et le montage s'il y en a eu un
+```
+
+Les journées produites avant les profils sont directement sous `output/<date>/`. Pour que
+`--send-only` et `--journal` les retrouvent, les déplacer une fois sous le nom du profil
+(ici `adrien` ; dans le conteneur, depuis `/data/output`) :
+
+```bash
+cd output && mkdir -p adrien && mv [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] adrien/
 ```
 
 En mode `global`, les `<categorie>.mp3` laissent la place à un seul `journee.mp3`, dont le texte
@@ -149,9 +159,13 @@ Variables optionnelles :
 - `RSSRESUME_TIMEZONE=Europe/Paris` — fuseau dans lequel une journée commence et finit.
   En UTC, un article publié à 1 h du matin à Paris en heure d'été tombe dans la veille,
   donc dans une journée déjà livrée : il n'apparaît dans aucun digest
-- `RSSRESUME_PROFILE_FILE=input/moi/profile.json` — le document de la personne : profil de
-  pertinence, stack surveillée, destinataire du digest (voir ci-dessous)
+- `RSSRESUME_PROFILES_DIR=/data/profils` — le dossier des profils, un `{username}.json` par
+  personne (voir [Plusieurs profils](#plusieurs-profils)). Exclusif des deux suivantes
+- `RSSRESUME_PROFILE_FILE=input/moi/adrien.json` — le document d'une seule personne : profil de
+  pertinence, stack surveillée, destinataire du digest (voir ci-dessous). Le nom du fichier
+  devient le nom du profil
 - `RSSRESUME_PROFILE` — le profil seul, en clair, quand il n'y a rien d'autre à déclarer
+  (profil nommé `defaut`)
 - `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
 - `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5` — seuil propre à une catégorie, sous
   la forme `Catégorie=score`, plusieurs entrées séparées par des virgules
@@ -395,8 +409,9 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | Option | Effet |
 | --- | --- |
 | `--date YYYY-MM-DD` | journée à traiter (défaut : aujourd'hui) |
+| `--profil USERNAME` | ne sert que ce profil (défaut : tous) ; vaut aussi pour `--send-only` et `--journal` |
 | `--no-email` | n'envoie pas l'email |
-| `--no-tags` | n'écrit aucun tag FreshRSS (`score-NN`, `theme-<thematique>`, `scoring-<hash>`, `digested`) |
+| `--no-tags` | n'écrit aucun tag FreshRSS (`<username>-score-NN`, `-theme-<thematique>`, `-scoring-<hash>`, `-digested`) |
 | `--no-mark-read` | laisse les articles non lus dans FreshRSS |
 | `--include-read` | redemande aussi les articles déjà lus, que l'API exclut par défaut |
 | `--send-only` | renvoie l'email d'une journée déjà produite, sans rien recalculer |
@@ -424,6 +439,35 @@ demande. Les articles du jour sont récupérés **non lus uniquement** — l'API
 python -m rssresume --date 2026-08-23 --include-read --no-email
 ```
 
+### Plusieurs profils
+
+Plusieurs personnes peuvent lire le même FreshRSS, chacune avec son profil de pertinence, sa
+stack et son adresse. `RSSRESUME_PROFILES_DIR` désigne un dossier qui contient un
+`{username}.json` par personne, au format du document de profil (clé `profil` exigée,
+`stack`, `email`, `prenom`). Le nom du fichier est le nom du profil : 2 à 32 caractères,
+minuscules, chiffres, `-` ou `_`, commençant par une lettre ou un chiffre. Un `.json` au nom
+invalide, ou un dossier absent, fait échouer le lancement ; les autres fichiers sont ignorés.
+
+Chaque passage digère la journée pour chaque profil, dans l'ordre alphabétique :
+
+- la sortie va dans `output/<username>/<date>/`, l'email à l'adresse du profil ;
+- les tags FreshRSS sont **préfixés** par le nom (`adrien-score-07`) : deux personnes ne
+  notent pas un article pareil. Les anciens tags sans préfixe sont ignorés — passer aux
+  profils coûte donc **un re-scoring unique** des articles relus ;
+- un profil qui échoue (document fautif, fournisseur en panne) est journalisé, et les
+  suivants sont servis ;
+- les catégories et les articles ne sont lus qu'une fois pour tous les profils, et le
+  marquage comme lu n'intervient qu'**une fois tous les profils servis** — sans quoi le
+  premier viderait la journée des suivants. Si l'un d'eux a échoué, rien n'est marqué : il
+  peut rejouer sa journée avec `--profil` sans `--include-read`. Un passage `--profil` ne
+  marque rien non plus tant que d'autres profils existent ; les articles restés non lus ne
+  reviennent dans aucune autre journée.
+
+Sans dossier, `RSSRESUME_PROFILE_FILE` reste lu : ce document est l'unique profil, nommé
+d'après son fichier (`input/adrien.json` → `adrien`). Sans l'un ni l'autre, le profil
+s'appelle `defaut`. Le dossier et `RSSRESUME_PROFILE_FILE` (ou `RSSRESUME_PROFILE`) posés
+ensemble font échouer le lancement : déplacer le document dans le dossier et retirer la variable.
+
 ### Renvoyer l'email d'une journée
 
 Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est l'envoi
@@ -434,7 +478,7 @@ repayer pour retrouver un texte déjà écrit sur le disque n'aurait aucun sens 
 python -m rssresume --send-only --date 2026-08-29
 ```
 
-Tout ce que l'email porte est relu de `output/<date>/*.log.json` : le résumé, les liens
+Tout ce que l'email porte est relu de `output/<username>/<date>/*.log.json` : le résumé, les liens
 des articles retenus dans l'ordre du digest, et les `.mp3` en pièces jointes. Ni FreshRSS
 ni le moindre fournisseur n'est appelé, et **rien n'est marqué comme lu** — le renvoi ne
 touche à aucun état.
@@ -463,7 +507,7 @@ docker exec <conteneur> python -m rssresume --journal --date 2026-08-30
 ```
 
 ```
-Journée du 2026-08-30 — /data/output/2026-08-30
+Journée du 2026-08-30 — /data/output/adrien/2026-08-30
 audio : journee.mp3 (montage)
 
 catégorie                               statut                art.  ret.  seuil       coût
@@ -621,25 +665,22 @@ défauts de l'horaire, et imposer `RSSRESUME_OUTPUT_DIR=/data`. Il l'emporte sur
 travail ferait sinon écrire le conteneur dans `/app`, que l'utilisateur non-root ne
 possède pas — et la sortie du jour n'atterrirait pas dans le volume.
 
-Une valeur sur plusieurs lignes ne survit pas au format `.env` : pour un profil long,
-`RSSRESUME_PROFILE_FILE` et un fichier monté, plutôt que `RSSRESUME_PROFILE`.
-
-`input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
-`rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone. Le document
-s'y monte — un seul fichier, profil, stack et destinataire compris — et la variable pointe sur le
-chemin monté :
-
-```yaml
-volumes:
-  - ./input/moi:/config:ro
-```
+Le compose impose aussi `RSSRESUME_PROFILES_DIR=/data/profils` : les profils vivent dans le
+volume, un `{username}.json` par personne, là où le site les édite. Le dossier doit exister —
+absent, le lancement échoue — et `RSSRESUME_PROFILE_FILE` comme `RSSRESUME_PROFILE` doivent
+**quitter** l'onglet Environment : posées avec le dossier, elles font échouer le lancement.
+Migrer une installation à un seul document, puis retirer la variable :
 
 ```bash
-RSSRESUME_PROFILE_FILE=/config/profile.json
+docker exec <conteneur> sh -c 'mkdir -p /data/profils'
+docker cp input/moi/profile.json <conteneur>:/data/profils/adrien.json
 ```
 
-Un chemin qui ne mène à rien fait échouer le lancement — un conteneur qui ne démarre pas se voit,
-un matin de digest noté contre le mauvais profil non.
+`input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
+`rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone.
+
+Un document fautif ne coûte que la journée de sa personne ; un dossier absent ou un fichier mal
+nommé font échouer le lancement — un conteneur qui ne démarre pas se voit, un matin sans digest non.
 
 Les logs de Dokploy montrent l'heure du prochain passage, puis le suivi d'exécution du
 digest. Pour rejouer une journée à la main, sans attendre l'heure :

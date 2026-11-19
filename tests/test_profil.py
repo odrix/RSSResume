@@ -169,9 +169,14 @@ class StackDuDocumentTests(unittest.TestCase):
         self.assertEqual(("Keycloak",), stack.concernes("Vulnérabilité dans RH-SSO"))
 
     def test_a_faulty_entry_fails_the_load(self):
-        """La stack est lue avec le profil : elle échoue au lancement, pas au troisième avis."""
-        with self.assertRaises(StackError):
+        """La stack est lue avec le profil : elle échoue au lancement, pas au troisième avis.
+
+        Sous `ValueError`, la seule exception d'un document refusé, mais l'erreur de la
+        stack reste la cause : c'est elle qui dit quelle entrée est fautive.
+        """
+        with self.assertRaises(ValueError) as leve:
             self._stack([{"alias": ["RH-SSO"]}])
+        self.assertIsInstance(leve.exception.__cause__, StackError)
 
 
 class EmailTests(unittest.TestCase):

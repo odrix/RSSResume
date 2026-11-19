@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import re
@@ -35,9 +36,6 @@ SCORING_TAG_TEMPLATE = "scoring-{digest}"
 #: sans elle, un score relu du cache ne saurait plus dans quel groupe ranger son article.
 THEME_TAG_TEMPLATE = "theme-{thematique}"
 
-SCORE_TAG_PATTERN = re.compile(r"^score-(\d{2})$")
-SCORING_TAG_PATTERN = re.compile(r"^scoring-([0-9a-f]+)$")
-THEME_TAG_PATTERN = re.compile(r"^theme-([a-z]+)$")
 
 
 def _endpoint(url: str) -> str:
@@ -45,16 +43,68 @@ def _endpoint(url: str) -> str:
     return urllib.parse.urlsplit(url).path or url
 
 
-def score_tag(score: int) -> str:
-    return SCORE_TAG_TEMPLATE.format(score=score)
+class Etiquettes:
+    """Les tags d'une personne : ceux qu'elle pose, et les seuls qu'elle relit.
 
+    Une note dépend du profil qui l'a produite : deux personnes notent le même article
+    différemment, et le cache des tags doit donc être à chacune. Le nom de la personne
+    préfixe chaque tag (`adrien-score-07`) — un label FreshRSS accepte le tiret, et un
+    nom de profil ne porte ni espace ni majuscule.
 
-def scoring_tag(digest: str) -> str:
-    return SCORING_TAG_TEMPLATE.format(digest=digest)
+    Les motifs sont ancrés sur le préfixe : un tag d'une autre personne, ou un ancien
+    tag sans préfixe, n'est jamais relu ni nettoyé. Les anciens `score-07` sont donc
+    ignorés, et les articles renotés une fois.
 
+    Sans nom — la configuration de l'installation, celle des tests —, aucun préfixe.
+    """
 
-def theme_tag(thematique: str) -> str:
-    return THEME_TAG_TEMPLATE.format(thematique=thematique)
+    def __init__(self, username: str = ""):
+        self.prefixe = f"{username}-" if username else ""
+        racine = re.escape(self.prefixe)
+        self._motif_score = re.compile(rf"^{racine}score-(\d{{2}})$")
+        self._motif_scoring = re.compile(rf"^{racine}scoring-([0-9a-f]+)$")
+        self._motif_theme = re.compile(rf"^{racine}theme-([a-z]+)$")
+
+    def score(self, score: int) -> str:
+        return self.prefixe + SCORE_TAG_TEMPLATE.format(score=score)
+
+    def scoring(self, digest: str) -> str:
+        return self.prefixe + SCORING_TAG_TEMPLATE.format(digest=digest)
+
+    def theme(self, thematique: str) -> str:
+        return self.prefixe + THEME_TAG_TEMPLATE.format(thematique=thematique)
+
+    @property
+    def digest(self) -> str:
+        return self.prefixe + DIGEST_TAG
+
+    def score_de(self, tags: tuple[str, ...]) -> int | None:
+        """Score déjà posé sur l'article par cette personne, relu depuis ses tags."""
+        valeur = self._premier(self._motif_score, tags)
+        return int(valeur) if valeur is not None else None
+
+    def empreinte_de(self, tags: tuple[str, ...]) -> str | None:
+        """Empreinte du prompt ayant produit le score de cette personne."""
+        return self._premier(self._motif_scoring, tags)
+
+    def theme_de(self, tags: tuple[str, ...]) -> str | None:
+        """Thématique déjà posée sur l'article par cette personne."""
+        return self._premier(self._motif_theme, tags)
+
+    def de_scoring(self, tag: str) -> bool:
+        """Vrai pour un tag de notation de cette personne : score, empreinte, thématique."""
+        return any(
+            motif.match(tag)
+            for motif in (self._motif_score, self._motif_scoring, self._motif_theme)
+        )
+
+    @staticmethod
+    def _premier(motif: re.Pattern, tags: tuple[str, ...]) -> str | None:
+        for tag in tags:
+            match = motif.match(tag)
+            if match:
+                return match.group(1)
+        return None
 
 
 def user_labels(categories: list) -> tuple[str, ...]:
@@ -66,31 +116,19 @@ def user_labels(categories: list) -> tuple[str, ...]:
     )
 
 
-def score_from_tags(tags: tuple[str, ...]) -> int | None:
-    """Score déjà posé sur l'article, relu depuis ses tags."""
-    for tag in tags:
-        match = SCORE_TAG_PATTERN.match(tag)
-        if match:
-            return int(match.group(1))
-    return None
+class _Session:
+    """Ce que les clients d'une même tournée partagent : jetons et lectures déjà faites.
 
+    Les personnes d'une tournée lisent les mêmes catégories du même jour. Les relire
+    pour chacune ne changerait rien au résultat — les tags d'une autre personne ne
+    les concernent pas — et multiplierait les appels par le nombre de profils.
+    """
 
-def scoring_digest_from_tags(tags: tuple[str, ...]) -> str | None:
-    """Empreinte du prompt ayant produit le score de l'article."""
-    for tag in tags:
-        match = SCORING_TAG_PATTERN.match(tag)
-        if match:
-            return match.group(1)
-    return None
-
-
-def theme_from_tags(tags: tuple[str, ...]) -> str | None:
-    """Thématique déjà posée sur l'article, relue depuis ses tags."""
-    for tag in tags:
-        match = THEME_TAG_PATTERN.match(tag)
-        if match:
-            return match.group(1)
-    return None
+    def __init__(self):
+        self.auth_token: str | None = None
+        self.edit_token: str | None = None
+        self.categories: list[str] | None = None
+        self.journees: dict[tuple[str, dt.date], list[Article]] = {}
 
 
 class FreshRSSClient:
@@ -100,8 +138,15 @@ class FreshRSSClient:
         #: marque comme lu ce qu'il a traité, donc un article lu est un article déjà
         #: digéré. Rejouer une journée close, elle, demande de les redemander.
         self._include_read = include_read
-        self._auth_token: str | None = None
-        self._edit_token: str | None = None
+        self._session = _Session()
+        #: Les tags de la personne servie, d'après la configuration : sans nom, aucun préfixe.
+        self.etiquettes = Etiquettes(config.username)
+
+    def pour(self, username: str) -> "FreshRSSClient":
+        """Le même client, qui tague au nom de `username`, session et lectures partagées."""
+        copie = copy.copy(self)
+        copie.etiquettes = Etiquettes(username)
+        return copie
 
     def _build_url(self, path: str, params: dict[str, str] | None = None) -> str:
         base = self._config.freshrss_base_url.rstrip("/")
@@ -129,8 +174,8 @@ class FreshRSSClient:
             raise RuntimeError(f"FreshRSS request failed: {exc.code} {body}") from exc
 
     def _ensure_auth_token(self) -> str:
-        if self._auth_token:
-            return self._auth_token
+        if self._session.auth_token:
+            return self._session.auth_token
 
         payload = urllib.parse.urlencode(
             {
@@ -146,9 +191,9 @@ class FreshRSSClient:
 
         for line in body.splitlines():
             if line.startswith("Auth="):
-                self._auth_token = line.split("=", 1)[1].strip()
+                self._session.auth_token = line.split("=", 1)[1].strip()
                 console.log(f"FreshRSS : authentifié en tant que {self._config.freshrss_username}")
-                return self._auth_token
+                return self._session.auth_token
         raise RuntimeError("FreshRSS authentication succeeded without returning an Auth token.")
 
     def _auth_headers(self) -> dict[str, str]:
@@ -165,15 +210,33 @@ class FreshRSSClient:
 
     def _ensure_edit_token(self) -> str:
         """Jeton anti-CSRF exigé par FreshRSS pour toute écriture."""
-        if self._edit_token:
-            return self._edit_token
+        if self._session.edit_token:
+            return self._session.edit_token
         body = self._request(self._build_url(f"{API_ROOT}/reader/api/0/token"), headers=self._auth_headers())
-        self._edit_token = body.decode("utf-8", errors="replace").strip()
-        if not self._edit_token:
+        self._session.edit_token = body.decode("utf-8", errors="replace").strip()
+        if not self._session.edit_token:
             raise RuntimeError("FreshRSS returned an empty edit token.")
-        return self._edit_token
+        return self._session.edit_token
 
     def list_categories(self) -> list[str]:
+        """Les catégories, lues une fois par session : une par tournée, pas par profil."""
+        if self._session.categories is None:
+            self._session.categories = self._lire_categories()
+        return list(self._session.categories)
+
+    def fetch_daily_articles(self, category: str, day: dt.date) -> list[Article]:
+        """Les articles du jour d'une catégorie, lus une fois par session.
+
+        Rendre la même lecture à chaque profil n'est juste que parce que le marquage
+        comme lu attend la fin de la tournée : aucun profil ne retire d'articles à ceux
+        qui le suivent.
+        """
+        cle = (category, day)
+        if cle not in self._session.journees:
+            self._session.journees[cle] = self._lire_journee(category, day)
+        return list(self._session.journees[cle])
+
+    def _lire_categories(self) -> list[str]:
         payload = self._json_get(f"{API_ROOT}/reader/api/0/subscription/list", {"output": "json"})
         categories: set[str] = set()
         for subscription in payload.get("subscriptions", []):
@@ -189,7 +252,7 @@ class FreshRSSClient:
         console.log(f"FreshRSS : {len(categories)} catégorie(s) découverte(s)")
         return sorted(categories)
 
-    def fetch_daily_articles(self, category: str, day: dt.date) -> list[Article]:
+    def _lire_journee(self, category: str, day: dt.date) -> list[Article]:
         """Les articles du jour d'une catégorie, filtrés par l'API autant qu'elle le permet.
 
         La journée était découpée en Python *après* avoir paginé tout le flux : des dizaines
@@ -304,11 +367,11 @@ class FreshRSSClient:
             f"sur {len(par_score)} valeur(s) de score et {len(par_theme)} thématique(s)"
         )
         for score in sorted(par_score):
-            self.add_label(par_score[score], score_tag(score))
+            self.add_label(par_score[score], self.etiquettes.score(score))
         for thematique in sorted(par_theme):
-            self.add_label(par_theme[thematique], theme_tag(thematique))
+            self.add_label(par_theme[thematique], self.etiquettes.theme(thematique))
         if scoring_digest:
-            self.add_label(list(retenues), scoring_tag(scoring_digest))
+            self.add_label(list(retenues), self.etiquettes.scoring(scoring_digest))
 
     def remove_label(self, item_ids: list[str], label: str) -> None:
         """Retire un tag utilisateur des articles."""
@@ -326,11 +389,9 @@ class FreshRSSClient:
             if not article.item_id:
                 continue
             for tag in article.tags:
-                if (
-                    SCORE_TAG_PATTERN.match(tag)
-                    or SCORING_TAG_PATTERN.match(tag)
-                    or THEME_TAG_PATTERN.match(tag)
-                ):
+                # Ceux de la personne servie seulement : les notes des autres profils
+                # ne sont pas obsolètes parce que celle-ci l'est.
+                if self.etiquettes.de_scoring(tag):
                     par_label.setdefault(tag, []).append(article.item_id)
         if not par_label:
             return
@@ -345,5 +406,5 @@ class FreshRSSClient:
         if not retenus:
             return
 
-        console.log(f"FreshRSS : tag '{DIGEST_TAG}' sur {len(retenus)} article(s)")
-        self.add_label(retenus, DIGEST_TAG)
+        console.log(f"FreshRSS : tag '{self.etiquettes.digest}' sur {len(retenus)} article(s)")
+        self.add_label(retenus, self.etiquettes.digest)

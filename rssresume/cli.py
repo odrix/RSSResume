@@ -15,20 +15,34 @@ from rssresume.llm import providers
 from rssresume.external import mail
 from rssresume.montage import MontageService
 from rssresume.newsletter import Lettre
+from rssresume.profil import Annuaire
 from rssresume.summaries import SummaryGenerator
+from rssresume.tournee import Tournee
 from rssresume.tools import console
 
 
-def build_service(config: AppConfig, include_read: bool = False) -> DigestService:
+def build_service(
+    config: AppConfig,
+    include_read: bool = False,
+    freshrss_client: FreshRSSClient | None = None,
+) -> DigestService:
     """Assemble le service, un fournisseur par action.
 
     C'est le seul endroit où les fournisseurs sont choisis : trois actions, trois
     résolutions indépendantes, et `None` là où la clé manque. Le reste du code ne voit
     que des collaborateurs qui savent faire leur travail, ou qui n'existent pas.
+
+    `freshrss_client` est celui de la tournée, partagé entre les profils : il est
+    décliné au nom de la personne servie, pour qu'elle tague sous son préfixe tout en
+    relisant les articles que la tournée a déjà lus.
     """
+    if freshrss_client is None:
+        freshrss_client = FreshRSSClient(config, include_read=include_read)
+    else:
+        freshrss_client = freshrss_client.pour(config.username)
     return DigestService(
         config=config,
-        freshrss_client=FreshRSSClient(config, include_read=include_read),
+        freshrss_client=freshrss_client,
         scorer=llm.for_action(providers.SCORING),
         summary_generator=SummaryGenerator(
             llm.for_action(providers.DIGEST),
@@ -108,6 +122,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print what an already-produced day says about itself, from its logs. "
         "No AI call, no email, nothing written.",
+    )
+    # Sans défaut : sans l'option, tous les profils de l'annuaire sont servis.
+    parser.add_argument(
+        "--profil",
+        metavar="USERNAME",
+        help="Only this profile (its file name without extension). Defaults to every profile.",
     )
     parser.add_argument(
         "--debug",
@@ -202,20 +222,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.debug:
         config = dataclasses.replace(config, debug=True)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
+    # Lu au lancement, comme la configuration : deux sources de profils posées ensemble
+    # ou un `--profil` inconnu échouent avant toute lecture et tout appel.
+    annuaire = Annuaire.depuis_env()
+    cibles = annuaire.cibles(args.profil)
     if args.journal:
         # Avant l'assemblage, pour la même raison que le renvoi : lire un journal n'a
         # besoin d'aucun fournisseur, et en exiger un ferait échouer la commande qui sert
         # justement quand quelque chose ne va pas.
-        return journal(config, day)
+        return _par_profil(config, annuaire, cibles, lambda profil: journal(profil, day))
     if args.send_only:
         # Avant l'assemblage : le renvoi n'a besoin d'aucun fournisseur, et en exiger un
         # ferait échouer la seule commande qui sait se passer d'eux.
         if args.dry_run or args.no_email:
             console.error("--send-only n'a rien à faire avec --dry-run ni --no-email.")
             return 2
-        return send_only(config, day)
+        return _par_profil(config, annuaire, cibles, lambda profil: send_only(profil, day))
 
-    service = build_service(config, include_read=args.include_read)
     if args.include_read:
         console.log("Articles déjà lus : inclus (--include-read)")
     send_email = not (args.dry_run or args.no_email)
@@ -223,12 +246,30 @@ def main(argv: list[str] | None = None) -> int:
     mark_read = not (args.dry_run or args.no_mark_read)
     if args.dry_run:
         console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
-    service.run(day, send_email=send_email, write_tags=write_tags, mark_read=mark_read)
-    if config.debug:
-        # Le bilan est une relecture du répertoire de sortie, pas une décision sur ce que
-        # la journée contient : il est ici et non dans `DigestService`. Il emprunte donc
-        # exactement le chemin de `--journal`, et ce qu'on lit dans les logs du matin est
-        # ce que la commande rejouera le soir.
-        bilan = runlog.lire_bilan(config.output_dir / day.isoformat(), day)
-        console.log(bilan.texte(detail=True))
-    return 0
+    tournee = Tournee(
+        config,
+        annuaire,
+        FreshRSSClient(config, include_read=args.include_read),
+        lambda profil, client: build_service(profil, freshrss_client=client),
+    )
+    echecs = tournee.run(
+        day, args.profil, send_email=send_email, write_tags=write_tags, mark_read=mark_read
+    )
+    return 1 if echecs else 0
+
+
+def _par_profil(config: AppConfig, annuaire: Annuaire, cibles: list[str], commande) -> int:
+    """Une commande de relecture (`--journal`, `--send-only`) jouée profil par profil.
+
+    Un profil en échec n'arrête pas les autres ; le code de sortie dit qu'il y en a eu.
+    """
+    code = 0
+    for nom in cibles:
+        if len(cibles) > 1:
+            console.log(f"── Profil « {nom} »")
+        try:
+            code = max(code, commande(config.pour(annuaire.lecteur(nom))))
+        except ValueError as exc:
+            console.error(f"Profil « {nom} » : {exc}")
+            code = max(code, 1)
+    return code

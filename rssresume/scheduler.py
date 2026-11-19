@@ -25,6 +25,7 @@ import threading
 
 from rssresume import cli
 from rssresume.config import AppConfig
+from rssresume.profil import Annuaire
 from rssresume.tools import console
 
 #: Heure du passage quotidien, `HH:MM` dans le fuseau configuré.
@@ -150,9 +151,14 @@ def main() -> int:
     """La configuration est lue ici, au lancement, pour échouer tout de suite.
 
     Une clé manquante ou un fuseau inconnu doit faire crasher le conteneur au
-    déploiement — visible dans Dokploy — plutôt qu'au premier matin.
+    déploiement — visible dans Dokploy — plutôt qu'au premier matin. De même pour les
+    profils : deux sources posées ensemble, un dossier absent ou un fichier mal nommé.
+    Leurs documents, eux, sont relus à chaque passage — le site peut les modifier entre
+    deux — et un document fautif ne coûte que la journée de sa personne.
     """
     config = AppConfig.from_env()
+    profils = Annuaire.depuis_env().usernames()
+    console.log(f"RSSResume : {len(profils)} profil(s) : {', '.join(profils) or '(aucun)'}")
     return run_forever(DailySchedule.from_env(config.timezone))
 
 

@@ -17,7 +17,7 @@ from rssresume import runlog
 from rssresume.certfr import CertfrService
 from rssresume.config import AUDIO_MODE_GLOBAL, AppConfig
 from rssresume.ephemeride import EphemerideService
-from rssresume.external.freshrss import score_from_tags, scoring_digest_from_tags, theme_from_tags
+from rssresume.external.freshrss import Etiquettes
 from rssresume.llm import providers
 from rssresume.models import (
     WATCHLIST_MAX,
@@ -84,6 +84,10 @@ class DigestService:
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
+        #: Les tags que ce digest relit comme cache : ceux de sa personne seulement. Lus
+        #: de la configuration, comme ceux que le client FreshRSS écrit — une seule source
+        #: pour le nom, sans quoi on relirait sous un préfixe ce qu'on écrit sous un autre.
+        self._etiquettes = Etiquettes(config.username)
 
     def run(
         self,
@@ -134,7 +138,9 @@ class DigestService:
             # Après livraison seulement : un échec d'envoi ne doit pas perdre les articles.
             self._mark_read(digests)
         else:
-            console.log("Marquage comme lu : ignoré (--no-mark-read)")
+            # Ou différé : la tournée de plusieurs profils marque elle-même, une fois
+            # tout le monde servi.
+            console.log("Marquage comme lu : pas par ce digest (--no-mark-read ou tournée)")
 
         # Le scope est refermé et `runlog.active()` vaut de nouveau `None` : c'est la
         # variable liée par le `with` qui porte encore la journée, catégories rattachées
@@ -498,9 +504,9 @@ class DigestService:
         notes: dict[str, Note] = {}
 
         for article in articles:
-            porte = scoring_digest_from_tags(article.tags)
-            score = score_from_tags(article.tags)
-            thematique = theme_from_tags(article.tags)
+            porte = self._etiquettes.empreinte_de(article.tags)
+            score = self._etiquettes.score_de(article.tags)
+            thematique = self._etiquettes.theme_de(article.tags)
             # La thématique est exigée autant que le score : une note partielle n'est pas
             # un cache utilisable, elle rangerait l'article dans le mauvais groupe.
             if porte == digest and score is not None and thematique is not None:

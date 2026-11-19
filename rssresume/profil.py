@@ -18,6 +18,16 @@ Il est donc chargé, pas codé en dur au point d'appel : un profil explicite pas
 argument, sinon l'environnement, sinon le profil par défaut ci-dessous. Ce défaut ne
 décrit personne : il vaut pour quelqu'un dans la tech, sans dire de quel produit ni de
 quelle équipe.
+
+Plusieurs personnes lisent maintenant le même FreshRSS : un dossier de documents, un par
+personne, nommé d'après elle (`RSSRESUME_PROFILES_DIR`, voir `Annuaire`). Le nom du
+fichier — le `username` — n'est pas une étiquette décorative : il nomme le répertoire de
+sortie et préfixe les tags FreshRSS. C'est pourquoi il est contraint, et pourquoi un
+fichier mal nommé est une erreur et non un profil de plus.
+
+Ce module est aussi lu par le site qui édite les profils : la validation d'un document
+(`profil_depuis_dict`) et celle d'un nom (`valider_username`) y sont publiques, pour qu'il
+n'existe qu'une seule idée de ce qu'est un profil acceptable.
 """
 
 from __future__ import annotations
@@ -25,15 +35,30 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 from typing import Iterable
 
-from rssresume.certfr.stack import CLE_STACK, Stack
+from rssresume.certfr.stack import CLE_STACK, Stack, StackError
 
 #: Le texte du profil seul, pour un profil court. Ne porte ni stack ni destinataire :
 #: une valeur d'environnement est une ligne, pas un document.
 ENV_PROFIL = "RSSRESUME_PROFILE"
-#: Le chemin du document, c'est-à-dire le cas normal hors du dépôt.
+#: Le chemin du document, c'est-à-dire le cas d'une installation à une seule personne.
 ENV_PROFIL_FILE = "RSSRESUME_PROFILE_FILE"
+#: Le dossier des documents, un `{username}.json` par personne. Exclusif des deux
+#: variables précédentes : voir `Annuaire.depuis_env`.
+ENV_PROFILES_DIR = "RSSRESUME_PROFILES_DIR"
+
+#: Un nom court, en minuscules, sans point ni espace : il devient un nom de répertoire
+#: et un préfixe de label FreshRSS, deux endroits où une majuscule ou un espace ne se
+#: relisent pas de la même façon partout.
+MOTIF_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{1,31}$")
+#: L'extension d'un document du dossier. Les autres fichiers (un README, un `.gitkeep`)
+#: ne sont pas des profils et sont ignorés.
+EXTENSION_PROFIL = ".json"
+#: Le nom de la seule personne d'une installation qui ne déclare aucun document : il
+#: faut bien un répertoire et un préfixe de tags à son profil par défaut.
+USERNAME_DEFAUT = "defaut"
 
 #: Les clés du document. `profil` est la seule exigée.
 CLE_PROFIL = "profil"
@@ -122,18 +147,56 @@ def load_profil(override: str | None = None) -> Profil:
     chemin = (os.getenv(ENV_PROFIL_FILE) or "").strip()
     if not chemin:
         return Profil(DEFAULT_PROFIL)
+    return profil_depuis_fichier(pathlib.Path(chemin))
 
-    fichier = pathlib.Path(chemin)
+
+def profil_depuis_fichier(fichier: pathlib.Path) -> Profil:
+    """Le profil d'un document sur le disque. Illisible, vide ou fautif : `ValueError`.
+
+    Le même chemin pour le document unique de `RSSRESUME_PROFILE_FILE` et pour chaque
+    fichier du dossier de profils : deux lectures qui divergeraient finiraient par
+    accepter d'un côté ce que l'autre refuse.
+    """
+    fichier = pathlib.Path(fichier)
     try:
         contenu = fichier.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise ValueError(f"{ENV_PROFIL_FILE} désigne un fichier illisible : {fichier} ({exc})") from exc
+        raise ValueError(f"Profil illisible : {fichier} ({exc})") from exc
     if not contenu:
-        raise ValueError(f"{ENV_PROFIL_FILE} désigne un fichier vide : {fichier}")
-    return _document(contenu, fichier)
+        raise ValueError(f"Profil vide : {fichier}")
+    return _document(contenu, str(fichier))
 
 
-def _document(contenu: str, fichier: pathlib.Path) -> Profil:
+def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
+    """Le profil porté par un objet JSON déjà décodé. Fautif : `ValueError`.
+
+    Public parce que le site qui édite les profils valide un formulaire avant d'écrire
+    le fichier : il doit refuser exactement ce que le passage du matin refuserait, et
+    le seul moyen de le garantir est d'appeler la même fonction. `origine` ne sert qu'à
+    situer l'erreur dans son message — un chemin, un nom de profil.
+
+    Une stack fautive lève aussi `ValueError`, et non l'erreur propre à la stack :
+    l'appelant n'a qu'une exception à attraper pour dire « ce document est refusé ».
+    """
+    if not isinstance(document, dict):
+        raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(document).__name__}.")
+
+    texte = document.get(CLE_PROFIL)
+    if not isinstance(texte, str) or not texte.strip():
+        raise ValueError(f"{origine} : objet JSON sans texte à la clé « {CLE_PROFIL} ».")
+    try:
+        stack = Stack.declaree(document.get(CLE_STACK))
+    except StackError as exc:
+        raise ValueError(f"{origine} : {exc}") from exc
+    return Profil(
+        texte.strip(),
+        stack,
+        _emails(document.get(CLE_EMAIL), origine),
+        _prenom(document.get(CLE_PRENOM), origine),
+    )
+
+
+def _document(contenu: str, origine: str) -> Profil:
     """Le profil porté par le fichier : un objet JSON, ou le texte tel quel.
 
     Le discriminant est l'accolade ouvrante, pas l'extension : celle-ci n'est qu'une
@@ -148,23 +211,11 @@ def _document(contenu: str, fichier: pathlib.Path) -> Profil:
     try:
         parsed = json.loads(contenu)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"{ENV_PROFIL_FILE} : JSON invalide ({fichier}) : {exc}") from exc
-
-    texte = parsed.get(CLE_PROFIL)
-    if not isinstance(texte, str) or not texte.strip():
-        raise ValueError(
-            f"{ENV_PROFIL_FILE} : objet JSON sans texte à la clé « {CLE_PROFIL} » "
-            f"({fichier})."
-        )
-    return Profil(
-        texte.strip(),
-        Stack.declaree(parsed.get(CLE_STACK)),
-        _emails(parsed.get(CLE_EMAIL), fichier),
-        _prenom(parsed.get(CLE_PRENOM), fichier),
-    )
+        raise ValueError(f"{origine} : JSON invalide : {exc}") from exc
+    return profil_depuis_dict(parsed, origine)
 
 
-def _prenom(valeur: object, fichier: pathlib.Path) -> str:
+def _prenom(valeur: object, origine: str) -> str:
     """Le prénom déclaré, s'il l'est. Absent, la salutation se passe de nom.
 
     Facultatif, mais pas permissif : une clé remplie avec autre chose qu'un texte lève au
@@ -175,13 +226,13 @@ def _prenom(valeur: object, fichier: pathlib.Path) -> str:
         return ""
     if not isinstance(valeur, str):
         raise ValueError(
-            f"{ENV_PROFIL_FILE} : la clé « {CLE_PRENOM} » attend un prénom écrit en "
-            f"toutes lettres, pas {type(valeur).__name__} ({fichier})."
+            f"{origine} : la clé « {CLE_PRENOM} » attend un prénom écrit en "
+            f"toutes lettres, pas {type(valeur).__name__}."
         )
     return valeur.strip()
 
 
-def _emails(valeur: object, fichier: pathlib.Path) -> tuple[str, ...]:
+def _emails(valeur: object, origine: str) -> tuple[str, ...]:
     """Le ou les destinataires déclarés : une adresse, ou une liste d'adresses.
 
     Une adresse est vérifiée à l'arobase, et pas davantage : le reste ne se saurait qu'au
@@ -194,13 +245,202 @@ def _emails(valeur: object, fichier: pathlib.Path) -> tuple[str, ...]:
     adresses = [valeur] if isinstance(valeur, str) else valeur
     if not isinstance(adresses, list) or not adresses:
         raise ValueError(
-            f"{ENV_PROFIL_FILE} : « {CLE_EMAIL} » est une adresse, ou une liste "
-            f"d'adresses ({fichier})."
+            f"{origine} : « {CLE_EMAIL} » est une adresse, ou une liste d'adresses."
         )
     for adresse in adresses:
         if not isinstance(adresse, str) or "@" not in adresse:
-            raise ValueError(
-                f"{ENV_PROFIL_FILE} : « {adresse} » n'est pas une adresse email "
-                f"({fichier})."
-            )
+            raise ValueError(f"{origine} : « {adresse} » n'est pas une adresse email.")
     return tuple(adresse.strip() for adresse in adresses)
+
+
+def username_valide(username: object) -> bool:
+    """Vrai quand `username` peut nommer un profil : répertoire, préfixe de tags, fichier."""
+    return isinstance(username, str) and MOTIF_USERNAME.match(username) is not None
+
+
+def valider_username(username: object) -> str:
+    """Le nom tel quel s'il est valide ; sinon `ValueError`, qui dit la règle.
+
+    Pas de normalisation (minuscules, espaces retirés) : un nom corrigé en silence
+    désignerait un autre répertoire et d'autres tags que ceux que la personne croit.
+    """
+    if not username_valide(username):
+        raise ValueError(
+            f"Nom de profil invalide : « {username} ». Attendu : 2 à 32 caractères, "
+            "minuscules, chiffres, « - » ou « _ », commençant par une lettre ou un chiffre."
+        )
+    return username
+
+
+class Lecteur:
+    """Une personne du digest : son nom, et le profil qu'elle a déclaré.
+
+    Le nom est à part du `Profil` parce qu'il n'est pas dans le document : il est celui
+    du fichier. Un profil passé en ligne (`RSSRESUME_PROFILE`) n'en a pas, une personne
+    servie par la tournée en a toujours un.
+    """
+
+    def __init__(self, username: str, profil: Profil):
+        self.username = valider_username(username)
+        self.profil = profil
+
+
+class Annuaire:
+    """Les personnes que le passage quotidien sert, et comment lire chacune.
+
+    La base porte ce qui ne dépend pas de l'endroit où vivent les documents — lister,
+    cibler un nom, charger tout le monde ; les sous-classes ne disent que la source.
+    Les noms et les profils sont lus séparément, et à la demande : un document fautif
+    ne doit coûter que la journée de sa personne, pas celle des autres, et se signaler
+    au moment où on la sert.
+    """
+
+    def usernames(self) -> list[str]:
+        """Les noms servis, triés : l'ordre de la tournée ne doit pas dépendre du disque."""
+        raise NotImplementedError
+
+    def profil(self, username: str) -> Profil:
+        """Le profil d'un nom déjà listé. Fautif : `ValueError`."""
+        raise NotImplementedError
+
+    def lecteur(self, username: str) -> Lecteur:
+        """La personne `username`, profil chargé. Inconnue ou fautive : `ValueError`."""
+        self._connu(username)
+        return Lecteur(username, self.profil(username))
+
+    def cibles(self, username: str | None = None) -> list[str]:
+        """Les noms à servir : tous, ou celui demandé — qui doit exister.
+
+        Un nom inconnu lève avant tout traitement : une faute de frappe dans `--profil`
+        ne doit ni tourner à vide ni servir tout le monde à la place.
+        """
+        if username is None:
+            return self.usernames()
+        self._connu(username)
+        return [username]
+
+    def _connu(self, username: str) -> None:
+        connus = self.usernames()
+        if username not in connus:
+            raise ValueError(
+                f"Profil inconnu : « {username} ». Profils disponibles : "
+                f"{', '.join(connus) or '(aucun)'}."
+            )
+
+    @classmethod
+    def depuis_env(cls) -> "Annuaire":
+        """L'annuaire que l'environnement décrit. Ambigu : `ValueError`, au lancement.
+
+        - `RSSRESUME_PROFILES_DIR` : un profil par fichier du dossier ;
+        - sinon `RSSRESUME_PROFILE_FILE` : ce document est l'unique profil, nommé
+          d'après son fichier (`input/adrien.json` → `adrien`) ;
+        - sinon une seule personne, `defaut`, servie par `load_profil`.
+
+        Le dossier **et** une des variables à profil unique sont refusés ensemble :
+        servir l'un en ignorant l'autre ferait disparaître une personne — ou en ferait
+        apparaître une — sans que rien ne le dise. C'est l'état transitoire d'une
+        migration, et il doit se voir au déploiement.
+        """
+        dossier = (os.getenv(ENV_PROFILES_DIR) or "").strip()
+        fichier = (os.getenv(ENV_PROFIL_FILE) or "").strip()
+        if dossier:
+            uniques = [nom for nom in (ENV_PROFIL_FILE, ENV_PROFIL) if (os.getenv(nom) or "").strip()]
+            if uniques:
+                raise ValueError(
+                    f"{ENV_PROFILES_DIR} et {' / '.join(uniques)} sont posées ensemble. "
+                    f"Avec un dossier de profils, déplacer le document dans "
+                    f"{dossier}/<username>.json et retirer {' / '.join(uniques)} de "
+                    "l'environnement."
+                )
+            return AnnuaireDossier(pathlib.Path(dossier))
+        if fichier:
+            return AnnuaireFichier(pathlib.Path(fichier))
+        return AnnuaireDefaut()
+
+
+class AnnuaireDossier(Annuaire):
+    """Un dossier de documents, un `{username}.json` par personne.
+
+    Relu à chaque appel, sans cache : le site peut ajouter ou modifier un profil entre
+    deux passages, et le passage du matin doit servir l'état du matin.
+    """
+
+    def __init__(self, dossier: pathlib.Path):
+        self.dossier = pathlib.Path(dossier)
+
+    def chemin(self, username: str) -> pathlib.Path:
+        """Où vit — ou vivra — le document de `username`. Le nom est validé d'abord."""
+        return self.dossier / f"{valider_username(username)}{EXTENSION_PROFIL}"
+
+    def usernames(self) -> list[str]:
+        """Les noms du dossier. Un fichier `.json` au nom invalide lève, sans exception.
+
+        Ignorer un tel fichier ferait disparaître une personne de la tournée sans un
+        mot ; le lever arrête tout, mais se lit tout de suite dans les logs, et le
+        site — qui valide les noms — ne devrait jamais en écrire.
+        """
+        if not self.dossier.is_dir():
+            raise ValueError(
+                f"{ENV_PROFILES_DIR} : le dossier {self.dossier} n'existe pas. Le créer et "
+                f"y déposer un <username>{EXTENSION_PROFIL} par personne."
+            )
+        noms = sorted(
+            fichier.stem
+            for fichier in self.dossier.iterdir()
+            if fichier.is_file() and fichier.suffix == EXTENSION_PROFIL
+        )
+        invalides = [nom for nom in noms if not username_valide(nom)]
+        if invalides:
+            raise ValueError(
+                f"{ENV_PROFILES_DIR} : nom(s) de profil invalide(s) dans {self.dossier} : "
+                f"{', '.join(f'{nom}{EXTENSION_PROFIL}' for nom in invalides)}. Attendu : "
+                f"{MOTIF_USERNAME.pattern}."
+            )
+        return noms
+
+    def profil(self, username: str) -> Profil:
+        return profil_depuis_fichier(self.chemin(username))
+
+
+class AnnuaireFichier(Annuaire):
+    """L'installation à une seule personne : le document de `RSSRESUME_PROFILE_FILE`.
+
+    Son nom est celui du fichier, pour que passer ensuite au dossier de profils ne soit
+    qu'un déplacement : `input/adrien.json` écrit déjà sous `output/adrien/` et tague
+    déjà `adrien-…`.
+    """
+
+    def __init__(self, fichier: pathlib.Path):
+        self.fichier = pathlib.Path(fichier)
+        if not username_valide(self.fichier.stem):
+            raise ValueError(
+                f"{ENV_PROFIL_FILE} : le nom du fichier ({self.fichier.name}) devient le nom "
+                f"du profil, et « {self.fichier.stem} » n'en est pas un valide "
+                f"({MOTIF_USERNAME.pattern}). Renommer le fichier."
+            )
+
+    def usernames(self) -> list[str]:
+        return [self.fichier.stem]
+
+    def profil(self, username: str) -> Profil:
+        return profil_depuis_fichier(self.fichier)
+
+
+class AnnuaireDefaut(Annuaire):
+    """Aucun document déclaré : une seule personne, avec le profil en ligne ou le défaut."""
+
+    def usernames(self) -> list[str]:
+        return [USERNAME_DEFAUT]
+
+    def profil(self, username: str) -> Profil:
+        return load_profil()
+
+
+def lister_profils(dossier: pathlib.Path) -> list[str]:
+    """Les `username` d'un dossier de profils. Raccourci public pour le site."""
+    return AnnuaireDossier(dossier).usernames()
+
+
+def charger_profil(dossier: pathlib.Path, username: str) -> Profil:
+    """Le profil de `username` dans un dossier de profils. Raccourci public pour le site."""
+    return AnnuaireDossier(dossier).profil(username)

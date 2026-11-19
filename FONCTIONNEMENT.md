@@ -44,9 +44,10 @@ flowchart TD
 
 Les blocs ambrés sont les seuls qui appellent l'API payante.
 
-Tout ce qui précède l'email se répète **par catégorie**, tags compris. Le marquage comme lu attend
-la livraison ; le montage de la journée, lui, a lieu une fois toutes les catégories traitées, et
-seulement en mode `global` — voir [Les deux modes audio](#les-deux-modes-audio).
+Tout ce qui précède l'email se répète **par catégorie**, tags compris, et le tout **par profil** —
+voir [Plusieurs profils : la tournée](#plusieurs-profils--la-tournée). Le marquage comme lu attend
+la livraison de tous les profils ; le montage de la journée, lui, a lieu une fois toutes les
+catégories traitées, et seulement en mode `global` — voir [Les deux modes audio](#les-deux-modes-audio).
 
 ## Les étapes
 
@@ -473,7 +474,7 @@ date du digest faisait arriver dans la boîte une lettre datée de l'avant-veill
   un appel par journée), puis la table de `ephemeride/histoire.py`, puis le calendrier, qui ne peut
   pas échouer. Le modèle répond `AUCUN` plutôt que de combler quand il ne sait rien de cette date.
 
-Celle qui a servi est écrite dans `output/<jour>/journee.json`, **avec le jour qu'elle décrit**.
+Celle qui a servi est écrite dans `output/<username>/<jour>/journee.json`, **avec le jour qu'elle décrit**.
 `--send-only` la réutilise si elle parle bien du jour du renvoi — le cas courant, quand l'envoi a
 échoué le matin et qu'on relance une heure plus tard. Renvoyée trois jours plus tard, elle daterait
 la lettre du mauvais jour et annoncerait la fête d'un autre : elle est alors recalculée sur la
@@ -771,7 +772,7 @@ range et hiérarchise, il ne remplace pas la lecture de l'avis.
 ## Le journal d'une catégorie
 
 Écrit à la fermeture de chaque catégorie, **avant** l'email et le marquage comme lu, à côté de son
-audio : `output/<jour>/<categorie>.log.json`.
+audio : `output/<username>/<jour>/<categorie>.log.json`.
 
 Il fixe ce qu'une exécution finie ne conservait nulle part :
 
@@ -944,14 +945,61 @@ Trois conséquences de conception :
   donc lui aussi, au lieu d'être servi comme du texte : le prompt de scoring recevrait la
   ponctuation du fichier en guise de critère de pertinence.
 
-Le document est résolu **une fois**, dans `AppConfig.from_env()` : un chemin fautif fait échouer le
-lancement, pas la troisième catégorie. Les trois clés en sortent ensemble — `config.profil`,
-`config.stack`, `config.smtp_to` — et `cli.build_service()` les distribue aux collaborateurs qui
-les attendent, comme le reste.
+Le document est résolu **une fois par personne et par passage**, avant sa première catégorie
+(`AppConfig.pour`, voir la tournée ci-dessous) : un document fautif fait échouer la journée de sa
+personne, pas sa troisième catégorie. Les clés en sortent ensemble — `config.profil`,
+`config.stack`, `config.smtp_to`, `config.prenom` — et `cli.build_service()` les distribue aux
+collaborateurs qui les attendent, comme le reste.
 
 `SMTP_TO` portait le destinataire jusqu'ici. La variable est désormais **refusée** et non ignorée :
 laissée dans un environnement déjà déployé, elle ferait croire qu'un destinataire est configuré, et
 le digest cesserait de partir sans que rien ne le dise.
+
+## Plusieurs profils : la tournée
+
+Plusieurs personnes peuvent lire le même FreshRSS. D'où viennent leurs profils est l'affaire
+d'un **annuaire** (`profil.Annuaire`) : une classe de base qui sait lister les noms, cibler l'un
+d'eux et charger une personne, et des sous-classes qui ne disent que la source.
+
+| `Annuaire.depuis_env()` choisit | Quand | Profils |
+| --- | --- | --- |
+| `AnnuaireDossier` | `RSSRESUME_PROFILES_DIR` | un `{username}.json` par personne |
+| `AnnuaireFichier` | `RSSRESUME_PROFILE_FILE` seule | ce document, nommé d'après son fichier |
+| `AnnuaireDefaut` | rien de déclaré | `defaut`, avec `RSSRESUME_PROFILE` ou le profil générique |
+
+Le dossier **et** une variable à profil unique posés ensemble lèvent au lancement : servir l'un
+en ignorant l'autre ferait disparaître ou apparaître une personne sans que rien ne le dise. Le
+`username` — le nom du fichier — suit `^[a-z0-9][a-z0-9_-]{1,31}$`, parce qu'il nomme un
+répertoire et préfixe des labels ; un `.json` mal nommé lève aussi. Les documents, eux, sont lus
+au moment de servir leur personne : un document fautif ne coûte que sa journée.
+
+`AppConfig.from_env()` reste la configuration de l'installation ; `AppConfig.pour(lecteur)` y
+applique une personne — profil, stack, prénom, destinataires — et fait descendre la sortie à
+`output/<username>/`. Tout ce qui lit `output_dir` suit sans rien savoir des profils.
+
+La tournée (`tournee.Tournee`) sert la journée à chaque profil dans l'ordre alphabétique :
+
+```
+pour chaque username :  config.pour(lecteur) → build_service → DigestService.run(mark_read=False)
+                        un échec est journalisé, le suivant est servi
+puis, une seule fois :  marquage comme lu de l'union des articles lus
+                        — seulement si tous les profils de l'annuaire viennent d'être servis
+```
+
+Le marquage est le piège : l'état « lu » est unique dans FreshRSS et l'API écarte les articles
+lus, donc le premier profil qui marquerait viderait la journée de tous les suivants. Si un profil
+a échoué, rien n'est marqué : il rejoue sa journée avec `--profil` sans `--include-read`. Un
+passage `--profil` ne marque rien non plus tant que d'autres profils existent. Un article resté
+non lu ne revient dans aucune autre journée — la lecture est bornée au jour —, il ne coûte
+qu'un compteur dans FreshRSS.
+
+Le client FreshRSS est partagé par la tournée et décliné par personne (`FreshRSSClient.pour`) :
+catégories et articles du jour ne sont lus qu'une fois, jetons compris, et chacun tague sous son
+propre préfixe. Rendre la même lecture à tous est juste parce que rien n'est marqué lu entre deux.
+
+Pour brancher une autre source de profils — une base, par exemple —, une sous-classe d'`Annuaire`
+qui redéfinit `usernames()` et `profil(username)` suffit, choisie dans `Annuaire.depuis_env()` ; la
+validation d'un document, `profil_depuis_dict`, est publique pour être partagée.
 
 ## Le cache de scoring
 
@@ -985,6 +1033,12 @@ articles concernés sont retirés, ce qui donne un appel par tag distinct. Le ta
 jamais touché par ce nettoyage.
 
 ## Les tags posés dans FreshRSS
+
+Chaque tag est **préfixé par le nom du profil** — `adrien-score-07`, `adrien-digested` : une note
+dépend du profil qui l'a produite, et le cache doit être à chacun. Les motifs relus sont ancrés sur
+ce préfixe : ni les tags d'un autre profil ni les anciens tags sans préfixe ne sont relus ou
+nettoyés. Passer aux profils coûte donc un re-scoring unique des articles relus ; les anciens tags
+restent dans FreshRSS, inertes. Le tableau ci-dessous donne les tags sans leur préfixe.
 
 | Tag | Posé sur | Sert à |
 | --- | --- | --- |

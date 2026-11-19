@@ -18,7 +18,7 @@ import zoneinfo
 
 from rssresume.certfr.stack import Stack
 from rssresume.models import SelectionRule
-from rssresume.profil import CLE_EMAIL, ENV_PROFIL_FILE, load_profil
+from rssresume.profil import CLE_EMAIL, ENV_PROFIL_FILE, Lecteur, load_profil
 from rssresume.tools.text import casefold_ascii, words
 
 #: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
@@ -243,6 +243,10 @@ class AppConfig:
     #: Le bilan de la journée en fin de passage, articles compris. Rien d'autre : ce
     #: drapeau ne promet pas des traces ailleurs, et n'en pose aucune.
     debug: bool = False
+    #: La personne servie, posée par `pour`. Vide, la configuration est celle de
+    #: l'installation : ses tags FreshRSS ne portent aucun préfixe, et sa sortie est la
+    #: racine. C'est l'état de `from_env`, jamais celui d'un digest réellement servi.
+    username: str = ""
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -309,6 +313,30 @@ class AppConfig:
             certfr_categories=_split_categories(
                 _env(ENV_CERTFR_CATEGORIES), ENV_CERTFR_CATEGORIES
             ),
+        )
+
+    def pour(self, lecteur: Lecteur) -> "AppConfig":
+        """La configuration de l'installation, appliquée à une personne.
+
+        Ce qui est personnel — profil, stack, prénom, destinataires — vient du document
+        de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
+        `{output}/{username}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
+        `--journal`) suit sans savoir qu'il y a plusieurs personnes.
+
+        S'applique à la configuration de l'installation, et une seule fois : appliquée
+        deux fois, la sortie descendrait de deux crans.
+        """
+        if self.username:
+            raise ValueError(f"Configuration déjà appliquée au profil « {self.username} ».")
+        personne = lecteur.profil
+        return dataclasses.replace(
+            self,
+            username=lecteur.username,
+            output_dir=self.output_dir / lecteur.username,
+            profil=personne.texte,
+            stack=personne.stack,
+            prenom=personne.prenom,
+            smtp_to=list(personne.emails),
         )
 
     def selection_rule(self, category: str) -> SelectionRule:
