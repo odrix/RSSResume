@@ -14,3 +14,6 @@ input/
 # Sorties RSSResume
 output/
 output-dl/
+
+# Actions manuelles de déploiement, propres à l'instance et vidées une fois faites
+todo-dockploy.md
