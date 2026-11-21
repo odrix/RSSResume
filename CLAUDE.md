@@ -24,17 +24,21 @@ ni pytest installé. La commande, depuis la racine :
 .venv/Scripts/python.exe -m unittest discover -s tests -p "test*.py"
 ```
 
-Environ 2 s pour la suite entière (510 tests au 2026-08-30). Il n'y a donc jamais de
-raison de n'en lancer qu'une partie.
+Une quinzaine de secondes pour la suite entière : il n'y a jamais de raison de n'en lancer
+qu'une partie. Le site a la sienne : `npm run check` et `npm test` dans `web/`.
 
 - Une tâche n'est pas finie tant que la suite n'est pas verte. Annoncer le nombre de tests.
 - Tout comportement ajouté ou corrigé vient avec son test dans `tests/`.
+- Les hooks de `.claude/settings.json` ([garde.py](.claude/hooks/garde.py)) relancent la suite
+  après chaque modification d'un `.py` et refusent de conclure sur une suite rouge. Un rouge
+  intermédiaire, le temps d'une modification en plusieurs étapes, est attendu.
 
 ## Outils
 
 - **Modifier les fichiers avec Edit/Write.** Jamais `sed -i`, jamais de heredoc, jamais de
-  redirection shell : `core.autocrlf=true` sans `.gitattributes`, un `sed -i` a déjà réécrit
-  tout le dépôt en LF, et les heredocs mangent les échappements.
+  redirection shell : un `sed -i` a déjà réécrit tout le dépôt en LF, et les heredocs mangent
+  les échappements. `.gitattributes` protège désormais l'index ; le hook `pre` refuse ces
+  commandes, ainsi que tout accès à `.env` / `.env.local`.
 - Lire et chercher avec Read/Grep/Glob. Bash sert à **exécuter** — tests, git, docker — pas
   à éditer ni à inspecter.
 
@@ -61,6 +65,16 @@ inactif tant que ce n'est pas fait.
   fichier qu'on n'avait pas à toucher.
 - **Au-delà de deux fichiers touchés, proposer un plan d'abord** — structure des classes,
   liste exacte des fichiers, dépendances éventuelles — et attendre l'accord avant d'écrire.
+
+## Backlog et branches
+
+- [backlog-todo.md](backlog-todo.md) est le **seul** backlog ; un item traité part dans
+  [backlog-done.md](backlog-done.md) avec sa date. Une idée retenue en cours de route y entre
+  avec le prochain identifiant libre, plutôt que dans un nouveau fichier de notes.
+- `/backlog-pop [BL-NNN] [N]` traite les items : plan validé, un worktree par item, branche
+  `backlog/BL-NNN-…`, PR. Le travail se fait sur une branche avec PR, pas sur `main` ; la CI
+  ([tests.yml](.github/workflows/tests.yml)) y lance les deux suites.
+- `.claude/worktrees/` est gitignoré : un worktree se supprime une fois sa branche poussée.
 
 ## Repères dans le code
 

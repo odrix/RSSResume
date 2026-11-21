@@ -1,0 +1,22 @@
+# Fins de ligne : l'index est en LF, le poste de travail Windows en CRLF (core.autocrlf=true).
+# Ce fichier fige la règle dans le dépôt pour que ni un outil ni un autre poste ne puisse plus
+# réécrire l'index en masse : `text=auto` normalise en LF à l'entrée, quel que soit l'éditeur.
+* text=auto
+
+# Lus par un shell Linux dans l'image Docker ou la CI : LF partout, même sous Windows.
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Binaires : jamais de conversion.
+*.mp3 binary
+*.wav binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.sqlite3 binary
+
+# Deux branches qui ajoutent chacune un item traité en fin de fichier ne doivent pas entrer
+# en conflit : le pilote `union` garde les deux ajouts (traitement parallèle de /backlog-pop).
+backlog-done.md merge=union
