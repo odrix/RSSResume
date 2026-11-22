@@ -5,6 +5,10 @@ profil note tous les articles de ses catégories, se fait résumer les siens, mo
 journée. Ce document chiffre ce qu'un profil coûte, ce qui casse avant la facture, et dans quel
 ordre agir.
 
+Les chiffres datent de deux mois avant l'étude (rédigée le 2026-11-22) : les prompts, le montage
+et les axes de veille ont bougé depuis. Ils fixent les ordres de grandeur et l'ordre d'action ; le
+budget de BL-057 se règle sur une mesure refaite (BL-061), pas sur eux.
+
 ## 1. En bref
 
 - Un profil coûte **0,17 $ par jour** en moyenne (0,19 $ un jour de semaine), soit **~5 $ par mois**,
@@ -24,7 +28,7 @@ ordre agir.
 
 | | |
 | --- | --- |
-| Données | `output-dl/2026-08-27 … 2026-09-18/` : production du VPS, passage de 05:00, un profil (toutes les catégories), disposition à plat |
+| Données | `output-dl/2026-08-27 … 2026-09-18/` : copie locale du répertoire `output/` du VPS (production, passage de 05:00, un profil, toutes les catégories, disposition à plat). `output/` désigne ci-dessous le répertoire de sortie local, celui des essais |
 | Champs lus | `<categorie>.log.json` : `couts.appels[]` (`typologie`, `modele`, `tokens_entree`, `tokens_sortie`), `resultat.articles`, `retenus`, `notes_calculees`, `notes_relues_des_tags`, `genere_le` ; `journee.json` : éphéméride, montage, TTS (`caracteres`) |
 | Tarifs | `llm/providers.json`, bloc `prices`, appliqué comme [`pricing.py`](../rssresume/pricing.py) : `tokens_entree × input + tokens_sortie × output`. `tokens_sortie` est le `completion_tokens` de l'API, raisonnement **compris** |
 | Régime mesuré | **2026-09-07 → 2026-09-18**, dix journées (8 de semaine, 2 de week-end ; le 16 et le 17 manquent) |
@@ -36,7 +40,7 @@ Pièges, et ce qui en a été fait :
    concerne est donné entre deux bornes lues dans `providers.json` : **haute** au tarif `gpt-5`
    (1,25 $ / 10 $ par million de tokens), **basse** au tarif `gpt-5-mini` (0,25 $ / 2 $). Le vrai
    tarif est à fournir.
-2. **Un rejeu écrase le journal** : `output/2026-08-28` relancé à 20:43 dit `notes_calculees 0`,
+2. **Un rejeu écrase le journal** : la journée locale `output/2026-08-28` relancée à 20:43 dit `notes_calculees 0`,
    `relues 32`, et ne compte plus le scoring. Seules sont gardées les journées où
    `notes_calculees = articles` pour chaque catégorie notée ; `2026-08-27` (partielle) est écartée.
 3. **Le montage lit le texte des articles depuis le 2026-09-07** : 10 à 23 k tokens d'entrée en
@@ -44,7 +48,7 @@ Pièges, et ce qui en a été fait :
 4. **Semaine et week-end** n'ont rien à voir : 66–96 articles notés un jour de semaine, 14–16 le
    week-end. Les deux sont donnés.
 5. **Un seul profil, arrêté au 2026-09-18.** Pour rejouer l'étude : rapatrier du VPS
-   `output/<id>/<date>/` de chaque profil sur deux semaines, et appliquer les mêmes filtres —
+   (répertoire de sortie du conteneur) `output/<id>/<date>/` de chaque profil sur deux semaines, et appliquer les mêmes filtres —
    ou, une fois BL-061 fait, `--couts`.
 
 ## 3. Coût mesuré
@@ -186,12 +190,12 @@ utilise : ils ne sont qu'un cache.
 | --- | --- |
 | **Maintenant** | Tarifer `gpt-5.6-luna` (BL-055) : sans lui, aucun budget n'est calculable. Mesurer par profil (BL-061). Éphéméride une fois par tournée (BL-059), au passage |
 | **Avant l'ouverture** (3–5 profils) | Cache de scoring en SQLite (BL-056), puis ménage des libellés existants (BL-025). Plafond de profils et budget journalier (BL-057), et l'inscription qui se ferme ou passe en liste d'attente au plafond (BL-058) |
-| **20–30 profils** (56 à 150 $/mois en borne haute) | Audio en option ou à la demande (BL-060) |
+| **20–30 profils** (borne haute : 100 à 150 $/mois avant BL-038, 56 à 84 $ après) | Audio en option ou à la demande (BL-060) |
 | **40–50 profils** | Tournée en parallèle (BL-062) quand la tournée dépasse sa fenêtre ; rétention des sorties (BL-063) quand le disque l'exige |
 | **Jamais, dans cet horizon** | Scoring mutualisé par gabarit (B) |
 
 Ordre de grandeur pour régler le plafond, en borne haute : **un budget de 1 $ par jour sert
-5 profils « tout » ou 8 à 9 profils métier** ; au tarif `gpt-5-mini`, 10 et 15.
+5 profils « tout » ou 8 à 9 profils métier** ; au tarif `gpt-5-mini`, 10 et 12 à 14.
 
 ## 9. Items créés
 
@@ -207,6 +211,7 @@ Ordre de grandeur pour régler le plafond, en borne haute : **un budget de 1 $ p
 | BL-062 | Tournée en parallèle | pipeline | 4 | |
 | BL-063 | Rétention des sorties par profil | pipeline | 4 | |
 
-Ajustements proposés : BL-025 dépend de BL-056, s'étend aux libellés `score`, `theme` et
-`scoring` de tous les profils, et passe de la priorité 4 à 2 ; BL-049 (coût des sept derniers
-jours à l'admin) peut s'appuyer sur BL-055 et BL-061.
+BL-054 est pris par un autre item ouvert le même jour. Ajustements appliqués au backlog : BL-025
+dépend de BL-056, s'étend aux libellés `score`, `theme` et `scoring` de tous les profils, et passe
+de la priorité 4 à 2. BL-049 (coût des sept derniers jours à l'admin) pourra s'appuyer sur BL-055
+et BL-061, sans en dépendre : la suspension et la suppression de compte n'en ont pas besoin.
