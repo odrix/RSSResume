@@ -33,6 +33,8 @@ export interface ContenuJournee {
 	montage: { audio: string | null; ecoute: string | null } | null;
 	/** La phrase d'une journée sans article ; `null` sinon. */
 	raison: string | null;
+	/** Vrai tant que la tournée écrit la journée : ni contenu ni raison, pas encore. */
+	en_cours: boolean;
 	categories: CategorieJournee[];
 }
 

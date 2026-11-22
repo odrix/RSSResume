@@ -13,7 +13,7 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
  * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, modifie_le: string }} ProfilStocke
  * @typedef {{ titre: string, source: string, url: string | null }} LienStocke
  * @typedef {{ categorie: string, racontee: boolean, resume: string, audio: string | null, ecoute: string | null, articles: LienStocke[], a_surveiller: LienStocke[] }} CategorieStockee
- * @typedef {{ ecoute?: string | null, racontees?: number, montage?: { audio: string | null, ecoute: string | null } | null, raison?: string | null, categories?: CategorieStockee[] }} ContenuStocke
+ * @typedef {{ ecoute?: string | null, racontees?: number, montage?: { audio: string | null, ecoute: string | null } | null, raison?: string | null, en_cours?: boolean, categories?: CategorieStockee[] }} ContenuStocke
  * @typedef {{ date: string, audios: { nom: string, octets: Uint8Array }[], contenu?: ContenuStocke }} JourneeStockee
  */
 
@@ -219,13 +219,17 @@ export class FausseApi {
 function contenuDe(journee) {
 	const contenu = journee.contenu ?? {};
 	const categories = contenu.categories ?? [];
+	const enCours = contenu.en_cours ?? false;
 	return {
 		date: journee.date,
 		audios: journee.audios.map((a) => ({ nom: a.nom, taille: a.octets.length })),
 		ecoute: contenu.ecoute ?? null,
 		racontees: contenu.racontees ?? categories.filter((c) => c.racontee).length,
 		montage: contenu.montage ?? null,
-		raison: contenu.raison ?? (categories.length ? null : `Aucun article trouvé pour le ${journee.date}.`),
+		raison:
+			contenu.raison ??
+			(enCours || categories.length ? null : `Aucun article trouvé pour le ${journee.date}.`),
+		en_cours: enCours,
 		categories
 	};
 }

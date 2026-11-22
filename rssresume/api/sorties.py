@@ -10,6 +10,7 @@ barrières indépendantes, pour qu'une seule défaillance ne suffise pas à sort
 from __future__ import annotations
 
 import datetime as dt
+import json
 import pathlib
 import re
 import urllib.parse
@@ -81,15 +82,18 @@ class ContenuJournee:
     Relire les journaux une seconde fois, ailleurs, finirait par ne plus dire comme l'email.
     """
 
-    def __init__(self, date: dt.date, lettre: Lettre, audios: list[Audio]):
+    def __init__(self, date: dt.date, lettre: Lettre, audios: list[Audio], en_cours: bool = False):
         self.date = date
         self.lettre = lettre
         self.audios = audios
+        #: Vrai quand la tournée écrit encore la journée : ses journaux manquent ou sont
+        #: tronqués. Distinct d'une journée sans article, qui est finie et vide.
+        self.en_cours = en_cours
 
     @property
     def raison(self) -> str | None:
         """La phrase d'une journée sans article, la même que l'email ; `None` sinon."""
-        if self.lettre.sections:
+        if self.en_cours or self.lettre.sections:
             return None
         return f"Aucun article trouvé pour le {newsletter.date_longue(self.date)}."
 
@@ -109,6 +113,7 @@ class ContenuJournee:
                 "ecoute": lettre.montage_ecoute,
             },
             "raison": self.raison,
+            "en_cours": self.en_cours,
             "categories": [
                 {
                     "categorie": section.category,
@@ -187,8 +192,21 @@ class Sorties:
             return None
         if not jour.resolve().is_relative_to(self.dossier(id).resolve()):
             return None
-        lettre = Lettre.compose(date, runlog.read_day(jour), montage=runlog.read_montage(jour))
-        return ContenuJournee(date, lettre, self._audios(jour))
+        audios = self._audios(jour)
+        if not any(jour.glob(f"*{runlog.LOG_SUFFIX}")) and not any(
+            jour.glob(f"*{runlog.NO_ARTICLE_SUFFIX}")
+        ):
+            # Le répertoire est créé avant le premier journal : vide, la journée n'est pas
+            # « sans article », elle n'est pas encore écrite.
+            return ContenuJournee(date, Lettre.compose(date, []), audios, en_cours=True)
+        try:
+            digests = runlog.read_day(jour)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            # Un journal s'écrit en place : lu pendant que la tournée l'écrit, il est
+            # tronqué. Ce n'est pas une panne, c'est une journée pas encore finie.
+            return ContenuJournee(date, Lettre.compose(date, []), audios, en_cours=True)
+        lettre = Lettre.compose(date, digests, montage=runlog.read_montage(jour))
+        return ContenuJournee(date, lettre, audios)
 
     def audio(self, id: str, texte_date: str, nom: str) -> Audio | None:
         """L'audio demandé, s'il existe et reste sous le dossier du profil ; sinon `None`."""

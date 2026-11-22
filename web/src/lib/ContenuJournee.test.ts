@@ -11,6 +11,7 @@ function contenu(partiel: Partial<Contenu> = {}): Contenu {
 		racontees: 0,
 		montage: null,
 		raison: null,
+		en_cours: false,
 		categories: [],
 		...partiel
 	};
@@ -78,5 +79,11 @@ describe('ContenuJournee', () => {
 		expect(html).toContain('Aucun article trouvé pour le vendredi 21 novembre 2026.');
 		expect(html).not.toContain('<audio');
 		expect(html).not.toContain('<section');
+	});
+
+	it("annonce une journée en cours de production, sans la dire vide", () => {
+		const html = rendre(contenu({ en_cours: true }));
+		expect(html).toContain('en cours de production');
+		expect(html).not.toContain('Aucun article');
 	});
 });

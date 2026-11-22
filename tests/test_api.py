@@ -437,6 +437,7 @@ class ContenuJourneeTests(ServeurTestCase):
                 "racontees": 1,
                 "montage": None,
                 "raison": None,
+                "en_cours": False,
                 "categories": [
                     {
                         "categorie": "Cybersécurité",
@@ -491,6 +492,29 @@ class ContenuJourneeTests(ServeurTestCase):
             contenu["raison"],
         )
         self.assertIn("19 novembre 2026", contenu["raison"])
+        self.assertFalse(contenu["en_cours"])
+
+    def test_a_day_being_written_is_in_progress_not_an_error(self):
+        """Un journal lu pendant que la tournée l'écrit est tronqué : ni 500, ni « aucun article »."""
+        jour = self.dossier / "2026-11-21"
+        complet = (jour / "1-cyber.log.json").read_bytes()
+        for tronque in (complet[: len(complet) // 2], complet[:-1], b"", "é".encode("utf-8")[:1]):
+            (jour / "2-tech.log.json").write_bytes(tronque)
+            statut, contenu = self.contenu("2026-11-21")
+            self.assertEqual(200, statut, tronque)
+            self.assertTrue(contenu["en_cours"])
+            self.assertIsNone(contenu["raison"])
+            self.assertEqual([], contenu["categories"])
+            self.assertEqual(["1-cyber.wav"], [audio["nom"] for audio in contenu["audios"]])
+
+    def test_a_day_without_any_log_yet_is_in_progress(self):
+        """Le répertoire existe avant le premier journal : vide, il n'est pas « sans article »."""
+        (self.dossier / "2026-11-22").mkdir()
+        statut, contenu = self.contenu("2026-11-22")
+        self.assertEqual(200, statut)
+        self.assertTrue(contenu["en_cours"])
+        self.assertIsNone(contenu["raison"])
+        self.assertIn({"date": "2026-11-22", "audios": []}, self.json("GET", "/api/v1/profils/bea/journees")[1])
 
     def test_foreign_schemes_are_removed_from_links(self):
         jour = self.dossier / "2026-11-16"

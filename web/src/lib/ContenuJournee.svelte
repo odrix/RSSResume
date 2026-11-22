@@ -23,7 +23,11 @@
 	const cle = (lien: LienArticle, rang: number) => `${rang}-${lien.titre}`;
 </script>
 
-{#if contenu.raison}
+{#if contenu.en_cours}
+	<p class="message" role="status">
+		Cette journée est en cours de production : revenez dans quelques minutes.
+	</p>
+{:else if contenu.raison}
 	<p class="attenue">{contenu.raison}</p>
 {/if}
 

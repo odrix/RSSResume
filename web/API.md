@@ -124,6 +124,7 @@ renvoyer l'email :
   "racontees": 3,
   "montage": {"audio": "journee.mp3", "ecoute": "12 min"},
   "raison": null,
+  "en_cours": false,
   "categories": [{
     "categorie": "Cybersécurité", "racontee": true, "resume": "…",
     "audio": "cyber.mp3", "ecoute": "5 min",
@@ -136,6 +137,9 @@ renvoyer l'email :
 - `montage` vaut `null` en mode par catégorie ; `audio` et `ecoute` y valent `null` quand le
   fichier manque ou que sa durée ne se mesure pas.
 - `raison` : la phrase d'une journée sans article (`categories` vide), `null` sinon.
+- `en_cours` : `true` quand la tournée écrit encore la journée — aucun journal ni marqueur
+  `.no-article` encore, ou un journal tronqué lu en pleine écriture. `categories` est alors
+  vide et `raison` à `null` : la journée n'est pas vide, elle n'est pas finie.
 - Les textes (`resume`, `titre`, `source`) sont **bruts** : ils viennent du modèle et des flux,
   le site les échappe au rendu.
 - `url` vaut `null` pour tout lien qui n'est pas `http` ou `https` (`javascript:`, `data:`…) :

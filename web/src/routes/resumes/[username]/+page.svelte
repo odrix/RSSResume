@@ -35,8 +35,9 @@
 		`/resumes/${encodeURIComponent(data.username)}/${encodeURIComponent(date)}`;
 
 	/** « lundi 23 novembre à 04:00 », dans le fuseau du passage et non celui du navigateur :
-	 * c'est l'heure où le travailleur passe, pas celle où on lit la page. */
-	const premierResume = $derived.by(() => {
+	 * c'est l'heure où le travailleur passe, pas celle où on lit la page. Le début du passage
+	 * et non l'arrivée du résumé, que la durée de la tournée repousse d'autant. */
+	const prochainPassage = $derived.by(() => {
 		if (!data.passage) return null;
 		const moment = new Date(data.passage.prochain);
 		if (Number.isNaN(moment.getTime())) return null;
@@ -69,8 +70,10 @@
 	<p class="message erreur" role="alert">{data.erreur}</p>
 {:else if !data.journees.length}
 	<p class="attenue">
-		{#if premierResume}
-			Aucun résumé pour l'instant. Votre premier résumé arrivera le {premierResume}.
+		{#if prochainPassage}
+			Aucun résumé pour l'instant. {data.proprietaire
+				? 'Votre premier résumé'
+				: `Le premier résumé de ${data.username}`} arrivera après le passage du {prochainPassage}.
 		{:else}
 			Aucun résumé pour l'instant. Le premier arrivera après le prochain passage quotidien.
 		{/if}

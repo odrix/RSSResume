@@ -88,6 +88,14 @@ describe('ConsultationResumes', () => {
 		expect(contenu?.audios).toEqual([]);
 		expect(contenu?.categories).toEqual([]);
 		expect(contenu?.raison).toMatch(/^Aucun article trouvé/);
+		expect(contenu?.en_cours).toBe(false);
+	});
+
+	it('rend une journée en cours de production telle quelle, sans erreur', async () => {
+		env.fausseApi.ajouterContenu('moi', '2026-11-22', { en_cours: true });
+		const contenu = await consultation.journee(moi, 'moi', '2026-11-22');
+		expect(contenu?.en_cours).toBe(true);
+		expect(contenu?.raison).toBeNull();
 	});
 
 	it("annonce le passage, ou null si l'API ne répond pas", async () => {
