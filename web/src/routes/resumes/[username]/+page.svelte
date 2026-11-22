@@ -30,6 +30,34 @@
 
 	const urlAudio = (date: string, nom: string) =>
 		`/audio/${encodeURIComponent(data.username)}/${encodeURIComponent(date)}/${encodeURIComponent(nom)}`;
+
+	const urlJournee = (date: string) =>
+		`/resumes/${encodeURIComponent(data.username)}/${encodeURIComponent(date)}`;
+
+	/** « lundi 23 novembre à 04:00 », dans le fuseau du passage et non celui du navigateur :
+	 * c'est l'heure où le travailleur passe, pas celle où on lit la page. Le début du passage
+	 * et non l'arrivée du résumé, que la durée de la tournée repousse d'autant. */
+	const prochainPassage = $derived.by(() => {
+		if (!data.passage) return null;
+		const moment = new Date(data.passage.prochain);
+		if (Number.isNaN(moment.getTime())) return null;
+		try {
+			const jour = new Intl.DateTimeFormat('fr-FR', {
+				weekday: 'long',
+				day: 'numeric',
+				month: 'long',
+				timeZone: data.passage.fuseau
+			}).format(moment);
+			const heure = new Intl.DateTimeFormat('fr-FR', {
+				hour: '2-digit',
+				minute: '2-digit',
+				timeZone: data.passage.fuseau
+			}).format(moment);
+			return `${jour} à ${heure}`;
+		} catch {
+			return null; // fuseau inconnu du navigateur : la phrase sans heure
+		}
+	});
 </script>
 
 <svelte:head>
@@ -42,7 +70,13 @@
 	<p class="message erreur" role="alert">{data.erreur}</p>
 {:else if !data.journees.length}
 	<p class="attenue">
-		Aucun résumé pour l'instant. Le premier arrivera après le prochain passage quotidien.
+		{#if prochainPassage}
+			Aucun résumé pour l'instant. {data.proprietaire
+				? 'Votre premier résumé'
+				: `Le premier résumé de ${data.username}`} arrivera après le passage du {prochainPassage}.
+		{:else}
+			Aucun résumé pour l'instant. Le premier arrivera après le prochain passage quotidien.
+		{/if}
 	</p>
 {/if}
 
@@ -50,6 +84,7 @@
 	{#each data.journees as journee (journee.date)}
 		<li class="carte">
 			<h2>{dateLisible(journee.date)}</h2>
+			<p><a href={urlJournee(journee.date)}>Lire la veille</a></p>
 			{#each journee.audios as audio (audio.nom)}
 				<div class="audio">
 					<span>{libelle(audio.nom)} <span class="attenue">· {taille(audio.taille)}</span></span>

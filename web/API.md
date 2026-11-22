@@ -102,13 +102,58 @@ il fait partie du contrat pour l'administration à venir.
 
 ### `GET /api/v1/profils/{username}/journees`
 
-→ `200`, les journées qui ont produit de l'audio, **date décroissante** :
+→ `200`, toutes les journées produites, **date décroissante** :
 
 ```json
 [{"date": "2026-11-18", "audios": [{"nom": "journee.mp3", "taille": 12345}]}]
 ```
 
-`taille` en octets. `404` si le profil n'existe pas ; `[]` s'il n'a encore rien produit.
+`taille` en octets. Une journée sans audio (aucun article, ou rien de retenu) est listée
+avec `"audios": []`. `404` si le profil n'existe pas ; `[]` s'il n'a encore rien produit.
+
+### `GET /api/v1/profils/{username}/journees/{date}`
+
+Le contenu de la journée, relu de ses journaux exactement comme `--send-only` le relit pour
+renvoyer l'email :
+
+```json
+{
+  "date": "2026-11-21",
+  "audios": [{"nom": "cyber.mp3", "taille": 12345}],
+  "ecoute": "21 min",
+  "racontees": 3,
+  "montage": {"audio": "journee.mp3", "ecoute": "12 min"},
+  "raison": null,
+  "en_cours": false,
+  "categories": [{
+    "categorie": "Cybersécurité", "racontee": true, "resume": "…",
+    "audio": "cyber.mp3", "ecoute": "5 min",
+    "articles": [{"titre": "…", "source": "…", "url": "https://…"}],
+    "a_surveiller": [{"titre": "…", "source": "…", "url": null}]
+  }]
+}
+```
+
+- `montage` vaut `null` en mode par catégorie ; `audio` et `ecoute` y valent `null` quand le
+  fichier manque ou que sa durée ne se mesure pas.
+- `raison` : la phrase d'une journée sans article (`categories` vide), `null` sinon.
+- `en_cours` : `true` quand la tournée écrit encore la journée — aucun journal ni marqueur
+  `.no-article` encore, ou un journal tronqué lu en pleine écriture. `categories` est alors
+  vide et `raison` à `null` : la journée n'est pas vide, elle n'est pas finie.
+- Les textes (`resume`, `titre`, `source`) sont **bruts** : ils viennent du modèle et des flux,
+  le site les échappe au rendu.
+- `url` vaut `null` pour tout lien qui n'est pas `http` ou `https` (`javascript:`, `data:`…) :
+  le site n'en fait alors pas un lien, et refait le même contrôle de son côté.
+- `404` → profil ou journée inconnus, date mal formée.
+
+### `GET /api/v1/passage`
+
+→ `200`, l'heure du passage quotidien et le prochain, lus des mêmes variables que le
+travailleur (`RSSRESUME_SCHEDULE`, `RSSRESUME_TIMEZONE`) :
+
+```json
+{"heure": "04:00", "fuseau": "Europe/Paris", "prochain": "2026-11-23T04:00:00+01:00"}
+```
 
 ### `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}`
 

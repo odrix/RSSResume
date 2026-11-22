@@ -825,6 +825,8 @@ Toutes les routes exigent le jeton (401 sinon). Réponses en JSON UTF-8 ; une er
 | `DELETE /api/v1/profils/{username}` | 204 ; 404 — les journées restent sur le disque |
 | `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord |
 | `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |
+| `GET /api/v1/profils/{username}/journees/{date}` | le contenu de la journée relu de ses journaux, comme `--send-only` : résumés, articles « à lire » et « à surveiller » (`url` à `null` hors http(s)), audios, `raison` d'une journée sans article ; 404 |
+| `GET /api/v1/passage` | `{"heure","fuseau","prochain"}`, lus de `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` comme le travailleur |
 
 Un document est validé par `profil_depuis_dict`, la fonction même que le passage appelle : l'API
 refuse exactement ce que la tournée refuserait, avec le même message. Le corps d'une écriture

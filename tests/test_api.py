@@ -5,6 +5,7 @@ jeton exigé partout et le refus de démarrer sans lui, et les barrières entre 
 fabriquée et le système de fichiers.
 """
 
+import datetime
 import http.client
 import json
 import os
@@ -14,10 +15,14 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import wave
+import zoneinfo
 from unittest import mock
 
+from rssresume import newsletter, runlog
 from rssresume.annuaire_sqlite import AnnuaireSqlite
 from rssresume.api import __main__ as api_main
+from rssresume.api.routes import RoutePassage
 from rssresume.api.serveur import (
     ENV_API_TOKEN,
     TAILLE_MAX_CORPS,
@@ -25,8 +30,10 @@ from rssresume.api.serveur import (
     ServeurApi,
     valider_jeton,
 )
-from rssresume.api.sorties import Sorties
+from rssresume.api.sorties import Sorties, lien_sur
+from rssresume.newsletter import Lettre
 from rssresume.profil import ENV_PROFILES_DB
+from rssresume.scheduler import DailySchedule
 
 JETON = "j" * 48
 AUDIO = bytes(range(256)) * 40  # 10 240 octets, chacun reconnaissable à sa position
@@ -294,6 +301,289 @@ class JourneesTests(ServeurTestCase):
             ("secret.mp3", "..%2F.."),
         ):
             self.assertEqual(404, self.audio(nom, jour)[0], (nom, jour))
+
+
+def wav_silencieux(chemin: pathlib.Path, secondes: int) -> None:
+    """Un vrai `.wav`, pour que la durée se mesure : le reste du disque est factice."""
+    with wave.open(str(chemin), "wb") as fichier:
+        fichier.setnchannels(1)
+        fichier.setsampwidth(1)
+        fichier.setframerate(100)
+        fichier.writeframes(b"\x80" * 100 * secondes)
+
+
+def journal_categorie(categorie, resume, articles, audio=None) -> bytes:
+    """Un `<categorie>.log.json` réduit à ce que `runlog.read_day` en relit."""
+    return json.dumps(
+        {
+            "categorie": categorie,
+            "date": "2026-11-21",
+            "resume": resume,
+            "resultat": {"statut": "audio" if audio else "sans-audio", "audio": audio},
+            "articles": articles,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+class LienSurTests(unittest.TestCase):
+    def test_only_http_and_https_urls_pass(self):
+        for url in ("https://exemple.test/a", "http://exemple.test/b?c=d#e", "HTTPS://Exemple.test/"):
+            self.assertEqual(url, lien_sur(url), url)
+        self.assertEqual("https://exemple.test/a", lien_sur("  https://exemple.test/a \n"))
+        for url in (
+            "javascript:alert(1)",
+            " JaVaScRiPt:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "//hote/chemin",
+            "ftp://exemple.test/fichier",
+            "vbscript:msgbox",
+            "https:///sans-hote",
+            "http://[mal",
+            "",
+        ):
+            self.assertIsNone(lien_sur(url), url)
+
+
+class ContenuJourneeTests(ServeurTestCase):
+    """`GET /api/v1/profils/{username}/journees/{date}` : la journée telle que l'email l'a portée."""
+
+    def setUp(self):
+        super().setUp()
+        self.fiche = self.annuaire.creer("bea", {"profil": "B"})
+        self.dossier = self.sortie / self.fiche.id
+        # Une journée par catégorie : un audio, deux articles retenus, un à surveiller.
+        cyber = self.dossier / "2026-11-21"
+        cyber.mkdir(parents=True)
+        wav_silencieux(cyber / "1-cyber.wav", 300)
+        (cyber / "1-cyber.log.json").write_bytes(
+            journal_categorie(
+                "Cybersécurité",
+                "Premier paragraphe.\n\nSecond paragraphe.",
+                [
+                    {"item_id": "b", "titre": "Second", "flux": "Flux B",
+                     "url": "https://exemple.test/b", "retenu": True, "rang_digest": 2, "score": 9},
+                    {"item_id": "a", "titre": "Premier", "flux": "Flux A",
+                     "url": "https://exemple.test/a", "retenu": True, "rang_digest": 1, "score": 8},
+                    {"item_id": "c", "titre": "Presque", "flux": "Flux C",
+                     "url": "https://exemple.test/c", "retenu": False, "score": 5},
+                    {"item_id": "d", "titre": "Écarté", "flux": "Flux D",
+                     "url": "https://exemple.test/d", "retenu": False, "score": 1},
+                ],
+                audio="1-cyber.wav",
+            )
+        )
+        # Une journée en mode global : un seul audio, porté par la journée.
+        globale = self.dossier / "2026-11-20"
+        globale.mkdir()
+        wav_silencieux(globale / "journee.wav", 720)
+        (globale / "journee.json").write_text(
+            json.dumps({"montage": {"texte": "Le montage.", "audio": "journee.wav"}}), encoding="utf-8"
+        )
+        (globale / "1-cyber.log.json").write_bytes(
+            journal_categorie("Cybersécurité", "Le résumé.", [
+                {"item_id": "a", "titre": "Premier", "flux": "Flux A",
+                 "url": "https://exemple.test/a", "retenu": True, "rang_digest": 1, "score": 8},
+            ])
+        )
+        # Une journée sans article : son seul marqueur, ni journal ni audio.
+        vide = self.dossier / "2026-11-19"
+        vide.mkdir()
+        (vide / "1-cyber.no-article").write_text("", encoding="utf-8")
+
+    def contenu(self, jour, username="bea", **kwargs):
+        return self.json("GET", f"/api/v1/profils/{username}/journees/{jour}", **kwargs)
+
+    def test_the_day_content_requires_the_token(self):
+        for jeton in (None, "faux", JETON[:-1]):
+            statut, entetes, brut = self.appel(
+                "GET", "/api/v1/profils/bea/journees/2026-11-21", jeton=jeton
+            )
+            self.assertEqual(401, statut, jeton)
+            self.assertNotIn("Cybersécurité", brut.decode("utf-8"))
+        self.assertEqual(200, self.contenu("2026-11-21")[0])
+
+    def test_unknown_days_and_forged_paths_are_not_found(self):
+        (self.sortie / "2026-11-21").mkdir()  # à côté du dossier du profil, pas dedans
+        self.annuaire.creer("zoe", {"profil": "Z"})
+        for username, jour in (
+            ("absent", "2026-11-21"),
+            ("zoe", "2026-11-21"),
+            ("bea", "2026-11-18"),
+            ("bea", "20261121"),
+            ("bea", "2026-13-45"),
+            ("bea", "..%2F2026-11-21"),
+            ("bea", "..%2F..%2F2026-11-21"),
+            ("bea", "..%5C2026-11-21"),
+            ("bea", "%2E%2E"),
+        ):
+            statut, corps = self.contenu(jour, username)
+            self.assertEqual(404, statut, (username, jour))
+            self.assertIn("erreur", corps)
+        try:
+            (self.dossier / "2026-11-17").symlink_to(self.sortie, target_is_directory=True)
+        except OSError:
+            return  # Windows sans le droit de créer un lien : le reste est vérifié
+        self.assertEqual(404, self.contenu("2026-11-17")[0])
+
+    def test_the_content_is_the_one_the_email_shows(self):
+        statut, contenu = self.contenu("2026-11-21")
+        self.assertEqual(200, statut)
+        self.assertEqual(
+            {
+                "date": "2026-11-21",
+                "audios": [{"nom": "1-cyber.wav", "taille": (self.dossier / "2026-11-21" / "1-cyber.wav").stat().st_size}],
+                "ecoute": "5 min",
+                "racontees": 1,
+                "montage": None,
+                "raison": None,
+                "en_cours": False,
+                "categories": [
+                    {
+                        "categorie": "Cybersécurité",
+                        "racontee": True,
+                        "resume": "Premier paragraphe.\n\nSecond paragraphe.",
+                        "audio": "1-cyber.wav",
+                        "ecoute": "5 min",
+                        "articles": [
+                            {"titre": "Premier", "source": "Flux A", "url": "https://exemple.test/a"},
+                            {"titre": "Second", "source": "Flux B", "url": "https://exemple.test/b"},
+                        ],
+                        "a_surveiller": [
+                            {"titre": "Presque", "source": "Flux C", "url": "https://exemple.test/c"},
+                        ],
+                    }
+                ],
+            },
+            contenu,
+        )
+        # Et c'est bien ce que porte l'email renvoyé par `--send-only` : même lecture.
+        jour = self.dossier / "2026-11-21"
+        texte = Lettre.compose(
+            datetime.date(2026, 11, 21), runlog.read_day(jour), montage=runlog.read_montage(jour)
+        ).text
+        for categorie in contenu["categories"]:
+            self.assertIn(categorie["resume"].split("\n")[0], texte)
+            for lien in categorie["articles"] + categorie["a_surveiller"]:
+                self.assertIn(lien["url"], texte)
+        self.assertNotIn("https://exemple.test/d", texte)
+
+    def test_a_global_day_carries_its_montage(self):
+        statut, contenu = self.contenu("2026-11-20")
+        self.assertEqual(200, statut)
+        self.assertEqual({"audio": "journee.wav", "ecoute": "12 min"}, contenu["montage"])
+        self.assertEqual("12 min", contenu["ecoute"])
+        categorie, = contenu["categories"]
+        self.assertIsNone(categorie["audio"])
+        self.assertEqual("Le résumé.", categorie["resume"])
+
+    def test_a_day_without_article_is_listed_with_its_reason(self):
+        statut, journees = self.json("GET", "/api/v1/profils/bea/journees")
+        self.assertEqual(200, statut)
+        self.assertIn({"date": "2026-11-19", "audios": []}, journees)
+
+        statut, contenu = self.contenu("2026-11-19")
+        self.assertEqual(200, statut)
+        self.assertEqual([], contenu["categories"])
+        self.assertEqual([], contenu["audios"])
+        self.assertIsNone(contenu["montage"])
+        self.assertEqual(
+            f"Aucun article trouvé pour le {newsletter.date_longue(datetime.date(2026, 11, 19))}.",
+            contenu["raison"],
+        )
+        self.assertIn("19 novembre 2026", contenu["raison"])
+        self.assertFalse(contenu["en_cours"])
+
+    def test_a_day_being_written_is_in_progress_not_an_error(self):
+        """Un journal lu pendant que la tournée l'écrit est tronqué : ni 500, ni « aucun article »."""
+        jour = self.dossier / "2026-11-21"
+        complet = (jour / "1-cyber.log.json").read_bytes()
+        for tronque in (complet[: len(complet) // 2], complet[:-1], b"", "é".encode("utf-8")[:1]):
+            (jour / "2-tech.log.json").write_bytes(tronque)
+            statut, contenu = self.contenu("2026-11-21")
+            self.assertEqual(200, statut, tronque)
+            self.assertTrue(contenu["en_cours"])
+            self.assertIsNone(contenu["raison"])
+            self.assertEqual([], contenu["categories"])
+            self.assertEqual(["1-cyber.wav"], [audio["nom"] for audio in contenu["audios"]])
+
+    def test_a_day_without_any_log_yet_is_in_progress(self):
+        """Le répertoire existe avant le premier journal : vide, il n'est pas « sans article »."""
+        (self.dossier / "2026-11-22").mkdir()
+        statut, contenu = self.contenu("2026-11-22")
+        self.assertEqual(200, statut)
+        self.assertTrue(contenu["en_cours"])
+        self.assertIsNone(contenu["raison"])
+        self.assertIn({"date": "2026-11-22", "audios": []}, self.json("GET", "/api/v1/profils/bea/journees")[1])
+
+    def test_foreign_schemes_are_removed_from_links(self):
+        jour = self.dossier / "2026-11-16"
+        jour.mkdir()
+        (jour / "1-cyber.log.json").write_bytes(
+            journal_categorie("Cybersécurité", "Résumé.", [
+                {"item_id": "a", "titre": "<img src=x onerror=alert(1)>", "flux": "F",
+                 "url": "javascript:alert(document.cookie)", "retenu": True, "rang_digest": 1, "score": 9},
+                {"item_id": "b", "titre": "B", "flux": "F",
+                 "url": " JaVaScRiPt:alert(1)", "retenu": True, "rang_digest": 2, "score": 9},
+                {"item_id": "c", "titre": "C", "flux": "F",
+                 "url": "data:text/html,<script>alert(1)</script>", "retenu": False, "score": 5},
+                {"item_id": "d", "titre": "D", "flux": "F",
+                 "url": "https://exemple.test/d", "retenu": False, "score": 4},
+            ])
+        )
+        statut, contenu = self.contenu("2026-11-16")
+        self.assertEqual(200, statut)
+        categorie, = contenu["categories"]
+        self.assertEqual([None, None], [lien["url"] for lien in categorie["articles"]])
+        self.assertEqual([None, "https://exemple.test/d"], [lien["url"] for lien in categorie["a_surveiller"]])
+        # Le titre reste brut : c'est au rendu de l'échapper, et le site le fait.
+        self.assertEqual("<img src=x onerror=alert(1)>", categorie["articles"][0]["titre"])
+
+
+class PassageTests(ServeurTestCase):
+    """`GET /api/v1/passage` : de quoi dire à une personne quand arrive son premier résumé."""
+
+    def setUp(self):
+        super().setUp()
+        self.serveur.application = ApplicationApi(
+            JETON,
+            self.annuaire,
+            Sorties(self.sortie),
+            DailySchedule(datetime.time(4, 0), zoneinfo.ZoneInfo("Europe/Paris")),
+        )
+
+    def test_the_next_run_is_announced(self):
+        avant = datetime.datetime.now(datetime.timezone.utc)
+        statut, passage = self.json("GET", "/api/v1/passage")
+        self.assertEqual(200, statut)
+        self.assertEqual({"heure", "fuseau", "prochain"}, set(passage))
+        self.assertEqual(("04:00", "Europe/Paris"), (passage["heure"], passage["fuseau"]))
+        prochain = datetime.datetime.fromisoformat(passage["prochain"])
+        self.assertGreater(prochain, avant)
+        self.assertLessEqual(prochain - avant, datetime.timedelta(days=1))
+        local = prochain.astimezone(zoneinfo.ZoneInfo("Europe/Paris"))
+        self.assertEqual((4, 0), (local.hour, local.minute))
+        self.assertEqual(local.utcoffset(), prochain.utcoffset())
+        self.assertEqual(401, self.appel("GET", "/api/v1/passage", jeton=None)[0])
+
+    def test_from_env_reads_the_schedule(self):
+        base = {ENV_API_TOKEN: JETON, ENV_PROFILES_DB: str(self.tmpdir / "p.sqlite3")}
+
+        def passage_de(env):
+            with mock.patch.dict(os.environ, {**base, **env}, clear=True):
+                application = ApplicationApi.from_env()
+            return next(r for r in application.routes if isinstance(r, RoutePassage)).passage
+
+        passage = passage_de({"RSSRESUME_SCHEDULE": "05:30", "RSSRESUME_TIMEZONE": "America/New_York"})
+        self.assertEqual(datetime.time(5, 30), passage.heure)
+        self.assertEqual("America/New_York", str(passage.timezone))
+        # Sans variable, l'heure du travailleur sans variable.
+        passage = passage_de({})
+        self.assertEqual(datetime.time(7, 0), passage.heure)
+        self.assertEqual("Europe/Paris", str(passage.timezone))
+        for env in ({"RSSRESUME_SCHEDULE": "25:99"}, {"RSSRESUME_TIMEZONE": "Nulle/Part"}):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                passage_de(env)
 
 
 if __name__ == "__main__":

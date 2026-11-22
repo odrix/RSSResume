@@ -1,6 +1,6 @@
 """Le serveur HTTP de l'API : authentification, corps JSON, envoi des audios en flux.
 
-`http.server` et non un framework : l'image n'embarque pas pip, et l'API n'a que sept
+`http.server` et non un framework : l'image n'embarque pas pip, et l'API n'a que neuf
 routes, toutes derrière un même jeton. `ThreadingHTTPServer` sert chaque requête dans son
 fil — un audio long à télécharger ne bloque pas la liste des profils.
 
@@ -22,7 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rssresume.annuaire_sqlite import AnnuaireSqlite
 from rssresume.api.routes import ROUTES, ErreurApi, Route
 from rssresume.api.sorties import Audio, Sorties
+from rssresume.config import ENV_TIMEZONE, load_timezone
 from rssresume.profil import ENV_PROFILES_DB, Annuaire
+from rssresume.scheduler import DailySchedule, parse_schedule
 from rssresume.tools import console
 
 ENV_API_TOKEN = "RSSRESUME_API_TOKEN"
@@ -102,13 +104,27 @@ class Plage:
 class ApplicationApi:
     """Ce que le serveur sert : le jeton attendu, et les routes montées sur les profils."""
 
-    def __init__(self, jeton: str, annuaire: AnnuaireSqlite, sorties: Sorties):
+    def __init__(
+        self,
+        jeton: str,
+        annuaire: AnnuaireSqlite,
+        sorties: Sorties,
+        passage: DailySchedule | None = None,
+    ):
         self._jeton = valider_jeton(jeton).encode("utf-8")
-        self.routes: list[Route] = [route(annuaire, sorties) for route in ROUTES]
+        # Sans planning donné, celui qu'aurait le travailleur sans aucune variable : l'API
+        # n'annonce jamais une heure que le passage ne tiendrait pas.
+        passage = passage or DailySchedule(parse_schedule(None), load_timezone(None))
+        self.routes: list[Route] = [route(annuaire, sorties, passage) for route in ROUTES]
 
     @classmethod
     def from_env(cls) -> "ApplicationApi":
-        """L'application que l'environnement décrit. Incomplet : `ValueError`, au lancement."""
+        """L'application que l'environnement décrit. Incomplet : `ValueError`, au lancement.
+
+        Le planning est relu des mêmes variables que le travailleur, et une heure illisible
+        arrête le démarrage comme elle arrête le sien : annoncer au site un passage que le
+        travailleur ne fera pas serait pire que de ne rien annoncer.
+        """
         jeton = valider_jeton(os.getenv(ENV_API_TOKEN))
         annuaire = Annuaire.depuis_env()
         if not isinstance(annuaire, AnnuaireSqlite):
@@ -117,7 +133,8 @@ class ApplicationApi:
                 "(par exemple /data/profils.sqlite3)."
             )
         sorties = Sorties(pathlib.Path((os.getenv("RSSRESUME_OUTPUT_DIR") or "").strip() or "output"))
-        return cls(jeton, annuaire, sorties)
+        passage = DailySchedule.from_env(load_timezone(os.getenv(ENV_TIMEZONE)))
+        return cls(jeton, annuaire, sorties, passage)
 
     def authentifie(self, entete: str | None) -> bool:
         """Vrai pour `Bearer <jeton>`. Comparaison à temps constant : la durée d'un refus
