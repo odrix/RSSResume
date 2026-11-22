@@ -16,7 +16,7 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
 
 ## Règles
 
-- **Identifiant** `BL-NNN`, jamais réattribué. Prochain libre : **BL-054**.
+- **Identifiant** `BL-NNN`, jamais réattribué. Prochain libre : **BL-065**.
 - **Priorité** de 1 (la plus urgente) à 5. `/backlog-pop` prend la plus petite, puis
   l'identifiant le plus bas à priorité égale.
 - **Catégorie** = la zone du code touchée. Deux items de catégories différentes peuvent se
@@ -326,23 +326,21 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
   - [ ] une erreur de validation de l'API s'affiche sur le champ concerné ;
   - [ ] `npm run check` et `npm test` verts.
 
-### BL-047 — Page des résumés : le texte et les articles, pas seulement l'audio
+### BL-064 — Liens de l'email limités à http(s)
 
-- **Catégorie** : web
-- **Priorité** : 1
-- **Description** : `/resumes/<username>` n'affiche que des lecteurs audio. Ni texte, ni articles,
-  ni liens, et les journées sans audio n'apparaissent pas. Or les journaux `<categorie>.log.json`
-  portent tout ce que montre l'email. Exposer par l'API le contenu d'une journée lu des journaux
-  (résumés, articles retenus avec lien et source, articles « à surveiller »), et l'afficher avec
-  l'audio. Journée sans article : visible, avec sa raison. État vide : dire à quelle heure arrive le
-  premier résumé.
-- **Bénéfice attendu** : le site devient un endroit où lire sa veille, pas seulement l'écouter, et
-  l'audio en lien de BL-044 a une page où atterrir.
+- **Catégorie** : pipeline
+- **Priorité** : 2
+- **Description** : `newsletter.py` (`_LIEN`, `_segment_html`) pose `lien.url` dans `href` sans
+  filtrer le schéma : le texte est échappé, mais un `javascript:` ou un `data:` venu d'un flux reste
+  un lien cliquable dans l'email. Le site filtre déjà ces URL (`lien_sur` dans `api/sorties.py`,
+  BL-047) : réutiliser la même règle dans la `Lettre`, et rendre le titre seul quand l'URL est
+  refusée. Relevé à la relecture de BL-047.
+- **Bénéfice attendu** : un flux hostile ne peut plus glisser de lien piégé dans le digest.
 - **Tests d'acceptation** :
-  - [ ] la route API rend le contenu d'une journée à son seul propriétaire (ou à un admin) ;
-  - [ ] les liens d'articles sont échappés (sortie de modèle et contenu de flux non fiables) ;
-  - [ ] une journée sans audio est listée ;
-  - [ ] tests API en unittest, tests du site.
+  - [ ] un article à URL `javascript:`, `data:` ou sans hôte n'a pas de lien, en HTML comme en
+        texte, et son titre reste ;
+  - [ ] une URL http(s) garde son lien ;
+  - [ ] `--send-only` applique le même filtre.
 
 ### BL-050 — Étudier le catalogue de flux par métier
 

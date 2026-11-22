@@ -278,3 +278,29 @@ pas été écrits à l'époque : la ligne en tient lieu renvoie aux tests qui co
 - **Notes** : contre-indiqué. Le payload porte `thematique`, `angle` et `stack`, et les consignes
   s'y réfèrent par nom de champ : le JSON est ce qui les rend adressables. Le gain porterait sur des
   accolades, quand l'essentiel du volume est `content`.
+
+### BL-047 — Page des résumés : le texte et les articles, pas seulement l'audio
+
+- **Catégorie** : web
+- **Priorité** : 1
+- **Description** : `/resumes/<username>` n'affiche que des lecteurs audio. Ni texte, ni articles,
+  ni liens, et les journées sans audio n'apparaissent pas. Or les journaux `<categorie>.log.json`
+  portent tout ce que montre l'email. Exposer par l'API le contenu d'une journée lu des journaux
+  (résumés, articles retenus avec lien et source, articles « à surveiller »), et l'afficher avec
+  l'audio. Journée sans article : visible, avec sa raison. État vide : dire à quelle heure arrive le
+  premier résumé.
+- **Bénéfice attendu** : le site devient un endroit où lire sa veille, pas seulement l'écouter, et
+  l'audio en lien de BL-044 a une page où atterrir.
+- **Tests d'acceptation** :
+  - [x] la route API rend le contenu d'une journée à son seul propriétaire (ou à un admin) ;
+  - [x] les liens d'articles sont échappés (sortie de modèle et contenu de flux non fiables) ;
+  - [x] une journée sans audio est listée ;
+  - [x] tests API en unittest, tests du site.
+- **Réalisé le** : 2026-11-22
+- **Livraison** : branche backlog/BL-047-page-resumes
+- **Notes** : l'API n'a que le jeton du site, donc le contrôle propriétaire/admin se fait côté site
+  (`ConsultationResumes`), comme pour l'audio. Les URL non http(s) sont retirées deux fois (API et
+  site), et aucun composant n'utilise `{@html}`. Une journée en cours d'écriture répond `en_cours`
+  au lieu d'une erreur ou d'une journée vide. L'heure annoncée est celle du début du passage :
+  `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` sont désormais aussi posées sur le service `api` du
+  compose. Le même défaut de liens existe dans l'email : BL-064.
