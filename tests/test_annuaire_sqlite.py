@@ -60,6 +60,7 @@ class AnnuaireSqliteTests(Base):
         self.assertEqual(
             {"id": fiche.id, "username": "bea", "profil": "Veille", "stack": ["Traefik"],
              "email": ["b@example.com"], "prenom": "Bea", "securite": "exploitant",
+             "categories": [],
              "modifie_le": relue.modifie_le},
             relue.complet_json(),
         )

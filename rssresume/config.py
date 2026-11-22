@@ -267,6 +267,9 @@ class AppConfig:
     #: Axes de veille du profil : personnalisés dans le document ou les cinq d'origine
     #: quand la clé est absente. Ils voyagent avec le texte du profil dans la tournée.
     axes: Axes = dataclasses.field(default_factory=Axes.par_defaut)
+    #: Les catégories explicitement suivies par la personne. `None` conserve le
+    #: comportement d'avant la clé ; une liste limite ensuite le catalogue déjà filtré.
+    categories_abonnees: tuple[str, ...] | None = None
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -362,6 +365,7 @@ class AppConfig:
             securite=personne.securite,
             prenom=personne.prenom,
             smtp_to=list(personne.emails),
+            categories_abonnees=personne.categories,
         )
 
     def categories_installation(self, disponibles: list[str]) -> list[str]:
@@ -385,7 +389,11 @@ class AppConfig:
         Le seul endroit où le catalogue filtre ce qu'un digest lit : ce qui n'en sort pas
         n'est ni noté, ni résumé, ni montré.
         """
-        return self.catalogue.servies(self.categories_installation(disponibles), self.username)
+        categories = self.catalogue.servies(self.categories_installation(disponibles), self.username)
+        if self.categories_abonnees is None:
+            return categories
+        suivies = {casefold_ascii(categorie) for categorie in self.categories_abonnees}
+        return [categorie for categorie in categories if casefold_ascii(categorie) in suivies]
 
     def selection_rule(self, category: str) -> SelectionRule:
         """La règle de sélection d'une catégorie : son seuil, son repli, son plafond.

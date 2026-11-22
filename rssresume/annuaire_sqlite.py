@@ -28,6 +28,7 @@ from rssresume.axes import CLE_AXES
 from rssresume.categories import Catalogue, CatalogueOuvert
 from rssresume.certfr.stack import CLE_STACK
 from rssresume.profil import (
+    CLE_CATEGORIES,
     CLE_EMAIL,
     CLE_ID,
     CLE_PRENOM,
@@ -118,7 +119,7 @@ class Fiche:
 
     def complet_json(self) -> dict:
         """Le profil entier, tel que le site l'édite."""
-        return {
+        corps = {
             "id": self.id,
             "username": self.username,
             "profil": self.document.get(CLE_PROFIL, ""),
@@ -130,9 +131,19 @@ class Fiche:
             "securite": self.document.get(CLE_SECURITE, SECURITE_PAR_DEFAUT.value),
             "modifie_le": self.modifie_le,
         }
+        if CLE_AXES in self.document:
+            corps[CLE_AXES] = list(self.document[CLE_AXES])
+        if CLE_CATEGORIES in self.document:
+            corps[CLE_CATEGORIES] = list(self.document[CLE_CATEGORIES])
+        return corps
 
 
-def document_normalise(saisie: object, id: str, origine: str) -> dict:
+def document_normalise(
+    saisie: object,
+    id: str,
+    origine: str,
+    catalogue: "Catalogue | None" = None,
+) -> dict:
     """Le document à écrire, validé : `ValueError` avec le message de `profil_depuis_dict`.
 
     Seules les clés du format sont gardées : une clé de plus ne serait lue par personne,
@@ -144,7 +155,7 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
     brut = {
         cle: saisie[cle]
-        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES)
+        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES, CLE_CATEGORIES)
         if cle in saisie
     }
     # Un formulaire vidé envoie une liste vide là où un fichier omettait la clé : c'est
@@ -155,8 +166,10 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
     # signifie retirer les destinataires : on omet la clé plutôt que d'inventer une liste.
     if brut.get(CLE_AXES) == []:
         del brut[CLE_AXES]
+    if brut.get(CLE_CATEGORIES) == []:
+        del brut[CLE_CATEGORIES]
     brut[CLE_ID] = id
-    profil = profil_depuis_dict(brut, origine)
+    profil = profil_depuis_dict(brut, origine, catalogue, origine)
     if not id_valide(profil.id):
         raise ValueError(f"{origine} : identifiant de profil invalide (« {id} »).")
     document = {CLE_ID: id, CLE_PROFIL: profil.texte, CLE_STACK: list(brut.get(CLE_STACK) or [])}
@@ -166,6 +179,8 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
     document[CLE_SECURITE] = profil.securite.value
     if profil.axes.sont_declares:
         document[CLE_AXES] = profil.axes.en_document()
+    if profil.categories is not None:
+        document[CLE_CATEGORIES] = list(profil.categories)
     return document
 
 
@@ -270,7 +285,7 @@ class AnnuaireSqlite(Annuaire):
         """
         username = valider_username(username)
         id = id or nouvel_id()
-        document = document_normalise(saisie, id, username)
+        document = document_normalise(saisie, id, username, self.catalogue())
         horodatage = _maintenant()
         try:
             with self._ecriture() as connexion:

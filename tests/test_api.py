@@ -119,7 +119,7 @@ class ProfilsTests(ServeurTestCase):
         statut, cree = self.json("POST", "/api/v1/profils", self.BEA)
         self.assertEqual(201, statut)
         self.assertEqual(
-            {"id", "username", "profil", "stack", "email", "prenom", "securite", "modifie_le"},
+            {"id", "username", "profil", "stack", "email", "prenom", "securite", "categories", "modifie_le"},
             set(cree),
         )
         self.assertEqual(("bea", "Veille", ["Traefik"], ["b@example.com"], "Bea"),

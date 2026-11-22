@@ -20,6 +20,11 @@ les vulnérabilités : `exploitant` (le défaut), `decideur` ou `curieux`. Qui n
 rien n'a que faire des plages de versions, et c'est son document, non le modèle, qui le
 dit.
 
+La clé `categories` y liste les catégories suivies — publiques, ou privées dont la
+personne est propriétaire : `"categories": ["Tech", "Veille marché"]`. Absente, la
+personne reçoit tout ce que le catalogue lui autorise. Ce qu'elle ne suit pas n'est ni
+noté ni résumé pour elle : c'est le premier filtre, et le moins cher.
+
 Il est donc chargé, pas codé en dur au point d'appel : un profil explicite passé en
 argument, sinon l'environnement, sinon le profil par défaut ci-dessous. Ce défaut ne
 décrit personne : il vaut pour quelqu'un dans la tech, sans dire de quel produit ni de
@@ -49,6 +54,7 @@ from typing import TYPE_CHECKING, Iterable
 from rssresume.certfr.stack import CLE_STACK, Stack, StackError
 from rssresume.axes import Axes, AxesError, CLE_AXES
 from rssresume.tools import console
+from rssresume.tools.text import casefold_ascii
 
 if TYPE_CHECKING:
     from rssresume.categories import Catalogue
@@ -87,6 +93,10 @@ CLE_EMAIL = "email"
 CLE_PRENOM = "prenom"
 #: Le régime de sécurité : ce que la personne a besoin d'entendre d'une vulnérabilité.
 CLE_SECURITE = "securite"
+#: Les catégories suivies. Que chacune existe et soit permise à la personne, seul le
+#: catalogue le sait : ce module n'en vérifie que la forme (`categories.Catalogue.abonnement`
+#: fait le reste).
+CLE_CATEGORIES = "categories"
 
 
 class Securite(enum.Enum):
@@ -175,6 +185,7 @@ class Profil:
         identifiant: str = "",
         securite: Securite = SECURITE_PAR_DEFAUT,
         axes: Axes | None = None,
+        categories: Iterable[str] | None = None,
     ):
         #: L'identifiant stable de la personne (un UUID), qui nomme son répertoire de
         #: sortie. Vide tant que le document n'en porte pas : c'est l'annuaire qui le
@@ -196,6 +207,10 @@ class Profil:
         #: Le détail dû aux vulnérabilités. Il voyage avec la stack, parce que c'est elle
         #: qu'il module : une stack dit ce qui tourne, le régime dit qui l'écoute.
         self.securite = securite
+        #: Les catégories suivies, telles que déclarées. `None` — clé absente — et non un
+        #: tuple vide : l'absence veut dire « tout ce que le catalogue autorise », et doit
+        #: rester distincte d'une liste qui ne suivrait rien.
+        self.categories = None if categories is None else tuple(categories)
 
 
 def load_profil(override: str | None = None) -> Profil:
@@ -239,7 +254,12 @@ def profil_depuis_fichier(fichier: pathlib.Path) -> Profil:
     return _document(contenu, str(fichier))
 
 
-def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
+def profil_depuis_dict(
+    document: object,
+    origine: str = "profil",
+    catalogue: "Catalogue | None" = None,
+    username: str = "",
+) -> Profil:
     """Le profil porté par un objet JSON déjà décodé. Fautif : `ValueError`.
 
     Public parce que le site qui édite les profils valide un formulaire avant d'écrire
@@ -270,6 +290,9 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
             f"{origine} : « {CLE_ID} » doit être un UUID sous sa forme canonique en "
             f"minuscules (par exemple {nouvel_id()}), pas « {identifiant} »."
         )
+    categories = _categories(document.get(CLE_CATEGORIES), origine)
+    if categories is not None and catalogue is not None:
+        categories = catalogue.abonnement(categories, username, origine)
     return Profil(
         texte.strip(),
         stack,
@@ -278,6 +301,7 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
         identifiant or "",
         Securite.depuis_document(document.get(CLE_SECURITE), origine),
         axes,
+        categories,
     )
 
 
@@ -334,6 +358,38 @@ def _prenom(valeur: object, origine: str) -> str:
             f"toutes lettres, pas {type(valeur).__name__}."
         )
     return valeur.strip()
+
+
+def _categories(valeur: object, origine: str) -> tuple[str, ...] | None:
+    """Les libellés suivis, rognés ; `None` si la clé manque. Mal formés : `ValueError`.
+
+    La liste vide est refusée : un digest qui ne suit rien n'est pas un choix qu'on fait
+    exprès, et l'accepter la confondrait avec l'absence, qui veut dire « tout ». Un doublon
+    — casse et accents retirés, comme le catalogue compare — l'est aussi : il dirait deux
+    fois la même chose, et le second masquerait une faute de recopie.
+    """
+    if valeur is None:
+        return None
+    if not isinstance(valeur, list) or not valeur:
+        raise ValueError(
+            f"{origine} : « {CLE_CATEGORIES} » est une liste non vide de libellés de "
+            "catégorie. Retirer la clé pour recevoir tout ce que le catalogue autorise."
+        )
+    vues: dict[str, str] = {}
+    for libelle in valeur:
+        if not isinstance(libelle, str) or not libelle.strip():
+            raise ValueError(
+                f"{origine} : « {CLE_CATEGORIES} » ne contient que des libellés non vides, "
+                f"pas « {libelle} »."
+            )
+        cle = casefold_ascii(libelle.strip())
+        if cle in vues:
+            raise ValueError(
+                f"{origine} : « {CLE_CATEGORIES} » nomme deux fois la même catégorie "
+                f"(« {vues[cle]} » et « {libelle.strip()} »)."
+            )
+        vues[cle] = libelle.strip()
+    return tuple(vues.values())
 
 
 def _emails(valeur: object, origine: str) -> tuple[str, ...]:

@@ -126,6 +126,28 @@ class Catalogue:
         """Les catégories que le catalogue ne décrit pas — servies à personne."""
         return [categorie for categorie in categories if self.entree(categorie) is None]
 
+    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+        """Les catégories que `username` déclare suivre, sous leur libellé du catalogue.
+
+        Le libellé canonique et non celui saisi : le site relit ce que la tournée sert, et
+        une catégorie renommée dans le catalogue se voit à la relecture.
+
+        Une catégorie privée d'un autre reçoit **le même** refus qu'une inconnue : un
+        message qui la distinguerait révélerait qu'elle existe. Les catégories proposées
+        dans le message sont celles que `username` pourrait suivre, jamais davantage.
+        """
+        libelles = []
+        for categorie in categories:
+            entree = self.entree(categorie)
+            if entree is None or not entree.visible_par(username):
+                proposables = [e.libelle for e in self.entrees() if e.visible_par(username)]
+                raise ValueError(
+                    f"{origine} : catégorie « {categorie} » inconnue du catalogue. "
+                    f"Catégories proposées : {', '.join(proposables) or '(aucune)'}."
+                )
+            libelles.append(entree.libelle)
+        return tuple(libelles)
+
     def en_document(self) -> dict:
         return {entree.libelle: entree.en_document() for entree in self.entrees()}
 
@@ -195,6 +217,10 @@ class CatalogueOuvert(Catalogue):
 
     def hors_catalogue(self, categories: list[str]) -> list[str]:
         return []
+
+    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+        """Telles que déclarées : sans catalogue, rien ne dit quels libellés existent."""
+        return tuple(categories)
 
 
 def cle_categorie(libelle: str) -> str:
