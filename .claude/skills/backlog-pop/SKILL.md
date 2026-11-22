@@ -1,6 +1,6 @@
 ---
 name: backlog-pop
-description: Traite le ou les items suivants de backlog-todo.md — plan validé, implémentation et tests dans un worktree par item, branche poussée, item déplacé dans backlog-done.md. Par priorité par défaut ; un identifiant BL-NNN force un item ; un nombre N en traite N en parallèle, de catégories différentes.
+description: Traite le ou les items suivants de backlog/todo/ — plan validé, implémentation et tests dans un worktree par item, branche poussée, item déplacé dans backlog/done/. Par priorité par défaut ; un identifiant BL-NNN force un item ; un nombre N en traite N en parallèle, de catégories différentes.
 argument-hint: "[BL-NNN] [N]"
 disable-model-invocation: true
 ---
@@ -25,9 +25,9 @@ Tout autre jeton : s'arrêter et rappeler l'usage `/backlog-pop [BL-NNN] [N]`.
 
 ## 2. Vérifier le point de départ
 
-- `git status` : être sur `main`, et `backlog-todo.md` / `backlog-done.md` sans modification non
-  commitée — sinon s'arrêter et le dire : les branches partent de `HEAD`, un backlog modifié non
-  commité ne serait pas dans les worktrees.
+- `git status` : être sur `main`, et `backlog/` sans modification non commitée — sinon s'arrêter
+  et le dire : les branches partent de `HEAD`, un backlog modifié non commité ne serait pas dans
+  les worktrees.
 - `git fetch origin` puis vérifier que `main` n'est pas en retard sur `origin/main` ; s'il l'est,
   proposer `git pull --ff-only` avant d'aller plus loin.
 - La suite doit être verte sur `main` avant de commencer (commande dans CLAUDE.md). Rouge :
@@ -35,12 +35,12 @@ Tout autre jeton : s'arrêter et rappeler l'usage `/backlog-pop [BL-NNN] [N]`.
 
 ## 3. Choisir les items
 
-Lire `backlog-todo.md`. Une entrée commence par `### BL-NNN — titre` et porte les champs
-**Catégorie**, **Priorité**, éventuellement **Dépend de**, **Description**, **Bénéfice attendu**,
-**Tests d'acceptation**.
+Lire les fichiers de `backlog/todo/`. Un item est un fichier `BL-NNN.md`, qui s'ouvre sur
+`# BL-NNN — titre` et porte les champs **Catégorie**, **Priorité**, éventuellement **Dépend de**,
+**Description**, **Bénéfice attendu**, **Tests d'acceptation**.
 
 Éligible = catégorie différente de `exploitation`, et aucune dépendance encore présente dans
-`backlog-todo.md`. Ordre : priorité croissante, puis identifiant croissant.
+`backlog/todo/`. Ordre : priorité croissante, puis identifiant croissant.
 
 - **Sans identifiant** : prendre les éligibles dans l'ordre, en sautant tout item dont la catégorie
   est déjà prise, jusqu'à en avoir `N`.
@@ -51,8 +51,8 @@ Lire `backlog-todo.md`. Une entrée commence par `### BL-NNN — titre` et porte
 - Identifiant introuvable : s'arrêter, lister les identifiants présents.
 
 Un item `exploitation` forcé ne se code pas : livrer la procédure ou le patch documenté que décrit
-l'item (dans `docs/`), et laisser l'item dans `backlog-todo.md` avec une ligne « Procédure prête :
-<chemin> » — il ne passe en `backlog-done.md` que quand la personne confirme l'avoir appliqué.
+l'item (dans `docs/`), et laisser l'item dans `backlog/todo/` avec une ligne « Procédure prête :
+<chemin> » — il ne passe dans `backlog/done/` que quand la personne confirme l'avoir appliqué.
 
 ## 4. Planifier, puis faire valider
 
@@ -64,22 +64,26 @@ par item, tous dans le même message.
 Présenter les plans ensemble, puis demander l'accord avec AskUserQuestion — CLAUDE.md exige
 l'accord au-delà de deux fichiers, et un item à moins de trois fichiers est validé dans le même
 geste. Proposer : tout lancer / lancer seulement certains items / amender un plan. Un item refusé
-reste dans `backlog-todo.md`, intact.
+reste dans `backlog/todo/`, intact.
+
+Avant de lancer les agents, **réserver les identifiants** des items nouveaux que les plans
+annoncent (suites, travaux hors périmètre) : le prochain libre, puis les suivants, un par item,
+répartis par branche. Deux branches qui calculeraient chacune « le prochain libre » prendraient le
+même numéro. Les donner dans le prompt de chaque agent.
 
 ## 5. Implémenter, un worktree par item
 
 Lancer un agent par item validé, `isolation: "worktree"`, tous dans **un seul message** pour
 qu'ils tournent en parallèle. Chaque prompt d'agent contient, en entier :
 
-- le texte de l'item tel qu'il figure dans `backlog-todo.md` et le plan validé ;
+- le texte de l'item tel qu'il figure dans `backlog/todo/BL-NNN.md` et le plan validé ;
 - les consignes suivantes :
   1. Renommer la branche du worktree : `git branch -m backlog/BL-NNN-<slug-court>`.
   2. Lire CLAUDE.md, README.md et FONCTIONNEMENT.md ; s'y conformer.
   3. Implémenter le plan, et rien d'autre. Un écart au plan nécessaire se fait et se justifie dans
      le compte rendu ; un écart de périmètre ne se fait pas.
   4. Un test dans `tests/` par test d'acceptation qui porte sur du code.
-  5. Ne toucher **ni** `backlog-todo.md` **ni** `backlog-done.md` : c'est le travail de
-     l'orchestrateur.
+  5. Ne rien toucher dans `backlog/` : c'est le travail de l'orchestrateur.
   6. Suite complète verte (commande de CLAUDE.md), puis un ou plusieurs commits au format du dépôt
      (`feat: …`, `fix: …`, en français), avec les lignes d'attribution en vigueur.
   7. Ne pas pousser.
@@ -98,15 +102,16 @@ le signaler, laisser la branche et l'item en place.
 Dans le worktree de l'item (et non sur `main` : l'item est fait quand sa branche est fusionnée,
 pas avant) :
 
-1. Couper l'entrée de `backlog-todo.md`, de `### BL-NNN` jusqu'à l'entrée suivante exclue.
-2. L'ajouter **en fin** de `backlog-done.md` (le pilote `merge=union` de `.gitattributes` évite
-   ainsi les conflits entre branches parallèles), avec en plus, après les champs d'origine :
+1. `git mv backlog/todo/BL-NNN.md backlog/done/BL-NNN.md`. Seul ce fichier bouge : c'est ce qui
+   évite tout conflit entre branches parallèles. Ne jamais regrouper les items.
+2. Dans ce fichier, ajouter après les champs d'origine :
    - `- **Réalisé le** : AAAA-MM-JJ` (date du jour) ;
    - `- **Livraison** : branche backlog/BL-NNN-…` ;
    - `- **Notes** : …` seulement s'il y a eu un écart au plan ou au texte, et pourquoi ;
-   - les cases des tests d'acceptation cochées.
-3. Si l'item a fait apparaître un travail nouveau hors périmètre, l'ajouter à `backlog-todo.md`
-   avec le prochain identifiant libre (et mettre à jour « Prochain libre »).
+   et cocher les cases des tests d'acceptation.
+3. Si l'item a fait apparaître un travail nouveau hors périmètre, créer
+   `backlog/todo/BL-MMM.md` avec l'identifiant **réservé** à l'étape 4 (jamais un identifiant
+   recalculé ici).
 4. Commit `chore(backlog): BL-NNN traité`.
 
 ## 8. Livrer
@@ -114,12 +119,15 @@ pas avant) :
 - `git push -u origin backlog/BL-NNN-…` pour chaque branche close.
 - Ouvrir la PR : `gh pr create --base main` si `gh` est installé ; sinon donner le lien
   `https://github.com/odrix/RSSResume/compare/main...backlog/BL-NNN-…?expand=1`. La CI
-  (`.github/workflows/tests.yml`) y lance la suite.
+  (`.github/workflows/tests.yml`) y lance la suite. Le corps de la PR s'écrit avec Write dans un
+  fichier hors du dépôt, passé par `--body-file` : le hook `pre` refuse les heredocs et les
+  redirections.
 - Supprimer le worktree (`git worktree remove <chemin>`) : la branche suffit, et
-  `.claude/worktrees/` ne doit pas accumuler d'arbres morts.
+  `.claude/worktrees/` ne doit pas accumuler d'arbres morts. Si Windows refuse (`Permission
+  denied`), `git worktree prune` puis supprimer le dossier.
 
-Fusionner deux PR parallèles : `backlog-done.md` se fusionne seul. `backlog-todo.md` peut entrer
-en conflit si les deux entrées étaient voisines — résoudre en gardant les deux suppressions.
+Fusionner deux PR parallèles : chaque item est son propre fichier, il n'y a pas de conflit de
+backlog.
 
 ## 9. Rendre compte
 
