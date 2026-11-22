@@ -216,9 +216,9 @@ class DigestService:
         return self._config.output_dir / day.isoformat()
 
     def _select_categories(self) -> list[str]:
-        categories = self._config.categories or self._freshrss_client.list_categories()
-        excluded = {name.casefold() for name in self._config.excluded_categories}
-        return [category for category in categories if category and category.casefold() not in excluded]
+        return self._config.categories_servies(
+            self._config.categories or self._freshrss_client.list_categories()
+        )
 
     def _build_digest(
         self,

@@ -54,8 +54,10 @@ catégories traitées, et seulement en mode `global` — voir [Les deux modes au
 ### 1. Sélection des catégories
 
 `RSSRESUME_CATEGORIES` si elle est définie, sinon toutes les catégories découvertes dans FreshRSS,
-moins `RSSRESUME_EXCLUDED_CATEGORIES` (comparaison insensible à la casse). Les flux FreshRSS sans
-catégorie ne sont jamais traités.
+moins `RSSRESUME_EXCLUDED_CATEGORIES` (comparaison insensible à la casse) — c'est
+`AppConfig.categories_installation`. Le [catalogue des catégories](#le-catalogue-des-catégories)
+filtre ensuite pour la personne servie (`AppConfig.categories_servies`) : ce qui n'en sort pas
+n'est ni noté, ni résumé, ni montré. Les flux FreshRSS sans catégorie ne sont jamais traités.
 
 Les étapes 2 à 6 sont ensuite répétées **par catégorie**. Les étapes 7 et 8 n'ont lieu qu'une fois,
 après la dernière catégorie.
@@ -1024,6 +1026,73 @@ propre préfixe. Rendre la même lecture à tous est juste parce que rien n'est 
 Une autre source de profils n'est qu'une sous-classe d'`Annuaire` qui redéfinit `usernames()` et
 `profil(username)`, choisie dans `Annuaire.depuis_env()`. C'est ainsi qu'est branchée la base.
 
+### Le catalogue des catégories
+
+Le FreshRSS est partagé, ses catégories ne le sont pas toutes : la veille concurrentielle d'une
+entreprise ne doit atteindre ni le scoring, ni le résumé, ni l'email de quelqu'un d'extérieur.
+`categories.Catalogue` décrit chaque catégorie et dit qui la reçoit :
+
+| Classe | Rôle |
+| --- | --- |
+| `CategorieCatalogue` | une entrée : `libelle`, `description`, `metiers`, `proprietaires` (vide = publique), `visible_par(username)` |
+| `Catalogue` | les entrées, comparées par `casefold_ascii` ; `servies(categories, username)`, `servie_a(categorie, usernames)`, `hors_catalogue(categories)` ; `depuis_document` / `depuis_fichier` valident |
+| `CatalogueOuvert` | aucun catalogue : tout est visible par tous, rien n'est hors catalogue |
+
+La règle est **fermée** : une catégorie absente du catalogue n'est servie à personne. Une
+catégorie créée dans FreshRSS n'apparaît chez personne tant qu'on ne l'a pas décrite, et une faute
+de recopie dans un libellé la prive de lecteurs au lieu de la donner à tous.
+
+**Où il vit.** Dans une table `categories` de la base des profils (voir [Le schéma](#le-schéma)),
+jamais dans le dépôt : son vrai contenu nomme une veille d'entreprise et ses propriétaires. Le
+format d'échange est un JSON dans la forme de `llm/providers.json` — un objet dont les clés sont
+les libellés, `_` en tête pour un commentaire —, dont le dépôt ne versionne qu'un exemple
+générique, [docs/categories.exemple.json](docs/categories.exemple.json), qu'un test importe.
+
+**La validation** (`Catalogue.depuis_document`) est la même pour l'import et pour la relecture de
+la base, et elle est tout ou rien : clé inconnue, `visibilite` absente ou hors `publique` /
+`privee`, catégorie privée sans propriétaire ou publique avec, propriétaire qui ne passe pas
+`valider_username`, `description` vide, `metiers` qui n'est pas une liste de textes non vides,
+deux libellés égaux une fois repliés, JSON invalide, document sans aucune catégorie — tout lève
+`ValueError` en nommant le libellé. Un propriétaire inconnu de l'annuaire n'est **pas** une faute :
+la personne peut s'inscrire après que sa catégorie a été décrite.
+
+**L'import** (`python -m rssresume.api importer-catalogue <fichier.json>`) valide le fichier entier
+puis **remplace** la table dans une transaction (`AnnuaireSqlite.remplacer_catalogue`) : le fichier
+est la source de vérité, une catégorie qu'on en retire cesse d'être servie. Refusé, il n'écrit
+rien et sort en code 2.
+
+**Dans la tournée.** `Tournee.run` lit `Annuaire.catalogue()` au lancement — seule la base en
+porte un, les autres annuaires rendent `CatalogueOuvert` — et le pose sur la configuration de
+l'installation (`AppConfig.catalogue`), que `pour` conserve pour chaque personne. Puis :
+
+| Situation | Comportement |
+| --- | --- |
+| base, catalogue non vide | catalogue appliqué |
+| pas de base, ou table vide, **un seul** profil | tout servi à tout le monde, avertissement à chaque tournée |
+| pas de base, ou table vide, **deux profils ou plus** | `ValueError` avant toute lecture : la tournée refuse de démarrer et demande `importer-catalogue` |
+
+Une ligne de la table corrompue à la main lève aussi au lancement. Les catégories de l'installation
+servies à personne — hors catalogue, ou privées dont aucun propriétaire n'est dans l'annuaire —
+sont journalisées une fois par tournée (`Catalogue : hors catalogue, servies à personne : …`).
+
+**Le marquage ne change pas.** Ces catégories orphelines sont lues à la fin
+(`fetch_daily_articles`, depuis le cache de session) et leurs articles ajoutés à ce que la tournée
+marque : tout ce que la sélection de l'installation lisait est marqué lu, une fois, à la fin, et
+seulement quand tout le monde a été servi. Sans cela, une catégorie hors catalogue garderait ses
+non-lus pour toujours.
+
+**Avec les variables d'environnement.** Le catalogue dit *à qui* ; le reste ne bouge pas :
+
+| Variable | Articulation |
+| --- | --- |
+| `RSSRESUME_CATEGORIES` | restreint encore la sélection de l'installation ; le catalogue s'applique par-dessus |
+| `RSSRESUME_EXCLUDED_CATEGORIES` | appliquée dans `categories_installation`, pour tous ; redondante avec un catalogue, non dépréciée |
+| `RSSRESUME_CERTFR_CATEGORIES` | dit *comment* traiter ; une catégorie CERT-FR doit figurer au catalogue pour être servie |
+| `RSSRESUME_CATEGORY_THRESHOLDS` | inchangée, s'applique après le filtre |
+
+Limite connue : `--send-only` renvoie des journaux déjà écrits sans les refiltrer. Une journée
+produite avant l'import du catalogue peut contenir une catégorie devenue privée.
+
 ## La base de profils et l'API
 
 Le site édite les profils pendant que la tournée les lit, depuis un autre processus. Un dossier de
@@ -1041,6 +1110,13 @@ Une table, `profils` :
 | `username` | `UNIQUE`, le nom des tags et de `--profil` |
 | `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom` |
 | `cree_le`, `modifie_le` | horodatages ISO 8601 en UTC |
+
+Et une seconde, `categories`, le [catalogue des catégories](#le-catalogue-des-catégories) :
+
+| Colonne | Contenu |
+| --- | --- |
+| `libelle` | clé primaire, le libellé FreshRSS tel qu'il a été importé |
+| `document` | l'entrée JSON : `description`, `metiers`, `visibilite`, `proprietaires` si privée |
 
 Le document est validé par `profil_depuis_dict` **à l'écriture** — l'API refuse ce que la tournée
 refuserait, avec le même message — **et à la lecture**, parce qu'une base se modifie aussi à la

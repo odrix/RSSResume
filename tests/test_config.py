@@ -3,6 +3,7 @@
 Tout ce qui concerne les fournisseurs de LLM est passé dans `test_providers.py`.
 """
 
+import dataclasses
 import json
 import os
 import pathlib
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.config import (
     AUDIO_MODE_CATEGORY,
     AUDIO_MODE_GLOBAL,
@@ -27,7 +29,8 @@ from rssresume.config import (
     MAIL_TRANSPORT_SMTP,
     AppConfig,
 )
-from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL, ENV_PROFIL_FILE
+from rssresume.profil import DEFAULT_PROFIL, ENV_PROFIL, ENV_PROFIL_FILE, Lecteur, Profil, nouvel_id
+from tests.support import make_config
 
 BASE_ENV = {
     "FRESHRSS_BASE_URL": "https://example.com",
@@ -346,6 +349,42 @@ class DebugTests(unittest.TestCase):
         """Comme `SMTP_USE_TLS` : la valeur est lue, pas devinée. « 1 » n'est pas « true »,
         et un drapeau qu'on croit posé est pire qu'un drapeau absent."""
         self.assertFalse(AppConfig.from_env().debug)
+
+
+class CategoriesServiesTests(unittest.TestCase):
+    """L'installation exclut, le catalogue filtre par personne, `pour` le conserve."""
+
+    def _config(self, **reglages):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            return dataclasses.replace(make_config(tmpdir), **reglages)
+
+    def test_the_installation_drops_the_excluded_and_empty_categories(self):
+        config = self._config(excluded_categories=["non classé"])
+
+        self.assertEqual(["Tech"], config.categories_installation(["Tech", "", "Non classé"]))
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_environment_leaves_the_catalogue_open(self):
+        """Ce que `from_env` donne sert tout à tout le monde : c'est la tournée qui pose
+        le catalogue de l'annuaire."""
+        self.assertTrue(AppConfig.from_env().catalogue.ouvert)
+
+    def test_the_catalogue_filters_by_person_and_survives_pour(self):
+        catalogue = Catalogue(
+            [
+                CategorieCatalogue("Tech", "Tech.", []),
+                CategorieCatalogue("Veille", "Veille.", [], ["adrien"]),
+            ]
+        )
+        config = self._config(catalogue=catalogue, excluded_categories=["News"])
+        disponibles = ["Veille", "Tech", "News", "Nouvelle"]
+
+        adrien = config.pour(Lecteur("adrien", Profil("A", identifiant=nouvel_id())))
+        bea = config.pour(Lecteur("bea", Profil("B", identifiant=nouvel_id())))
+
+        self.assertIs(catalogue, adrien.catalogue)
+        self.assertEqual(["Veille", "Tech"], adrien.categories_servies(disponibles))
+        self.assertEqual(["Tech"], bea.categories_servies(disponibles))
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ import pathlib
 import sqlite3
 from typing import Iterator
 
+from rssresume.categories import Catalogue, CatalogueOuvert
 from rssresume.certfr.stack import CLE_STACK
 from rssresume.profil import (
     CLE_EMAIL,
@@ -50,6 +51,16 @@ CREATE TABLE IF NOT EXISTS profils (
     document   TEXT NOT NULL,
     cree_le    TEXT NOT NULL,
     modifie_le TEXT NOT NULL
+)
+"""
+
+#: Le catalogue des catégories, une ligne par libellé FreshRSS. Le document est l'entrée
+#: sous sa forme d'échange (`CategorieCatalogue.en_document`), comme `profils.document` :
+#: une seule validation, `Catalogue.depuis_document`, pour le fichier et pour la base.
+_SCHEMA_CATEGORIES = """
+CREATE TABLE IF NOT EXISTS categories (
+    libelle  TEXT PRIMARY KEY NOT NULL,
+    document TEXT NOT NULL
 )
 """
 
@@ -172,6 +183,7 @@ class AnnuaireSqlite(Annuaire):
             connexion.execute(f"PRAGMA busy_timeout = {ATTENTE_VERROU_MS}")
             connexion.execute("PRAGMA journal_mode = WAL")
             connexion.execute(_SCHEMA)
+            connexion.execute(_SCHEMA_CATEGORIES)
             yield connexion
         finally:
             connexion.close()
@@ -279,6 +291,45 @@ class AnnuaireSqlite(Annuaire):
             ).rowcount
         if not supprimees:
             raise ProfilInconnu(f"Profil inconnu : « {username} ».")
+
+    # --- Le catalogue des catégories -------------------------------------------------
+
+    def catalogue(self) -> Catalogue:
+        """Le catalogue en base, revalidé à chaque lecture. Table vide : `CatalogueOuvert`.
+
+        Revalidé pour la même raison que les profils : une base se modifie aussi à la
+        main, et une ligne devenue fautive doit faire échouer la tournée au lancement
+        plutôt que de servir une catégorie privée à qui n'en est pas propriétaire.
+        """
+        with self._connexion() as connexion:
+            lignes = connexion.execute(
+                "SELECT libelle, document FROM categories ORDER BY libelle"
+            ).fetchall()
+        if not lignes:
+            return CatalogueOuvert()
+        document = {}
+        for libelle, contenu in lignes:
+            try:
+                document[libelle] = json.loads(contenu)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Catalogue {self.chemin}, « {libelle} » : document JSON illisible en base ({exc})."
+                ) from exc
+        return Catalogue.depuis_document(document, str(self.chemin))
+
+    def remplacer_catalogue(self, catalogue: Catalogue) -> None:
+        """Remplace tout le catalogue, dans une transaction.
+
+        Remplacer et non fusionner : le fichier importé est la source de vérité, et une
+        catégorie qu'on en retire doit cesser d'être servie — fusionnée, une catégorie
+        privée retirée resterait en base sans que personne ne s'en souvienne.
+        """
+        with self._ecriture() as connexion:
+            connexion.execute("DELETE FROM categories")
+            connexion.executemany(
+                "INSERT INTO categories (libelle, document) VALUES (?, ?)",
+                [(entree.libelle, _json(entree.en_document())) for entree in catalogue.entrees()],
+            )
 
     @staticmethod
     def _fiche(ligne: tuple) -> Fiche:

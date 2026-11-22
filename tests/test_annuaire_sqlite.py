@@ -19,6 +19,7 @@ from unittest import mock
 from rssresume.annuaire_sqlite import AnnuaireSqlite, ProfilDejaPris, ProfilInconnu
 from rssresume.api import __main__ as api_main
 from rssresume.api.importation import Importateur
+from rssresume.categories import Catalogue
 from rssresume.digest import DigestService
 from rssresume.profil import (
     ENV_PROFIL,
@@ -150,6 +151,7 @@ class TourneeSurBaseTests(Base):
     def test_the_tour_serves_the_database_profiles_under_their_id(self):
         bea = self.annuaire.creer("bea", {"profil": "B"})
         zoe = self.annuaire.creer("zoe", {"profil": "Z"})
+        self.annuaire.remplacer_catalogue(test_multiprofil.catalogue_public("Tech", "News"))
         client = test_multiprofil.FreshRSSQuiOublieLesLus(
             {"Tech": [test_multiprofil.article("item-1")], "News": [test_multiprofil.article("item-2")]}
         )
@@ -256,6 +258,68 @@ class ImportTests(Base):
         bilan = Importateur(self.annuaire).importer(fichier)
 
         self.assertEqual(["adrien"], bilan.importes)
+
+
+class CatalogueBaseTests(Base):
+    """Le catalogue en base : remplacé en entier, revalidé à chaque lecture."""
+
+    PUBLIQUE = {"description": "Tech.", "metiers": ["cto"], "visibilite": "publique"}
+    PRIVEE = {"description": "Veille.", "metiers": [], "visibilite": "privee", "proprietaires": ["bea"]}
+
+    def _fichier(self, document, nom="categories.json"):
+        fichier = self.tmpdir / nom
+        fichier.write_text(
+            document if isinstance(document, str) else json.dumps(document), encoding="utf-8"
+        )
+        return fichier
+
+    def test_an_empty_table_is_an_open_catalogue(self):
+        self.assertTrue(self.annuaire.catalogue().ouvert)
+
+    def test_the_catalogue_import_replaces_the_table_and_refuses_a_faulty_document_without_writing(self):
+        self.annuaire.remplacer_catalogue(
+            Catalogue.depuis_document({"Tech": self.PUBLIQUE, "Ancienne": self.PUBLIQUE}, "test")
+        )
+        self.annuaire.remplacer_catalogue(
+            Catalogue.depuis_document({"Tech": self.PUBLIQUE, "Veille": self.PRIVEE}, "test")
+        )
+
+        relu = self.annuaire.catalogue()
+        self.assertEqual(["Tech", "Veille"], sorted(e.libelle for e in relu.entrees()))
+        self.assertEqual(("bea",), relu.entree("Veille").proprietaires)
+
+        fautif = self._fichier({"Nouvelle": self.PUBLIQUE, "Cassée": {**self.PRIVEE, "proprietaires": []}})
+        env = {ENV_PROFILES_DB: str(self.annuaire.chemin)}
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch("rssresume.api.__main__.console.error") as erreur:
+            self.assertEqual(2, api_main.main(["importer-catalogue", str(fautif)]))
+        self.assertIn("Cassée", erreur.call_args.args[0])
+        self.assertEqual(["Tech", "Veille"], sorted(e.libelle for e in self.annuaire.catalogue().entrees()))
+
+    def test_the_command_line_imports_the_catalogue_into_the_declared_database(self):
+        fichier = self._fichier({"_note": "commentaire", "Tech": self.PUBLIQUE, "Veille": self.PRIVEE})
+        with mock.patch.dict(os.environ, {ENV_PROFILES_DB: str(self.annuaire.chemin)}, clear=True), \
+                mock.patch("rssresume.api.__main__.console.log") as log:
+            self.assertEqual(0, api_main.main(["importer-catalogue", str(fichier)]))
+        self.assertIn("2 catégorie(s)", log.call_args.args[0])
+        self.assertIn("1 privée(s)", log.call_args.args[0])
+        self.assertFalse(self.annuaire.catalogue().ouvert)
+
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch("rssresume.api.__main__.console.error"):
+            self.assertEqual(2, api_main.main(["importer-catalogue", str(fichier)]))
+        with mock.patch.dict(os.environ, {ENV_PROFILES_DB: str(self.annuaire.chemin)}, clear=True), \
+                mock.patch("rssresume.api.__main__.console.error"):
+            self.assertEqual(2, api_main.main(["importer-catalogue", str(self._fichier("{", "casse.json"))]))
+
+    def test_a_corrupted_catalogue_row_fails_when_read(self):
+        self.annuaire.remplacer_catalogue(Catalogue.depuis_document({"Veille": self.PRIVEE}, "test"))
+        for contenu in (json.dumps({**self.PRIVEE, "proprietaires": []}), "{pas du json"):
+            with self.subTest(contenu=contenu):
+                with self.annuaire._connexion() as connexion:
+                    connexion.execute("UPDATE categories SET document = ?", (contenu,))
+                with self.assertRaises(ValueError) as leve:
+                    self.annuaire.catalogue()
+                self.assertIn("Veille", str(leve.exception))
 
 
 if __name__ == "__main__":
