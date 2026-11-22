@@ -60,7 +60,6 @@ class AnnuaireSqliteTests(Base):
         self.assertEqual(
             {"id": fiche.id, "username": "bea", "profil": "Veille", "stack": ["Traefik"],
              "email": ["b@example.com"], "prenom": "Bea", "securite": "exploitant",
-             "categories": [],
              "modifie_le": relue.modifie_le},
             relue.complet_json(),
         )
@@ -147,6 +146,12 @@ class AnnuaireSqliteTests(Base):
 
         self.assertNotIn("axes", fiche.document)
         self.assertFalse(self.annuaire.profil("bea").axes.sont_declares)
+
+    def test_an_empty_categories_list_removes_the_subscription(self):
+        fiche = self.annuaire.creer("bea", {"profil": "B", "categories": []})
+
+        self.assertNotIn("categories", fiche.document)
+        self.assertIsNone(self.annuaire.profil("bea").categories)
 
 
 class DepuisEnvTests(Base):

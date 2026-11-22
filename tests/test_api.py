@@ -119,7 +119,7 @@ class ProfilsTests(ServeurTestCase):
         statut, cree = self.json("POST", "/api/v1/profils", self.BEA)
         self.assertEqual(201, statut)
         self.assertEqual(
-            {"id", "username", "profil", "stack", "email", "prenom", "securite", "categories", "modifie_le"},
+            {"id", "username", "profil", "stack", "email", "prenom", "securite", "modifie_le"},
             set(cree),
         )
         self.assertEqual(("bea", "Veille", ["Traefik"], ["b@example.com"], "Bea"),
@@ -202,6 +202,17 @@ class ProfilsTests(ServeurTestCase):
 
         self.assertEqual(200, statut)
         self.assertNotIn("axes", modifie)
+
+    def test_an_empty_categories_list_returns_to_all_catalogue_categories(self):
+        statut, _ = self.json("POST", "/api/v1/profils", {**self.BEA, "categories": ["Tech"]})
+        self.assertEqual(201, statut)
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Veille", "stack": [], "email": [], "prenom": "", "categories": []
+        })
+
+        self.assertEqual(200, statut)
+        self.assertNotIn("categories", modifie)
 
     def test_unknown_profiles_are_not_found(self):
         self.assertEqual(404, self.appel("GET", "/api/v1/profils/absent")[0])

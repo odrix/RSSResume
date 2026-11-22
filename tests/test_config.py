@@ -392,6 +392,35 @@ class CategoriesServiesTests(unittest.TestCase):
         self.assertEqual(["Veille", "Tech"], adrien.categories_servies(disponibles))
         self.assertEqual(["Tech"], bea.categories_servies(disponibles))
 
+    def test_no_subscription_keeps_the_catalogue_and_exclusion_result(self):
+        catalogue = Catalogue([
+            CategorieCatalogue("Tech", "Tech.", []),
+            CategorieCatalogue("Veille", "Veille.", [], ["adrien"]),
+        ])
+        config = self._config(catalogue=catalogue, excluded_categories=["News"])
+
+        self.assertEqual(
+            ["Tech"],
+            config.categories_servies(["Tech", "News", "Nouvelle"]),
+        )
+
+    def test_subscription_restricts_after_catalogue_and_exclusions(self):
+        catalogue = Catalogue([
+            CategorieCatalogue("Tech", "Tech.", []),
+            CategorieCatalogue("Produit", "Produit.", []),
+            CategorieCatalogue("Veille", "Veille.", []),
+        ])
+        config = self._config(
+            catalogue=catalogue,
+            excluded_categories=["News"],
+            categories_abonnees=("Tech", "Produit"),
+        )
+
+        self.assertEqual(
+            ["Produit", "Tech"],
+            config.categories_servies(["Veille", "Produit", "Tech", "News", "Nouvelle"]),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
