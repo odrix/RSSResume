@@ -119,7 +119,8 @@ class ProfilsTests(ServeurTestCase):
         statut, cree = self.json("POST", "/api/v1/profils", self.BEA)
         self.assertEqual(201, statut)
         self.assertEqual(
-            {"id", "username", "profil", "stack", "email", "prenom", "modifie_le"}, set(cree)
+            {"id", "username", "profil", "stack", "email", "prenom", "securite", "modifie_le"},
+            set(cree),
         )
         self.assertEqual(("bea", "Veille", ["Traefik"], ["b@example.com"], "Bea"),
                          (cree["username"], cree["profil"], cree["stack"], cree["email"], cree["prenom"]))
@@ -171,6 +172,22 @@ class ProfilsTests(ServeurTestCase):
         self.json("POST", "/api/v1/profils", self.BEA)
         self.assertEqual(422, self.json("PUT", "/api/v1/profils/bea", {"profil": ""})[0])
         self.assertEqual(422, self.json("PUT", "/api/v1/profils/bea", {"profil": "x", "username": "zoe"})[0])
+
+    def test_an_unknown_security_regime_is_unprocessable(self):
+        self.json("POST", "/api/v1/profils", self.BEA)
+
+        statut, corps = self.json("PUT", "/api/v1/profils/bea", {"profil": "x", "securite": "expert"})
+
+        self.assertEqual(422, statut)
+        self.assertIn("securite", corps["erreur"])
+
+    def test_the_security_regime_is_kept_and_read_back(self):
+        self.json("POST", "/api/v1/profils", {**self.BEA, "securite": "decideur"})
+        self.json("POST", "/api/v1/profils", {"username": "zoe", "profil": "Z"})
+
+        self.assertEqual("decideur", self.json("GET", "/api/v1/profils/bea")[1]["securite"])
+        # Sans clé, le défaut — celui que la tournée servira.
+        self.assertEqual("exploitant", self.json("GET", "/api/v1/profils/zoe")[1]["securite"])
 
     def test_unknown_profiles_are_not_found(self):
         self.assertEqual(404, self.appel("GET", "/api/v1/profils/absent")[0])

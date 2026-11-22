@@ -53,6 +53,8 @@ def build_service(
             # décide ici d'aucune sélection, seulement du détail donné sur les versions
             # d'une CVE selon qu'elle touche ou non ce qu'on exploite.
             stack=config.stack,
+            # Et le régime de sécurité du même document, qui dit qui écoute ce détail.
+            securite=config.securite,
         ),
         audio_generator=AudioGenerator(llm.for_action(providers.TTS)),
         email_sender=mail.sender(config),
@@ -71,6 +73,7 @@ def build_service(
             # bornes d'entrée, et la même stack pour graduer le détail des versions.
             char_limit=config.article_char_limit,
             stack=config.stack,
+            securite=config.securite,
         ),
         # Sans fournisseur, et c'est tout l'intérêt : les catégories que
         # `RSSRESUME_CERTFR_CATEGORIES` route n'appellent personne. La liste de

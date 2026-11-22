@@ -14,6 +14,11 @@ document, hors du dépôt, en dit autant :
 
     {"profil": "CTO d'un SaaS…", "stack": ["Traefik"], "email": "moi@example.com"}
 
+La clé `securite` y règle, pour la même raison, le détail dont la personne a besoin sur
+les vulnérabilités : `exploitant` (le défaut), `decideur` ou `curieux`. Qui n'administre
+rien n'a que faire des plages de versions, et c'est son document, non le modèle, qui le
+dit.
+
 Il est donc chargé, pas codé en dur au point d'appel : un profil explicite passé en
 argument, sinon l'environnement, sinon le profil par défaut ci-dessous. Ce défaut ne
 décrit personne : il vaut pour quelqu'un dans la tech, sans dire de quel produit ni de
@@ -32,6 +37,7 @@ n'existe qu'une seule idée de ce qu'est un profil acceptable.
 
 from __future__ import annotations
 
+import enum
 import json
 import os
 import pathlib
@@ -77,6 +83,47 @@ CLE_EMAIL = "email"
 #: la même raison que l'adresse : comment on s'adresse à quelqu'un est aussi personnel
 #: que ce qu'il veut lire, et rien de personnel ne se déclare dans l'environnement.
 CLE_PRENOM = "prenom"
+#: Le régime de sécurité : ce que la personne a besoin d'entendre d'une vulnérabilité.
+CLE_SECURITE = "securite"
+
+
+class Securite(enum.Enum):
+    """Le détail que les vulnérabilités méritent, selon ce que la personne fait d'elles.
+
+    Une énumération et non un texte libre : le régime choisit une consigne écrite à
+    l'avance, et une valeur que personne n'a prévue n'en choisirait aucune. Le choix se
+    fait dans le code, comme pour la stack déclarée — le laisser au modèle, ce serait lui
+    demander de deviner ce qu'un profil en prose sous-entend.
+    """
+
+    #: Administre ce qui tourne : les versions, graduées sur la stack s'il y en a une.
+    EXPLOITANT = "exploitant"
+    #: Décide sans appliquer les correctifs : une phrase par faille, sans versions, sauf
+    #: sur un composant de sa stack.
+    DECIDEUR = "decideur"
+    #: Suit la sécurité de loin : seulement ce qui est exploité ou fait l'actualité.
+    CURIEUX = "curieux"
+
+    @classmethod
+    def depuis_document(cls, valeur: object, origine: str) -> "Securite":
+        """Le régime déclaré, ou le défaut si la clé manque. Autre chose : `ValueError`.
+
+        Pas de normalisation de casse : un document se corrige une fois, au lancement,
+        alors qu'une tolérance devrait se répéter dans chaque lecteur — le site compris.
+        """
+        if valeur is None:
+            return SECURITE_PAR_DEFAUT
+        for regime in cls:
+            if isinstance(valeur, str) and valeur == regime.value:
+                return regime
+        raise ValueError(
+            f"{origine} : « {CLE_SECURITE} » vaut exploitant, decideur ou curieux, pas « {valeur} »."
+        )
+
+
+#: Le seul endroit où vit le défaut : le régime d'avant la clé, pour qu'un document qui
+#: ne la porte pas soit servi exactement comme la veille.
+SECURITE_PAR_DEFAUT = Securite.EXPLOITANT
 
 DEFAULT_PROFIL = """Professionnel de la tech — développement, produit, direction technique
 ou qualité. Veille quotidienne sur ce qui change la façon de concevoir, de livrer et
@@ -124,6 +171,7 @@ class Profil:
         emails: Iterable[str] = (),
         prenom: str = "",
         identifiant: str = "",
+        securite: Securite = SECURITE_PAR_DEFAUT,
     ):
         #: L'identifiant stable de la personne (un UUID), qui nomme son répertoire de
         #: sortie. Vide tant que le document n'en porte pas : c'est l'annuaire qui le
@@ -139,6 +187,9 @@ class Profil:
         #: Le prénom qui ouvre l'audio de journée. Vide, le montage n'appelle personne
         #: par son nom : c'est une salutation en moins, pas une erreur.
         self.prenom = prenom
+        #: Le détail dû aux vulnérabilités. Il voyage avec la stack, parce que c'est elle
+        #: qu'il module : une stack dit ce qui tourne, le régime dit qui l'écoute.
+        self.securite = securite
 
 
 def load_profil(override: str | None = None) -> Profil:
@@ -215,6 +266,7 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
         _emails(document.get(CLE_EMAIL), origine),
         _prenom(document.get(CLE_PRENOM), origine),
         identifiant or "",
+        Securite.depuis_document(document.get(CLE_SECURITE), origine),
     )
 
 

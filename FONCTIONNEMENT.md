@@ -300,6 +300,23 @@ présence du champ dans les articles du jour : une stack déclarée qu'aucun avi
 quand même alléger toute la matinée, sans quoi le détail complet reviendrait précisément les jours
 où rien ne concerne l'auditeur.
 
+**Le régime se règle dans le profil.** Le détail complet sans stack échoyait justement à qui
+n'exploite rien : un PO ou un designer entendait réciter des plages de versions pour des
+machines qu'il n'administre pas. La clé `securite` du document dit qui écoute, et le régime
+choisit la consigne (`RegimeCve` et ses trois sous-classes dans
+[prompts.py](rssresume/llm/prompts.py)) :
+
+| `securite` | Sans stack déclarée | Avec stack déclarée |
+| --- | --- | --- |
+| `exploitant` (défaut) | tout le détail, pour toutes — le régime d'origine | gradué sur le champ `stack`, comme ci-dessus |
+| `decideur` | **une** phrase par CVE : identifiant, produit, ce que la faille permet, exploitée ou non ; aucune version, aucune plage, et rien à faire à annoncer — ni correctif, ni version corrigée | gradué sur le champ `stack` : le détail complet sur un composant exploité, une phrase sans version ailleurs |
+| `curieux` | seulement les failles déjà exploitées ou d'une ampleur qui fait l'actualité, une phrase chacune, sans version ; les autres au plus comptées dans une incise | pareil, et une faille dont l'article porte le champ `stack` se dit toujours, en une phrase, même sans exploitation connue |
+
+Le choix est fait **par le code**, comme `stack_declaree` : le modèle reçoit une consigne déjà
+tranchée, jamais le soin de deviner ce qu'un profil en prose sous-entend. `exploitant` reproduit
+à l'octet près la consigne d'avant la clé. Le régime n'entre que dans le digest de catégorie et
+le montage — **pas dans l'empreinte de scoring** : en changer ne fait rien renoter.
+
 Un avis de vulnérabilité arrive souvent réduit à son titre :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
 touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. La page de l'avis est donc
@@ -912,10 +929,14 @@ Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil
 | `stack` | quels avis CERT-FR font lever la tête | `CertfrService`, sans le moindre appel IA |
 | `email` | où le digest arrive | `AppConfig.smtp_to`, pour les deux transports |
 | `prenom` | par quel nom l'audio de journée ouvre | `MontageService`, en mode `global` seulement |
+| `securite` | le détail dû aux vulnérabilités : `exploitant`, `decideur` ou `curieux` | `SummaryGenerator` et `MontageService`, dans la consigne des CVE |
 
 Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne — c'est une
 salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle fait échouer le
-lancement, une salutation fautive ne se découvrant qu'à l'écoute. Le texte de pertinence est ce qui définit ce qu'est une information
+lancement, une salutation fautive ne se découvrant qu'à l'écoute. `securite` absente vaut
+`exploitant`, le régime d'avant la clé ; une valeur inconnue — casse comprise, `Decideur` n'est
+pas `decideur` — fait échouer le lancement plutôt que de retomber sur le défaut, qui rendrait les
+plages de versions à qui avait demandé de ne plus les entendre (voir « Le cas des CVE »). Le texte de pertinence est ce qui définit ce qu'est une information
 pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
 sont personnelles au même titre, et c'est tout ce qui les réunit ici.
 
@@ -953,7 +974,7 @@ Trois conséquences de conception :
 Le document est résolu **une fois par personne et par passage**, avant sa première catégorie
 (`AppConfig.pour`, voir la tournée ci-dessous) : un document fautif fait échouer la journée de sa
 personne, pas sa troisième catégorie. Les clés en sortent ensemble — `config.profil`,
-`config.stack`, `config.smtp_to`, `config.prenom` — et `cli.build_service()` les distribue aux
+`config.stack`, `config.securite`, `config.smtp_to`, `config.prenom` — et `cli.build_service()` les distribue aux
 collaborateurs qui les attendent, comme le reste.
 
 `SMTP_TO` portait le destinataire jusqu'ici. La variable est désormais **refusée** et non ignorée :
@@ -1122,7 +1143,7 @@ Une table, `profils` :
 | --- | --- |
 | `id` | clé primaire, l'UUID qui nomme `output/<id>/` |
 | `username` | `UNIQUE`, le nom des tags et de `--profil` |
-| `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom` |
+| `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom`, `securite` (toujours écrite, `exploitant` quand la saisie ne la porte pas) |
 | `cree_le`, `modifie_le` | horodatages ISO 8601 en UTC |
 
 Et une seconde, `categories`, le [catalogue des catégories](#le-catalogue-des-catégories) :

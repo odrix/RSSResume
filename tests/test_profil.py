@@ -20,11 +20,14 @@ from rssresume.profil import (
     CLE_EMAIL,
     CLE_PRENOM,
     CLE_PROFIL,
+    CLE_SECURITE,
     CLE_STACK,
     DEFAULT_PROFIL,
     ENV_PROFIL,
     ENV_PROFIL_FILE,
+    Securite,
     load_profil,
+    profil_depuis_dict,
 )
 
 AUTRE_PROFIL = "Vigneronne en Anjou, bio depuis 2019. Veille : météo, phytosanitaire, export."
@@ -231,6 +234,41 @@ class PrenomTests(unittest.TestCase):
     def test_a_plain_text_document_declares_no_first_name(self):
         """Un profil en texte brut ne porte que lui : ni stack, ni adresse, ni prénom."""
         self.assertEqual("", charge(AUTRE_PROFIL).prenom)
+
+
+class SecuriteTests(unittest.TestCase):
+    """La clé `securite` : le détail que les vulnérabilités méritent pour cette personne.
+
+    Une valeur inconnue lève au lancement : servie au défaut, elle rendrait les plages de
+    versions à qui avait justement demandé de ne plus les entendre.
+    """
+
+    def _securite(self, valeur):
+        return charge({CLE_PROFIL: AUTRE_PROFIL, CLE_SECURITE: valeur}).securite
+
+    def test_a_missing_key_means_exploitant(self):
+        self.assertIs(Securite.EXPLOITANT, charge({CLE_PROFIL: AUTRE_PROFIL}).securite)
+        self.assertIs(Securite.EXPLOITANT, charge(AUTRE_PROFIL).securite)
+
+    def test_each_declared_value_is_read(self):
+        for securite in Securite:
+            with self.subTest(securite=securite):
+                self.assertIs(securite, self._securite(securite.value))
+
+    def test_an_unknown_value_is_refused(self):
+        """Pas de casse corrigée en silence : le site relirait autre chose que la tournée."""
+        for valeur in ("expert", "Decideur"):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(ValueError) as leve:
+                    profil_depuis_dict({CLE_PROFIL: "x", CLE_SECURITE: valeur}, origine="bea")
+                self.assertIn("bea", str(leve.exception))
+                self.assertIn(CLE_SECURITE, str(leve.exception))
+
+    def test_something_that_is_not_a_text_is_refused(self):
+        for valeur in (3, ["curieux"]):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(ValueError):
+                    self._securite(valeur)
 
 
 class InjectedProfileTests(unittest.TestCase):

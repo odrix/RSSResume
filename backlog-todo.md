@@ -381,22 +381,25 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
   - [ ] clé absente : prompt et validation inchangés ;
   - [ ] `slug` validé (forme d'un libellé FreshRSS), 3 à 6 axes, refus clair sinon.
 
-### BL-040 — Régime de sécurité réglé dans le profil
+### BL-054 — Régime de sécurité sur la page profil du site
 
-- **Catégorie** : prompts
+- **Catégorie** : web
 - **Priorité** : 1
-- **Description** : sans stack déclarée, `cve_instruction()` dicte toutes les versions de toutes les
-  CVE : le régime le plus détaillé échoit justement à ceux qui n'exploitent rien. Nouvelle clé
-  `securite` du document : `exploitant` (le comportement actuel : gradué sur la stack, ou détail
-  complet sans stack), `decideur` (une phrase par CVE, sans versions, sauf si le champ `stack`
-  apparie le composant), `curieux` (seulement les failles déjà exploitées ou d'ampleur, une phrase,
-  le reste se tait ou se fond). Clé absente : `exploitant`. Le choix est fait par le code, comme
-  `stack_declaree` aujourd'hui, jamais laissé au modèle.
-- **Bénéfice attendu** : un PO ou un designer n'entend plus réciter de plages de versions.
+- **Description** : BL-040 a ajouté la clé `securite` au document (`exploitant`, `decideur`,
+  `curieux`), que l'API accepte et relit. Mais le `PUT` de l'API remplace le document entier, et le
+  site n'envoie que `profil`, `stack`, `email` et `prenom` (`corpsProfil` dans
+  `web/src/lib/server/api-resume.ts`) : enregistrer « Mon profil » remet la clé à `exploitant`, et
+  rien ne permet de la choisir. Ajouter `securite` aux types `Profil` / `ProfilSaisi`
+  (`web/src/lib/profil.ts`), à `corpsProfil` et à `lireFormulaireProfil`, et un sélecteur sur la
+  page profil, une ligne d'explication par valeur. Le contrat « pas de fusion » du `PUT`
+  (`web/API.md`) reste tel quel. Relevé à la relecture de BL-040.
+- **Bénéfice attendu** : le régime choisi survit à l'enregistrement du profil, et chacun peut le
+  régler sans passer par l'API.
 - **Tests d'acceptation** :
-  - [ ] chaque valeur produit la consigne attendue dans `digest_user` et `montage_user` ;
-  - [ ] clé absente : consigne identique à l'actuelle ;
-  - [ ] valeur inconnue refusée par `profil_depuis_dict`.
+  - [ ] un profil enregistré depuis le site garde la valeur de `securite` qu'il avait ;
+  - [ ] le sélecteur propose les trois valeurs et enregistre celle choisie ;
+  - [ ] une valeur refusée par l'API s'affiche sur le champ ;
+  - [ ] `npm run check` et `npm test` verts.
 
 ### BL-041 — Gabarits par métier
 

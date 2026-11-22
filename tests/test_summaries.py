@@ -8,7 +8,7 @@ from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig
 from rssresume.llm import prompts
 from rssresume.tools import cve
 from rssresume.models import Article, Note
-from rssresume.profil import DEFAULT_PROFIL
+from rssresume.profil import DEFAULT_PROFIL, Securite
 from rssresume.summaries import SummaryGenerator
 
 
@@ -336,6 +336,118 @@ class CveStackTests(PromptCase):
             self.assertIn("UNE vulnérabilité = UN sujet à elle seule", prompt)
             self.assertIn("sous leur nom commercial exact", prompt)
             self.assertIn("les paliers de longueur ci-dessus ne s'appliquent pas ici", prompt)
+
+
+class RegimeSecuriteTests(PromptCase):
+    """Le régime de sécurité du document : qui écoute, et donc ce qu'une CVE garde.
+
+    Sans stack, le régime d'avant récitait toutes les versions de toutes les CVE — le
+    détail le plus fin échoyait justement à qui n'exploite rien. Le choix est fait par
+    le code, à partir du document ; le modèle ne reçoit qu'une consigne déjà tranchée.
+    """
+
+    STACK = CveStackTests.STACK
+    CVE = [make_article(title="CVE-2026-1234 : RCE dans FortiOS")]
+
+    def _regime(self, securite, stack=None):
+        """Le prompt utilisateur réellement assemblé, pour ce régime."""
+        category, payload, language, _, declaree = self._payload(self.CVE, stack=stack)
+        return prompts.digest_user(category, payload, language, declaree, securite)
+
+    def test_decideur_without_stack_drops_every_version(self):
+        prompt = self._regime(Securite.DECIDEUR)
+
+        self.assertIn(prompts.CVE_SANS_VERSIONS_INSTRUCTION, prompt)
+        self.assertIn("AUCUN numéro de version, aucune plage, aucune branche", prompt)
+        self.assertNotIn("la plage touchée ET la version corrigée", prompt)
+        # La règle commune tient toujours : un sujet par CVE, le nom exact.
+        self.assertIn("UNE vulnérabilité = UN sujet à elle seule", prompt)
+
+    def test_decideur_without_stack_announces_no_action_nor_fixed_version(self):
+        """La règle commune demande « ce qu'il y a à faire » : sans cette levée, le modèle
+        annoncerait « appliquez le correctif 7.4.5 » à qui n'applique rien."""
+        consigne = prompts.cve_instruction(False, Securite.DECIDEUR)
+
+        self.assertIn("rien à faire à annoncer", consigne)
+        self.assertIn("ni correctif à appliquer ni version vers laquelle migrer", consigne)
+        self.assertIn("la phrase dit que la faille existe et ce qu'elle pèse", consigne)
+        # La levée vient après la règle commune, qu'elle corrige.
+        self.assertGreater(
+            consigne.index("rien à faire à annoncer"), consigne.index("ce qu'il y a à faire")
+        )
+
+    def test_curieux_reads_the_advisory_page_rather_than_the_title(self):
+        """C'est dans la page de l'avis, pas dans le titre, que se lit « déjà exploitée »."""
+        for declaree in (False, True):
+            with self.subTest(stack_declaree=declaree):
+                consigne = prompts.cve_instruction(declaree, Securite.CURIEUX)
+                self.assertIn(prompts.CVE_CONTENT_INSTRUCTION, consigne)
+                self.assertIn("plutôt que de paraphraser le titre", consigne)
+
+    def test_every_regime_and_stack_combination_yields_a_consigne(self):
+        for securite in Securite:
+            for declaree in (False, True):
+                with self.subTest(securite=securite, stack_declaree=declaree):
+                    regime = prompts.RegimeCve.pour(securite, declaree)
+                    self.assertIs(securite, regime.securite)
+                    self.assertTrue(regime.consigne().strip())
+                    # Le contrat tient pour chaque régime : ni `regle` ni `detail` ne lèvent.
+                    self.assertTrue(regime.regle())
+                    self.assertIsInstance(regime.detail(), str)
+
+    def test_decideur_with_stack_keeps_the_detail_on_matched_components(self):
+        prompt = self._regime(Securite.DECIDEUR, stack=self.STACK)
+
+        self.assertIn(prompts.CVE_STACK_INSTRUCTION, prompt)
+        self.assertNotIn(prompts.CVE_SANS_VERSIONS_INSTRUCTION, prompt)
+
+    def test_curieux_keeps_only_exploited_or_major_flaws(self):
+        prompt = self._regime(Securite.CURIEUX)
+
+        self.assertIn(prompts.CVE_CURIEUX_INSTRUCTION, prompt)
+        self.assertIn("déjà exploitées", prompt)
+        self.assertIn("une exploitation supposée n'est pas une exploitation", prompt)
+        # La règle commune est remplacée, pas complétée : elle racontait toutes les failles.
+        self.assertNotIn(prompts.CVE_INSTRUCTION, prompt)
+        self.assertNotIn(prompts.CVE_CURIEUX_STACK_INSTRUCTION, prompt)
+        self.assertNotIn("la plage touchée ET la version corrigée", prompt)
+
+    def test_curieux_with_stack_always_names_matched_flaws(self):
+        prompt = self._regime(Securite.CURIEUX, stack=self.STACK)
+
+        self.assertIn(
+            f"{prompts.CVE_CURIEUX_INSTRUCTION} {prompts.CVE_CURIEUX_STACK_INSTRUCTION}", prompt
+        )
+
+    def test_the_generator_passes_the_profile_regime_to_the_provider(self):
+        generator = SummaryGenerator(
+            mock.Mock(name="openai", write_digest=mock.Mock(return_value="résumé")),
+            securite=Securite.DECIDEUR,
+        )
+
+        generator.summarize("Tech", self.CVE)
+
+        appel = generator._provider.write_digest.call_args
+        self.assertIs(Securite.DECIDEUR, appel.kwargs["securite"])
+        # Par mot-clé : le contrat positionnel d'avant reste celui que les doublures lisent.
+        self.assertEqual(5, len(appel.args))
+
+    def test_exploitant_is_byte_identical_to_the_former_rule(self):
+        self.assertEqual(
+            f"{prompts.CVE_INSTRUCTION} {prompts.CVE_VERSIONS_INSTRUCTION}",
+            prompts.cve_instruction(False),
+        )
+        self.assertEqual(
+            f"{prompts.CVE_INSTRUCTION} {prompts.CVE_STACK_INSTRUCTION}",
+            prompts.cve_instruction(True),
+        )
+        for stack in (None, self.STACK):
+            with self.subTest(stack=stack):
+                category, payload, language, _, declaree = self._payload(self.CVE, stack=stack)
+                self.assertEqual(
+                    prompts.digest_user(category, payload, language, declaree),
+                    prompts.digest_user(category, payload, language, declaree, Securite.EXPLOITANT),
+                )
 
 
 class DepthTierTests(PromptCase):

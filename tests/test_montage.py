@@ -29,6 +29,7 @@ from rssresume.models import (
     Note,
 )
 from rssresume.montage import MontageService
+from rssresume.profil import SECURITE_PAR_DEFAUT, Securite
 
 ENVOI = dt.date(2026, 8, 31)
 EPHEMERIDE = Ephemeride(
@@ -120,6 +121,7 @@ class FakeProvider:
         profil=None,
         prenom="",
         stack_declaree=False,
+        securite=SECURITE_PAR_DEFAUT,
     ):
         self.appels.append(
             {
@@ -131,6 +133,7 @@ class FakeProvider:
                 "profil": profil,
                 "prenom": prenom,
                 "stack_declaree": stack_declaree,
+                "securite": securite,
             }
         )
         if self._erreur:
@@ -329,6 +332,22 @@ class StackTests(unittest.TestCase):
 
         self.assertFalse(provider.appels[0]["stack_declaree"])
 
+    def test_the_service_passes_the_regime_to_the_provider(self):
+        provider = FakeProvider()
+
+        MontageService(provider, securite=Securite.CURIEUX).ecrire(
+            EPHEMERIDE, [racontee("Cyber", "Une faille.")]
+        )
+
+        self.assertIs(Securite.CURIEUX, provider.appels[0]["securite"])
+
+    def test_without_a_regime_the_service_asks_for_the_default(self):
+        provider = FakeProvider()
+
+        MontageService(provider).ecrire(EPHEMERIDE, [racontee("Cyber", "Une faille.")])
+
+        self.assertIs(Securite.EXPLOITANT, provider.appels[0]["securite"])
+
 
 class ResultatTests(unittest.TestCase):
     def test_the_text_of_the_model_is_kept_with_its_origin(self):
@@ -457,6 +476,38 @@ class PromptTests(unittest.TestCase):
         graduee = montage_user(sujets, "Lundi.", [], [], "fr", stack_declaree=True)
         self.assertIn("Le champ « stack » nomme les composants", graduee)
         self.assertIn("AUCUN numéro de version, aucune plage, aucune branche", graduee)
+
+    def test_the_user_prompt_follows_the_security_regime(self):
+        """Le même choix que le résumé de catégorie : l'œil et l'oreille disent pareil."""
+        from rssresume.llm import prompts
+
+        sujets = [{"title": "x", "content": "y"}]
+        for securite in Securite:
+            for declaree in (False, True):
+                with self.subTest(securite=securite, stack_declaree=declaree):
+                    prompt = prompts.montage_user(
+                        sujets, "Lundi.", [], [], "fr", declaree, securite
+                    )
+                    self.assertIn(prompts.cve_instruction(declaree, securite), prompt)
+
+        decideur = prompts.montage_user(sujets, "Lundi.", [], [], "fr", False, Securite.DECIDEUR)
+        self.assertIn(prompts.CVE_SANS_VERSIONS_INSTRUCTION, decideur)
+        self.assertNotIn("la plage touchée ET la version corrigée", decideur)
+        curieux = prompts.montage_user(sujets, "Lundi.", [], [], "fr", True, Securite.CURIEUX)
+        self.assertIn(prompts.CVE_CURIEUX_INSTRUCTION, curieux)
+        self.assertIn(prompts.CVE_CURIEUX_STACK_INSTRUCTION, curieux)
+        self.assertNotIn(prompts.CVE_INSTRUCTION, curieux)
+
+    def test_montage_without_regime_is_unchanged(self):
+        from rssresume.llm.prompts import montage_user
+
+        sujets = [{"title": "x", "content": "y"}]
+        for declaree in (False, True):
+            with self.subTest(stack_declaree=declaree):
+                self.assertEqual(
+                    montage_user(sujets, "Lundi.", [], [], "fr", declaree, Securite.EXPLOITANT),
+                    montage_user(sujets, "Lundi.", [], [], "fr", stack_declaree=declaree),
+                )
 
 
 if __name__ == "__main__":
