@@ -44,10 +44,11 @@ class Route:
     motif: re.Pattern
     methodes: tuple[str, ...] = ()
 
-    def __init__(self, annuaire: AnnuaireSqlite, sorties: Sorties, passage: DailySchedule):
+    def __init__(self, annuaire: AnnuaireSqlite, sorties: Sorties, passage: DailySchedule, gabarits=None):
         self.annuaire = annuaire
         self.sorties = sorties
         self.passage = passage
+        self.gabarits = gabarits
 
     def parametres(self, chemin: str) -> list[str] | None:
         """Les segments variables décodés, si `chemin` est de cette forme ; sinon `None`."""
@@ -216,5 +217,15 @@ class RouteAudio(Route):
         requete.envoyer_audio(audio)
 
 
+class RouteGabarits(Route):
+    """`/api/v1/gabarits` : les modèles de profil proposés au site."""
+
+    motif = re.compile(re.escape(PREFIXE) + r"/gabarits")
+    methodes = ("GET",)
+
+    def get(self, requete, *parametres):
+        requete.repondre_json(200, [gabarit.en_json() for gabarit in self.gabarits])
+
+
 #: Les routes servies, dans l'ordre où elles sont essayées.
-ROUTES = (RouteProfils, RouteProfil, RouteJournees, RouteJournee, RouteAudio, RoutePassage)
+ROUTES = (RouteProfils, RouteProfil, RouteJournees, RouteJournee, RouteAudio, RoutePassage, RouteGabarits)

@@ -26,6 +26,7 @@ from rssresume.config import ENV_TIMEZONE, load_timezone
 from rssresume.profil import ENV_PROFILES_DB, Annuaire
 from rssresume.scheduler import DailySchedule, parse_schedule
 from rssresume.tools import console
+from rssresume.gabarits import CHEMIN_BUILTIN, Gabarits
 
 ENV_API_TOKEN = "RSSRESUME_API_TOKEN"
 ENV_API_HOST = "RSSRESUME_API_HOST"
@@ -115,7 +116,9 @@ class ApplicationApi:
         # Sans planning donné, celui qu'aurait le travailleur sans aucune variable : l'API
         # n'annonce jamais une heure que le passage ne tiendrait pas.
         passage = passage or DailySchedule(parse_schedule(None), load_timezone(None))
-        self.routes: list[Route] = [route(annuaire, sorties, passage) for route in ROUTES]
+        catalogue = annuaire.catalogue()
+        gabarits = Gabarits.depuis_fichier(CHEMIN_BUILTIN, None if catalogue.ouvert else catalogue)
+        self.routes: list[Route] = [route(annuaire, sorties, passage, gabarits) for route in ROUTES]
 
     @classmethod
     def from_env(cls) -> "ApplicationApi":

@@ -173,3 +173,14 @@ sont facultatifs ; s'ils sont présents, le site les relaie.
 
 Le site relaie `Range` tel quel et recopie statut et en-têtes : sans `206`, un lecteur
 `<audio>` ne peut pas avancer dans un fichier qu'il n'a pas fini de télécharger.
+
+### `GET /api/v1/gabarits`
+
+→ `200`, les gabarits métier disponibles, triés par identifiant :
+
+```json
+[{"metier":"cto","libelle":"CTO, direction technique","profil":"…","securite":"decideur","axes":[…],"categories":[…]}]
+```
+
+Chaque gabarit est un document de départ. Il peut être affiché puis modifié librement avant
+création du profil ; l’identifiant `metier` n’est pas stocké avec le profil.

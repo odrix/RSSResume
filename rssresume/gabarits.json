@@ -1,0 +1,119 @@
+{
+  "cto": {
+    "libelle": "CTO, direction technique",
+    "profil": "Direction technique d'une organisation qui conçoit et exploite des logiciels. Veille sur les décisions d'architecture, les changements de plate-forme, la cybersécurité, la réglementation, les équipes techniques, les coûts d'exploitation et les ruptures de modèles qui obligent à migrer.",
+    "stack": [],
+    "securite": "decideur",
+    "axes": [
+      {"slug": "architecture", "libelle": "Architecture", "description": "architecture logicielle, plate-formes, cloud et décisions techniques structurantes"},
+      {"slug": "cyber", "libelle": "Cybersécurité", "description": "menaces, vulnérabilités, incidents et risques sur les systèmes exploités"},
+      {"slug": "organisation", "libelle": "Organisation", "description": "management technique, recrutement, conduite du changement et organisation des équipes"},
+      {"slug": "strategie", "libelle": "Stratégie", "description": "marché, budgets, investissements, partenaires et évolutions du SI"}
+    ],
+    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité", "Réglementaire"]
+  },
+  "developpeur": {
+    "libelle": "Développeur",
+    "profil": "Développeur qui conçoit, teste et maintient des logiciels. Veille sur les langages, frameworks, outils, pratiques d'ingénierie, qualité du code, sécurité des dépendances, plateformes de livraison et changements de compatibilité.",
+    "stack": [],
+    "securite": "exploitant",
+    "axes": [
+      {"slug": "langages", "libelle": "Langages", "description": "langages, bibliothèques, frameworks et évolutions de compatibilité"},
+      {"slug": "architecture", "libelle": "Architecture", "description": "conception logicielle, API, données, performance et fiabilité"},
+      {"slug": "qualite", "libelle": "Qualité", "description": "tests, revue de code, automatisation, dette technique et pratiques d'ingénierie"},
+      {"slug": "livraison", "libelle": "Livraison", "description": "outillage, intégration continue, déploiement, conteneurs et exploitation"}
+    ],
+    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "11 - Qualite logicielle et tests"]
+  },
+  "ops": {
+    "libelle": "Ops, SRE, exploitation",
+    "profil": "Professionnel de l'exploitation, de la fiabilité ou de la production des systèmes. Veille sur les incidents, la disponibilité, l'observabilité, les plateformes cloud, la capacité, la sécurité opérationnelle et les ruptures de support.",
+    "stack": [],
+    "securite": "exploitant",
+    "axes": [
+      {"slug": "fiabilite", "libelle": "Fiabilité", "description": "disponibilité, incidents, résilience et pratiques SRE"},
+      {"slug": "plateformes", "libelle": "Plateformes", "description": "cloud, serveurs, conteneurs, réseaux et systèmes d'exploitation"},
+      {"slug": "observabilite", "libelle": "Observabilité", "description": "supervision, journaux, métriques, alertes et diagnostic"},
+      {"slug": "cyber", "libelle": "Cybersécurité opérationnelle", "description": "vulnérabilités, durcissement, correctifs et incidents à exploiter"}
+    ],
+    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité"]
+  },
+  "dsi": {
+    "libelle": "DSI, pilotage du SI",
+    "profil": "Responsable du pilotage d'un système d'information ou d'une direction informatique. Veille sur la stratégie informatique, les budgets, la gouvernance, les fournisseurs, la sécurité, la réglementation, la transformation du SI et la gestion des risques.",
+    "stack": [],
+    "securite": "decideur",
+    "axes": [
+      {"slug": "strategie", "libelle": "Stratégie du SI", "description": "plans informatiques, gouvernance, investissements et transformation"},
+      {"slug": "budget", "libelle": "Budget", "description": "coûts, licences, fournisseurs, arbitrages et optimisation du SI"},
+      {"slug": "risques", "libelle": "Risques", "description": "cybersécurité, continuité, conformité et pilotage des risques"},
+      {"slug": "organisation", "libelle": "Organisation", "description": "équipes SI, compétences, conduite du changement et partenariats"}
+    ],
+    "categories": ["15 - Pilotage DSI", "Réglementaire", "Cybersécurité"]
+  },
+  "rssi": {
+    "libelle": "RSSI",
+    "profil": "Responsable de la sécurité des systèmes d'information. Veille sur les vulnérabilités, les attaques, les incidents, les réglementations, les mécanismes de défense, les risques fournisseurs et les mesures correctrices applicables.",
+    "stack": [],
+    "securite": "exploitant",
+    "axes": [
+      {"slug": "menaces", "libelle": "Menaces", "description": "attaques, campagnes, acteurs malveillants et incidents majeurs"},
+      {"slug": "vulnerabilites", "libelle": "Vulnérabilités", "description": "failles, exploitabilité, correctifs et priorisation des remédiations"},
+      {"slug": "conformite", "libelle": "Conformité", "description": "réglementation, référentiels, obligations et audits"},
+      {"slug": "defense", "libelle": "Défense", "description": "détection, réponse aux incidents, durcissement et chaîne d'approvisionnement"}
+    ],
+    "categories": ["1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité", "Réglementaire"]
+  },
+  "chef-de-projet": {
+    "libelle": "Chef de projet",
+    "profil": "Chef de projet chargé de planifier, coordonner et livrer des initiatives. Veille sur les méthodes agiles, les risques, les dépendances, les capacités d'équipe, les outils de pilotage et les pratiques de livraison.",
+    "stack": [],
+    "securite": "curieux",
+    "axes": [
+      {"slug": "pilotage", "libelle": "Pilotage", "description": "planification, délais, budgets, risques et dépendances"},
+      {"slug": "agile", "libelle": "Agilité", "description": "Scrum, Kanban, flux, cérémonies et amélioration continue"},
+      {"slug": "equipes", "libelle": "Équipes", "description": "capacités, coopération, communication et organisation du travail"},
+      {"slug": "livraison", "libelle": "Livraison", "description": "jalons, priorités, qualité, déploiement et décision de sortie"}
+    ],
+    "categories": ["14 - Gestion de projet et agilite", "12 - Gestion de produit"]
+  },
+  "qa": {
+    "libelle": "QA, assurance qualité",
+    "profil": "Professionnel de l'assurance qualité logiciel ou des tests. Veille sur les pratiques de test, l'automatisation, les outils, la fiabilité, l'accessibilité, la qualité des livraisons et les retours d'expérience sur l'ingénierie logicielle.",
+    "stack": [],
+    "securite": "exploitant",
+    "axes": [
+      {"slug": "tests", "libelle": "Tests", "description": "stratégies, test exploratoire, automatisation et cadres de test"},
+      {"slug": "fiabilite", "libelle": "Fiabilité", "description": "détection des défauts, qualité, métriques et stabilisation"},
+      {"slug": "livraison", "libelle": "Livraison", "description": "intégration continue, déploiement, environnements et automatisation"},
+      {"slug": "experience", "libelle": "Expérience", "description": "accessibilité, ergonomie, usages et qualité perçue"}
+    ],
+    "categories": ["11 - Qualite logicielle et tests", "Tech generaliste"]
+  },
+  "po-pm": {
+    "libelle": "Product Owner, Product Manager",
+    "profil": "Responsable produit qui découvre les besoins, priorise un portefeuille et accompagne sa livraison. Veille sur les usages, la recherche utilisateur, les pratiques produit, la conception d'interfaces, les méthodes d'organisation et les décisions de stratégie produit.",
+    "stack": [],
+    "securite": "curieux",
+    "axes": [
+      {"slug": "strategie", "libelle": "Stratégie produit", "description": "vision, marchés, priorisation, portefeuille et décisions produit"},
+      {"slug": "usages", "libelle": "Usages", "description": "besoins utilisateurs, recherche, mesure, adoption et expérience"},
+      {"slug": "decouverte", "libelle": "Découverte", "description": "experimentations, validation, cadrage et co-construction"},
+      {"slug": "livraison", "libelle": "Livraison produit", "description": "roadmap, organisation des équipes, lancement et amélioration continue"}
+    ],
+    "categories": ["12 - Gestion de produit", "13 - Design et UX", "14 - Gestion de projet et agilite"]
+  },
+  "designer": {
+    "libelle": "Designer UX, UI",
+    "profil": "Designer UX ou UI qui conçoit des interfaces, des parcours et des expériences. Veille sur la recherche utilisateur, l'accessibilité, les systèmes de design, l'ergonomie, les méthodes de conception et les outils du métier.",
+    "stack": [],
+    "securite": "curieux",
+    "axes": [
+      {"slug": "recherche", "libelle": "Recherche utilisateur", "description": "besoins, tests utilisateurs, ateliers, observation et apprentissage"},
+      {"slug": "interfaces", "libelle": "Interfaces", "description": "interface, interaction, visualisation et systèmes de design"},
+      {"slug": "accessibilite", "libelle": "Accessibilité", "description": "normes, usages handicapants, audits et conception inclusive"},
+      {"slug": "atelier", "libelle": "Méthodes", "description": "ateliers, prototypage, critique de conception et co-construction"}
+    ],
+    "categories": ["13 - Design et UX", "12 - Gestion de produit"]
+  }
+}

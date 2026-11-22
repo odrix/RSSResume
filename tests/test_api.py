@@ -628,5 +628,19 @@ class PassageTests(ServeurTestCase):
                 passage_de(env)
 
 
+class GabaritsApiTests(ServeurTestCase):
+    """`GET /api/v1/gabarits` expose les neuf professions au site."""
+
+    def test_the_templates_endpoint_returns_the_profession_templates(self):
+        statut, gabarits = self.json("GET", "/api/v1/gabarits")
+
+        self.assertEqual(200, statut)
+        metiers = {gabarit["metier"] for gabarit in gabarits}
+        self.assertEqual(
+            {"cto", "developpeur", "ops", "dsi", "rssi", "chef-de-projet", "qa", "po-pm", "designer"},
+            metiers,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
