@@ -43,6 +43,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
   "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
   "email": ["moi@example.com"],
   "prenom": "Adrien",
+  "securite": "exploitant",
   "modifie_le": "2026-11-19T07:00:00+00:00"
 }
 ```
@@ -54,6 +55,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
 | `stack`  | liste de `"Nom"` ou `{"nom", "alias": [texte]}` | peut être vide                             |
 | `email`  | liste d'adresses                                | toujours une **liste** en sortie ; vide = aucun envoi |
 | `prenom` | texte                                           | `""` quand absent                          |
+| `securite` | `"exploitant"`, `"decideur"` ou `"curieux"`   | `"exploitant"` quand absent ; toute autre valeur → `422` |
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
 document stocké avait une adresse seule ou pas de prénom.

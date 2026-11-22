@@ -18,7 +18,14 @@ import zoneinfo
 
 from rssresume.certfr.stack import Stack
 from rssresume.models import SelectionRule
-from rssresume.profil import CLE_EMAIL, ENV_PROFIL_FILE, Lecteur, load_profil
+from rssresume.profil import (
+    CLE_EMAIL,
+    ENV_PROFIL_FILE,
+    SECURITE_PAR_DEFAUT,
+    Lecteur,
+    Securite,
+    load_profil,
+)
 from rssresume.tools.text import casefold_ascii, words
 
 #: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
@@ -234,6 +241,10 @@ class AppConfig:
     #: d'avis d'un matin. Vide par défaut — c'est l'état de qui vient d'installer l'outil,
     #: et la phrase du digest le dit.
     stack: Stack = dataclasses.field(default_factory=Stack)
+    #: Le régime de sécurité, déclaré à la clé `securite` du même document : ce que la
+    #: personne a besoin d'entendre d'une CVE. Il module le détail que la stack gradue,
+    #: et voyage donc avec elle. Absent, le régime d'avant la clé — rien ne change.
+    securite: Securite = SECURITE_PAR_DEFAUT
     #: Le prénom de la personne, déclaré dans le même document que le profil : c'est avec
     #: lui que l'audio de journée ouvre. Facultatif — sans lui, le montage ouvre sans
     #: nommer personne, et rien d'autre ne change.
@@ -286,6 +297,7 @@ class AppConfig:
             timezone=load_timezone(_env(ENV_TIMEZONE)),
             profil=personne.texte,
             stack=personne.stack,
+            securite=personne.securite,
             prenom=personne.prenom,
             audio_mode=load_audio_mode(_env(ENV_AUDIO_MODE)),
             debug=(_env(ENV_DEBUG, "false") or "").lower() == "true",
@@ -318,7 +330,8 @@ class AppConfig:
     def pour(self, lecteur: Lecteur) -> "AppConfig":
         """La configuration de l'installation, appliquée à une personne.
 
-        Ce qui est personnel — profil, stack, prénom, destinataires — vient du document
+        Ce qui est personnel — profil, stack, régime de sécurité (`securite`), prénom,
+        destinataires — vient du document
         de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
         `{output}/{id}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
         `--journal`) suit sans savoir qu'il y a plusieurs personnes. L'identifiant et non
@@ -336,6 +349,7 @@ class AppConfig:
             output_dir=self.output_dir / lecteur.id,
             profil=personne.texte,
             stack=personne.stack,
+            securite=personne.securite,
             prenom=personne.prenom,
             smtp_to=list(personne.emails),
         )

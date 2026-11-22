@@ -26,6 +26,7 @@ from rssresume.profil import (
     ENV_PROFILES_DB,
     ENV_PROFILES_DIR,
     Annuaire,
+    Securite,
     id_valide,
     nouvel_id,
 )
@@ -57,11 +58,23 @@ class AnnuaireSqliteTests(Base):
         relue = self.annuaire.fiche("bea")
         self.assertEqual(
             {"id": fiche.id, "username": "bea", "profil": "Veille", "stack": ["Traefik"],
-             "email": ["b@example.com"], "prenom": "Bea", "modifie_le": relue.modifie_le},
+             "email": ["b@example.com"], "prenom": "Bea", "securite": "exploitant",
+             "modifie_le": relue.modifie_le},
             relue.complet_json(),
         )
         self.assertEqual("Veille", self.annuaire.profil("bea").texte)
         self.assertEqual(["bea"], self.annuaire.usernames())
+
+    def test_the_normalised_document_keeps_the_security_regime(self):
+        """Gardée comme le prénom : une clé retirée à l'écriture serait perdue au matin."""
+        declare = self.annuaire.creer("bea", {"profil": "B", "securite": "decideur"})
+        absent = self.annuaire.creer("zoe", {"profil": "Z"})
+
+        self.assertEqual("decideur", declare.document["securite"])
+        # Écrite même absente de la saisie : le document stocké dit ce qui sera servi.
+        self.assertEqual("exploitant", absent.document["securite"])
+        self.assertEqual(Securite.DECIDEUR, self.annuaire.profil("bea").securite)
+        self.assertEqual("decideur", self.annuaire.fiche("bea").complet_json()["securite"])
 
     def test_the_names_are_sorted(self):
         for nom in ("zoe", "adrien", "bea"):

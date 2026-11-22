@@ -22,6 +22,7 @@ import urllib.request
 
 from rssresume import runlog
 from rssresume.llm import processing, prompts, providers
+from rssresume.profil import SECURITE_PAR_DEFAUT, Securite
 from rssresume.llm.providers import (
     ARTICLE,
     DIGEST,
@@ -149,18 +150,19 @@ class LLMProvider:
         language: str = "fr",
         profil: str | None = None,
         stack_declaree: bool = False,
+        securite: Securite = SECURITE_PAR_DEFAUT,
     ) -> str:
         """Le texte du digest d'une catégorie, celui qui part en synthèse vocale.
 
         `stack_declaree` dit si l'on sait ce que la personne exploite, et rien d'autre :
         c'est ce qui décide du détail donné sur les versions d'une CVE. La liste elle-même
         ne monte pas jusqu'ici — elle a déjà servi, article par article, à poser le champ
-        « stack » du payload.
+        « stack » du payload. `securite` dit qui écoute : il module ce même détail.
         """
         return self._chat(
             DIGEST,
             prompts.digest_system(profil),
-            prompts.digest_user(category, articles, language, stack_declaree),
+            prompts.digest_user(category, articles, language, stack_declaree, securite),
         )
 
     def write_ephemeride(self, day) -> str:
@@ -182,6 +184,7 @@ class LLMProvider:
         profil: str | None = None,
         prenom: str = "",
         stack_declaree: bool = False,
+        securite: Securite = SECURITE_PAR_DEFAUT,
     ) -> str:
         """Le texte de l'audio unique d'une journée, celui qui part en synthèse vocale.
 
@@ -193,7 +196,9 @@ class LLMProvider:
         return self._chat(
             MONTAGE,
             prompts.montage_system(profil, prenom),
-            prompts.montage_user(sujets, jour, constats, muettes, language, stack_declaree),
+            prompts.montage_user(
+                sujets, jour, constats, muettes, language, stack_declaree, securite
+            ),
         )
 
     def speak(self, text: str) -> bytes:

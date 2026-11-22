@@ -587,7 +587,8 @@ RSSRESUME_PROFILE_FILE=input/moi/profile.json
   "profil": "CTO d'un SaaS B2B…\n\nAxes de veille pertinents :\n- reglementaire : …",
   "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
   "email": "moi@example.com",
-  "prenom": "Adrien"
+  "prenom": "Adrien",
+  "securite": "exploitant"
 }
 ```
 
@@ -596,6 +597,10 @@ Seule `profil` est exigée. `stack` absente, aucun avis n'est apparié et le dig
 `prenom` ne sert qu'à la salutation de l'audio en mode `global` : absente, le montage
 ouvre sans nommer personne. Remplie avec autre chose qu'un texte, elle fait échouer le
 lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
+`securite` règle ce que l'audio dit des vulnérabilités : `exploitant` (le défaut) donne les
+versions, graduées sur la stack ; `decideur` une phrase par faille sans versions, sauf sur un
+composant de la stack ; `curieux` seulement les failles déjà exploitées ou qui font
+l'actualité. Une autre valeur fait échouer le lancement.
 `id` est l'identifiant stable du profil, un UUID en minuscules (`5f0c2d8e-…`) : il nomme le
 répertoire de sortie. Absent, il est généré et écrit dans le fichier au premier passage ;
 présent mais mal formé, il fait échouer ce profil.
@@ -736,9 +741,9 @@ Toutes les routes exigent le jeton (401 sinon). Réponses en JSON UTF-8 ; une er
 | Méthode et route | Réponse |
 | --- | --- |
 | `GET /api/v1/profils` | `[{"id","username","prenom","email","modifie_le"}]`, trié par nom |
-| `POST /api/v1/profils` | corps `{"username","profil","stack","email","prenom"}` → 201 profil complet, id généré ; 409 nom pris ; 422 invalide |
-| `GET /api/v1/profils/{username}` | `{"id","username","profil","stack","email","prenom","modifie_le"}` ; 404 |
-| `PUT /api/v1/profils/{username}` | corps `{"profil","stack","email","prenom"}` → 200 ; 404 ; 422 (id et nom ne changent pas) |
+| `POST /api/v1/profils` | corps `{"username","profil","stack","email","prenom","securite"}` → 201 profil complet, id généré ; 409 nom pris ; 422 invalide |
+| `GET /api/v1/profils/{username}` | `{"id","username","profil","stack","email","prenom","securite","modifie_le"}` ; 404 |
+| `PUT /api/v1/profils/{username}` | corps `{"profil","stack","email","prenom","securite"}` → 200 ; 404 ; 422 (id et nom ne changent pas) |
 | `DELETE /api/v1/profils/{username}` | 204 ; 404 — les journées restent sur le disque |
 | `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord |
 | `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |

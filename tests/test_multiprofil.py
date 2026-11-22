@@ -33,6 +33,7 @@ from rssresume.profil import (
     AnnuaireVide,
     Lecteur,
     Profil,
+    Securite,
     charger_profil,
     id_valide,
     lister_profils,
@@ -300,6 +301,15 @@ class ConfigPourTests(unittest.TestCase):
             self.assertEqual("Profil B", config.profil)
             self.assertEqual(["b@example.com"], config.smtp_to)
             self.assertEqual("Bea", config.prenom)
+
+    def test_pour_carries_the_security_regime_of_the_document(self):
+        """Personnel comme la stack, donc lu dans le document de chacun, pas dans l'installation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installation = make_config(tmpdir)
+            bea = Lecteur("bea", profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B", "securite": "curieux"}))
+
+            self.assertIs(Securite.EXPLOITANT, installation.securite)
+            self.assertIs(Securite.CURIEUX, installation.pour(bea).securite)
 
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -11,6 +11,7 @@ from rssresume.certfr import Stack
 from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT
 from rssresume.llm import LLMProvider
 from rssresume.models import Article, Note
+from rssresume.profil import SECURITE_PAR_DEFAUT, Securite
 from rssresume.tools import console
 from rssresume.tools.text import no_article_message, truncate_sentences
 
@@ -24,7 +25,8 @@ class SummaryGenerator:
     def __init__(self, provider: LLMProvider | None = None, language: str = "fr",
                  profil: str | None = None,
                  char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT,
-                 stack: Stack | None = None):
+                 stack: Stack | None = None,
+                 securite: Securite = SECURITE_PAR_DEFAUT):
         self._provider = provider
         self._language = language
         self._profil = profil
@@ -36,6 +38,9 @@ class SummaryGenerator:
         #: raconté dans tous les cas — elle règle seulement le détail donné sur les
         #: versions d'une CVE. Vide, le résumé reste au régime d'avant : tout, pour toutes.
         self._stack = stack if stack is not None else Stack()
+        #: Le régime de sécurité du document : la stack dit ce qui tourne, lui dit qui
+        #: écoute, et les deux ensemble règlent ce qu'une CVE garde de ses versions.
+        self._securite = securite
 
     def summarize(
         self, category: str, articles: list[Article], notes: dict[str, Note] | None = None
@@ -61,7 +66,14 @@ class SummaryGenerator:
             + (f", {tronques} tronqué(s) à {self._char_limit})" if tronques else ")")
         )
         return self._provider.write_digest(
-            category, payload, self._language, self._profil, not self._stack.vide
+            category,
+            payload,
+            self._language,
+            self._profil,
+            not self._stack.vide,
+            # Par mot-clé : ce qui précède est le contrat historique, que les doublures
+            # des tests relisent par position.
+            securite=self._securite,
         )
 
     def _to_payload(self, article: Article, note: Note | None) -> dict:

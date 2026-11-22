@@ -47,6 +47,7 @@ from rssresume.models import (
     groupees_par_thematique,
 )
 from rssresume.newsletter import date_longue
+from rssresume.profil import SECURITE_PAR_DEFAUT, Securite
 from rssresume.tools import console
 from rssresume.tools.text import truncate_sentences
 
@@ -67,6 +68,7 @@ class MontageService:
         prenom: str = "",
         char_limit: int = DEFAULT_ARTICLE_CHAR_LIMIT,
         stack: Stack | None = None,
+        securite: Securite = SECURITE_PAR_DEFAUT,
     ):
         self._provider = provider
         self._language = language
@@ -80,6 +82,9 @@ class MontageService:
         #: Les composants exploités, pour la seule règle qui en dépend : le détail donné
         #: sur les versions d'une CVE selon qu'elle touche ou non ce qui tourne chez soi.
         self._stack = stack if stack is not None else Stack()
+        #: Le régime de sécurité du document, qui module ce même détail : le même que
+        #: celui du résumé de catégorie, pour que l'œil et l'oreille disent pareil.
+        self._securite = securite
 
     def ecrire(
         self, ephemeride: Ephemeride | None, digests: list[CategoryDigest]
@@ -125,6 +130,7 @@ class MontageService:
                 self._profil,
                 self._prenom,
                 not self._stack.vide,
+                securite=self._securite,
             )
         except LLMError as exc:
             # La journée est déjà payée : scoring, résumés, tags. La perdre parce que le

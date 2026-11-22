@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 
-from rssresume.profil import load_profil
+from rssresume.profil import SECURITE_PAR_DEFAUT, Securite, load_profil
 
 #: Taille de lot pour la notation : au-delà, le modèle survole et la fin du lot se dégrade.
 #: À changer en même temps que le `max_tokens` de l'action `scoring`, qui la dimensionne.
@@ -341,10 +341,109 @@ CVE_STACK_INSTRUCTION = (
 )
 
 
-def cve_instruction(stack_declaree: bool) -> str:
-    """La règle des vulnérabilités, graduée si l'on sait ce que la personne exploite."""
-    detail = CVE_STACK_INSTRUCTION if stack_declaree else CVE_VERSIONS_INSTRUCTION
-    return f"{CVE_INSTRUCTION} {detail}"
+#: Le régime `decideur` sans stack déclarée. Sans stack, l'exploitant reçoit tout — faute
+#: de savoir ce qui tourne chez lui, on ne décide pas à sa place ; mais qui ne patche rien
+#: n'a aucune machine à comparer à une plage, et le détail complet lui échoyait justement
+#: parce qu'il n'exploite rien.
+CVE_SANS_VERSIONS_INSTRUCTION = (
+    "Rien ne dit ici ce que la personne exploite, et ce n'est pas elle qui applique les "
+    "correctifs : elle a besoin de savoir qu'une faille existe et ce qu'elle pèse, pas de "
+    "vérifier une machine. Pour chaque vulnérabilité, UNE phrase : l'identifiant, le produit, ce "
+    "que la faille permet, et qu'elle soit déjà exploitée si l'avis le dit. AUCUN numéro de "
+    "version, aucune plage, aucune branche, aucune version corrigée : ces précisions servent à "
+    "qui administre le produit, et récitées à voix haute elles couvrent ce qu'elle a besoin "
+    "d'entendre."
+)
+
+#: Le régime `curieux` remplace la règle commune en entier, et non seulement son détail :
+#: « une vulnérabilité = un sujet » et « ce qu'il y a à faire » supposent qu'on raconte
+#: toutes les failles, et c'est précisément ce qu'on ne fait plus pour qui suit la
+#: sécurité de loin.
+CVE_CURIEUX_INSTRUCTION = (
+    "Les vulnérabilités ne se racontent que lorsqu'elles sortent de l'ordinaire : la personne "
+    "suit la sécurité de loin, elle n'administre rien. Ne garde que les failles que l'avis ou "
+    "l'article dit déjà exploitées, ou d'une ampleur qui fait l'actualité — un produit que tout "
+    "le monde utilise, une attaque en cours, un incident majeur. Pour chacune, UNE phrase : "
+    "l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit dans l'avis, ce "
+    "que la faille permet, et qu'elle est exploitée si c'est le cas. Aucun numéro de version, "
+    "aucune plage, aucune version corrigée. Deux failles retenues ne se fondent jamais dans la "
+    "même phrase. Les autres ne se racontent pas : au plus une incise qui les compte sans les "
+    "nommer — « et deux autres failles corrigées, sans exploitation connue ». Ce qui n'est pas "
+    "dans l'avis ne se dit pas : une exploitation supposée n'est pas une exploitation."
+)
+
+#: Une stack déclarée par un curieux reste une déclaration : ce qui tourne chez lui ne
+#: se tait pas parce qu'aucune exploitation n'est connue.
+CVE_CURIEUX_STACK_INSTRUCTION = (
+    "Une faille dont l'article porte le champ « stack » se dit toujours, en une phrase, même "
+    "sans exploitation connue : elle touche ce qui tourne chez elle."
+)
+
+
+class RegimeCve:
+    """La consigne des vulnérabilités pour un régime de sécurité donné.
+
+    Une classe par régime plutôt qu'une table de textes : deux régimes ne diffèrent que
+    par le détail ajouté à la règle commune, le troisième la remplace entière, et c'est
+    la redéfinition d'une méthode qui dit lequel fait quoi. Le choix du régime est fait
+    par le code, à partir du document, comme `stack_declaree` — jamais par le modèle.
+    """
+
+    #: Renseigné par chaque sous-classe : le régime du document qu'elle sert.
+    securite: Securite
+
+    def __init__(self, stack_declaree: bool):
+        self.stack_declaree = stack_declaree
+
+    def consigne(self) -> str:
+        """La règle commune, puis le détail propre au régime."""
+        return f"{CVE_INSTRUCTION} {self.detail()}"
+
+    def detail(self) -> str:
+        """Ce que le régime dit des versions."""
+        raise NotImplementedError
+
+    @staticmethod
+    def pour(securite: Securite, stack_declaree: bool) -> "RegimeCve":
+        """Le régime qui sert `securite`. Un régime sans classe est un oubli : il lève."""
+        for regime in (RegimeExploitant, RegimeDecideur, RegimeCurieux):
+            if regime.securite is securite:
+                return regime(stack_declaree)
+        raise ValueError(f"Aucune consigne pour le régime de sécurité « {securite} ».")
+
+
+class RegimeExploitant(RegimeCve):
+    """Le régime d'avant la clé, à l'octet près : tout, ou gradué sur la stack."""
+
+    securite = Securite.EXPLOITANT
+
+    def detail(self) -> str:
+        return CVE_STACK_INSTRUCTION if self.stack_declaree else CVE_VERSIONS_INSTRUCTION
+
+
+class RegimeDecideur(RegimeCve):
+    """Sans versions, sauf sur un composant de sa stack : là, elle a une machine à vérifier."""
+
+    securite = Securite.DECIDEUR
+
+    def detail(self) -> str:
+        return CVE_STACK_INSTRUCTION if self.stack_declaree else CVE_SANS_VERSIONS_INSTRUCTION
+
+
+class RegimeCurieux(RegimeCve):
+    """Seulement l'exceptionnel — et ce qui touche sa stack, s'il en a déclaré une."""
+
+    securite = Securite.CURIEUX
+
+    def consigne(self) -> str:
+        if self.stack_declaree:
+            return f"{CVE_CURIEUX_INSTRUCTION} {CVE_CURIEUX_STACK_INSTRUCTION}"
+        return CVE_CURIEUX_INSTRUCTION
+
+
+def cve_instruction(stack_declaree: bool, securite: Securite = SECURITE_PAR_DEFAUT) -> str:
+    """La règle des vulnérabilités, selon le régime et ce que la personne exploite."""
+    return RegimeCve.pour(securite, stack_declaree).consigne()
 
 
 #: Une catégorie est un fichier audio à elle seule, écouté d'affilée : sans une phrase
@@ -375,14 +474,19 @@ CLOSING_INSTRUCTION = (
 
 
 def digest_user(
-    category: str, articles: list[dict], language: str, stack_declaree: bool = False
+    category: str,
+    articles: list[dict],
+    language: str,
+    stack_declaree: bool = False,
+    securite: Securite = SECURITE_PAR_DEFAUT,
 ) -> str:
     """Message utilisateur du digest : les consignes de rédaction, puis les articles.
 
     `stack_declaree` ne se déduit pas des articles : une stack déclarée qu'aucun avis du
     jour ne touche doit quand même faire tomber toutes les CVE au régime allégé. La
     déduire de la présence du champ « stack » rendrait le détail complet à tout le monde
-    précisément les jours où rien ne concerne l'auditeur.
+    précisément les jours où rien ne concerne l'auditeur. `securite` vient du document
+    pour la même raison : qui écoute ne se lit pas dans les articles du jour.
     """
     consignes = (
         STYLE_INSTRUCTION,
@@ -393,7 +497,7 @@ def digest_user(
         ORDER_INSTRUCTION,
         MERGE_INSTRUCTION,
         NO_SOURCE_INSTRUCTION,
-        cve_instruction(stack_declaree),
+        cve_instruction(stack_declaree, securite),
         OPENING_INSTRUCTION,
         CLOSING_INSTRUCTION,
     )
@@ -537,6 +641,7 @@ def montage_user(
     muettes: list[str],
     language: str,
     stack_declaree: bool = False,
+    securite: Securite = SECURITE_PAR_DEFAUT,
 ) -> str:
     """Message utilisateur du montage : les consignes, puis la journée entière.
 
@@ -553,7 +658,7 @@ def montage_user(
         SCORE_DEPTH_INSTRUCTION,
         ANGLE_INSTRUCTION,
         MERGE_INSTRUCTION,
-        cve_instruction(stack_declaree),
+        cve_instruction(stack_declaree, securite),
         FIDELITY_INSTRUCTION,
         CONSTAT_INSTRUCTION,
         MUTE_INSTRUCTION,

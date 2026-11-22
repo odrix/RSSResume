@@ -30,6 +30,8 @@ from rssresume.profil import (
     CLE_ID,
     CLE_PRENOM,
     CLE_PROFIL,
+    CLE_SECURITE,
+    SECURITE_PAR_DEFAUT,
     Annuaire,
     Profil,
     id_valide,
@@ -74,7 +76,7 @@ class ProfilDejaPris(ValueError):
 class Fiche:
     """Un profil de la base : le document, et ce que la base sait de lui.
 
-    Le document est gardé sous sa forme normalisée — les quatre clés du format, rien
+    Le document est gardé sous sa forme normalisée — les cinq clés du format, rien
     d'autre — pour que ce que l'API rend soit exactement ce que la tournée lit.
     """
 
@@ -111,6 +113,9 @@ class Fiche:
             "stack": list(self.document.get(CLE_STACK, [])),
             "email": list(self.document.get(CLE_EMAIL, [])),
             "prenom": self.document.get(CLE_PRENOM, ""),
+            # Un document écrit avant la clé ne la porte pas : il est servi au défaut, et
+            # c'est le défaut que le site doit montrer.
+            "securite": self.document.get(CLE_SECURITE, SECURITE_PAR_DEFAUT.value),
             "modifie_le": self.modifie_le,
         }
 
@@ -125,7 +130,11 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
     """
     if not isinstance(saisie, dict):
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
-    brut = {cle: saisie[cle] for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM) if cle in saisie}
+    brut = {
+        cle: saisie[cle]
+        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE)
+        if cle in saisie
+    }
     # Un formulaire vidé envoie une liste vide là où un fichier omettait la clé : c'est
     # le même « aucun destinataire », et le document écrit omet la clé comme le fichier.
     if brut.get(CLE_EMAIL) == []:
@@ -138,6 +147,7 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
     if profil.emails:
         document[CLE_EMAIL] = list(profil.emails)
     document[CLE_PRENOM] = profil.prenom
+    document[CLE_SECURITE] = profil.securite.value
     return document
 
 
