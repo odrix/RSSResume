@@ -133,4 +133,25 @@ describe('ClientApiResume', () => {
 		const absent = await erreurDe(api.audio('moi', '2026-11-17', 'absent.mp3'));
 		expect(absent.introuvable).toBe(true);
 	});
+
+	it('lireJournee et lirePassage appellent les bons chemins', async () => {
+		const { api, fausseApi } = monter();
+		await api.creerProfil('moi', SAISIE);
+		fausseApi.ajouterContenu('moi', '2026-11-21', { categories: [] });
+		fausseApi.requetes.length = 0;
+
+		const journee = await api.lireJournee('moi', '2026-11-21');
+		expect(journee).toMatchObject({ date: '2026-11-21', audios: [], categories: [], montage: null });
+		const passage = await api.lirePassage();
+		expect(passage).toMatchObject({ heure: '04:00', fuseau: 'Europe/Paris' });
+		await erreurDe(api.lireJournee('moi', '../x'));
+
+		const [lecture, annonce, forgee] = fausseApi.requetes;
+		expect(lecture.method).toBe('GET');
+		expect(lecture.url).toBe('http://api.test/api/v1/profils/moi/journees/2026-11-21');
+		expect(lecture.headers.get('authorization')).toBe(`Bearer ${JETON}`);
+		expect(annonce.url).toBe('http://api.test/api/v1/passage');
+		expect(forgee.url).toBe('http://api.test/api/v1/profils/moi/journees/..%2Fx');
+		expect((await erreurDe(api.lireJournee('moi', '2026-11-20'))).introuvable).toBe(true);
+	});
 });
