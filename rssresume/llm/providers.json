@@ -122,6 +122,11 @@
       },
       "gpt-4o-mini-tts": {
         "input": 0.6
+      },
+      "gpt-5.6-luna": {
+        "_pourquoi": "Tarif standard publie par OpenAI pour le contexte court, raisonnement inclus dans la sortie : https://developers.openai.com/api/docs/pricing, releve le 2026-11-22.",
+        "input": 0.2,
+        "output": 1.2
       }
     }
   },

@@ -27,7 +27,7 @@ class TarifTests(unittest.TestCase):
         Le facturer au tarif de `gpt-5` rendrait un coût faux et vraisemblable, que
         rien ne signalerait — pire qu'un coût absent.
         """
-        for modele in ("gpt-5.6-luna", "gpt-5-turbo-inconnu", "gpt-4o-maison"):
+        for modele in ("gpt-5-turbo-inconnu", "gpt-4o-maison"):
             self.assertIsNone(pricing.tarif(modele), modele)
 
     def test_every_provider_brings_its_own_grid(self):
@@ -43,6 +43,9 @@ class TarifTests(unittest.TestCase):
         self.assertIsNone(pricing.tarif("modele-jamais-vu"))
         self.assertIsNone(pricing.tarif(""))
         self.assertIsNone(pricing.tarif(None))
+
+    def test_luna_uses_its_published_standard_tarif(self):
+        self.assertEqual({"input": 0.20, "output": 1.20}, pricing.tarif("gpt-5.6-luna"))
 
 
 class CostTests(unittest.TestCase):
