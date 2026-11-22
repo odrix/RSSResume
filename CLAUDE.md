@@ -68,9 +68,12 @@ inactif tant que ce n'est pas fait.
 
 ## Backlog et branches
 
-- [backlog-todo.md](backlog-todo.md) est le **seul** backlog ; un item traité part dans
-  [backlog-done.md](backlog-done.md) avec sa date. Une idée retenue en cours de route y entre
-  avec le prochain identifiant libre, plutôt que dans un nouveau fichier de notes.
+- [backlog/](backlog/README.md) est le **seul** backlog, **un fichier par item** : `todo/BL-NNN.md`
+  puis, une fois traité, `done/BL-NNN.md` avec sa date. Ne jamais regrouper les items dans un
+  fichier commun : deux branches parallèles s'y marcheraient dessus, et GitHub n'applique pas
+  `merge=union`. Une idée retenue en cours de route y entre avec le prochain identifiant libre
+  (le plus grand `BL-NNN` de `todo/` et `done/`, plus un), plutôt que dans un fichier de notes.
+- `/backlog-raf` liste les items à faire par priorité, avec leur nombre.
 - `/backlog-pop [BL-NNN] [N]` traite les items : plan validé, un worktree par item, branche
   `backlog/BL-NNN-…`, PR. Le travail se fait sur une branche avec PR, pas sur `main` ; la CI
   ([tests.yml](.github/workflows/tests.yml)) y lance les deux suites.
