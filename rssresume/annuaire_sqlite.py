@@ -151,6 +151,10 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
     # le même « aucun destinataire », et le document écrit omet la clé comme le fichier.
     if brut.get(CLE_EMAIL) == []:
         del brut[CLE_EMAIL]
+    # Une saisie vide signifie « revenir aux axes historiques », comme email vide
+    # signifie retirer les destinataires : on omet la clé plutôt que d'inventer une liste.
+    if brut.get(CLE_AXES) == []:
+        del brut[CLE_AXES]
     brut[CLE_ID] = id
     profil = profil_depuis_dict(brut, origine)
     if not id_valide(profil.id):
