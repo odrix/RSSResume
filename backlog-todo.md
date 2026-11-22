@@ -16,7 +16,7 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
 
 ## Règles
 
-- **Identifiant** `BL-NNN`, jamais réattribué. Prochain libre : **BL-064**.
+- **Identifiant** `BL-NNN`, jamais réattribué. Prochain libre : **BL-065**.
 - **Priorité** de 1 (la plus urgente) à 5. `/backlog-pop` prend la plus petite, puis
   l'identifiant le plus bas à priorité égale.
 - **Catégorie** = la zone du code touchée. Deux items de catégories différentes peuvent se
