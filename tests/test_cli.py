@@ -24,9 +24,10 @@ from unittest import mock
 
 from rssresume import cli, runlog
 from rssresume.config import AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL
-from rssresume.profil import ENV_PROFIL, ENV_PROFILES_DIR
+from rssresume.profil import ENV_PROFIL, ENV_PROFILES_DIR, AnnuaireDossier
 from rssresume.tools import console
 from tests.support import make_config
+from tests.test_multiprofil import catalogue_public
 
 JOUR = dt.date(2026, 8, 30)
 #: La personne servie par défaut dans ces tests : sans profil déclaré, rien ne tourne.
@@ -205,6 +206,13 @@ class ProfilOptionTests(unittest.TestCase):
     def _dossier(self, racine, *noms):
         return dossier_profils(racine, *noms)
 
+    def _catalogue(self):
+        """Un catalogue pour le dossier : sans lui, la tournée de deux profils refuse de
+        démarrer — ce que ces tests ne jugent pas."""
+        return mock.patch.object(
+            AnnuaireDossier, "catalogue", return_value=catalogue_public("Tech", "News")
+        )
+
     def test_nothing_declared_reads_and_builds_nothing(self):
         """Ni dossier ni document : pas d'action, pas de résumé."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -253,7 +261,8 @@ class ProfilOptionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             env = self._dossier(tmpdir, "adrien", "bea")
 
-            code, _, build = lance(["--dry-run"], tmpdir, env=env)
+            with self._catalogue():
+                code, _, build = lance(["--dry-run"], tmpdir, env=env)
 
             self.assertEqual(0, code)
             configs = [appel.args[0] for appel in build.call_args_list]
@@ -262,11 +271,23 @@ class ProfilOptionTests(unittest.TestCase):
             self.assertEqual(["bea@example.com"], configs[1].smtp_to)
             self.assertEqual("Profil de bea", configs[1].profil)
 
+    def test_a_refused_catalogue_is_a_message_and_exit_code_2_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+
+            code, sortie, build = lance(["--dry-run"], tmpdir, env=env)
+
+            self.assertEqual(2, code)
+            self.assertIn("importer-catalogue", sortie)
+            self.assertNotIn("Traceback", sortie)
+            build.assert_not_called()
+
     def test_the_option_serves_only_that_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             env = self._dossier(tmpdir, "adrien", "bea")
 
-            _, _, build = lance(["--dry-run", "--profil", "bea"], tmpdir, env=env)
+            with self._catalogue():
+                _, _, build = lance(["--dry-run", "--profil", "bea"], tmpdir, env=env)
 
             self.assertEqual(["bea"], [appel.args[0].username for appel in build.call_args_list])
 

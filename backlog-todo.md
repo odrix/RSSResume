@@ -39,29 +39,6 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
 
 ---
 
-### BL-037 — Catalogue des catégories : publiques par métier, privées par propriétaire
-
-- **Catégorie** : pipeline
-- **Priorité** : 1
-- **Description** : aujourd'hui chaque profil reçoit toutes les catégories du FreshRSS partagé, y
-  compris la veille concurrentielle TransfertPro (alertes Google, « Veille marché ») — et l'email
-  en affiche les sources et les articles « à surveiller ». Décrire chaque catégorie dans un fichier
-  de données hors du code, à la manière de `llm/providers.json` : libellé FreshRSS, description
-  lisible, métiers concernés, et visibilité — `publique`, ou `privee` avec ses propriétaires
-  (`username`). Une catégorie privée n'est jamais servie, notée, résumée ni montrée à un autre
-  profil. Une catégorie absente du catalogue n'est servie à personne : une nouvelle catégorie
-  FreshRSS ne doit pas apparaître chez tout le monde parce que quelqu'un l'a créée. Plan à faire
-  valider (articulation avec `RSSRESUME_CATEGORIES`, `RSSRESUME_CERTFR_CATEGORIES`, la tournée qui
-  lit une seule fois).
-- **Bénéfice attendu** : le prérequis de l'ouverture — rien de la veille TransfertPro ne fuit vers
-  un externe, et le site peut présenter les catégories à choisir.
-- **Tests d'acceptation** :
-  - [ ] le fichier est validé au chargement ; une entrée fautive lève au lancement ;
-  - [ ] une catégorie privée n'atteint ni le scoring, ni le résumé, ni l'email d'un non-propriétaire ;
-  - [ ] une catégorie FreshRSS absente du catalogue n'est servie à personne, et le log le dit ;
-  - [ ] le marquage comme lu de la tournée reste inchangé ;
-  - [ ] README et FONCTIONNEMENT décrivent le fichier.
-
 ### BL-038 — Abonnement de chaque profil à ses catégories
 
 - **Catégorie** : pipeline
