@@ -24,6 +24,7 @@ import pathlib
 import sqlite3
 from typing import Iterator
 
+from rssresume.axes import CLE_AXES
 from rssresume.categories import Catalogue, CatalogueOuvert
 from rssresume.certfr.stack import CLE_STACK
 from rssresume.profil import (
@@ -143,7 +144,7 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
     brut = {
         cle: saisie[cle]
-        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE)
+        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES)
         if cle in saisie
     }
     # Un formulaire vidé envoie une liste vide là où un fichier omettait la clé : c'est
@@ -159,6 +160,8 @@ def document_normalise(saisie: object, id: str, origine: str) -> dict:
         document[CLE_EMAIL] = list(profil.emails)
     document[CLE_PRENOM] = profil.prenom
     document[CLE_SECURITE] = profil.securite.value
+    if profil.axes.sont_declares:
+        document[CLE_AXES] = profil.axes.en_document()
     return document
 
 

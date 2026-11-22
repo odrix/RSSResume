@@ -416,7 +416,7 @@ class PipelineTests(unittest.TestCase):
             }
 
     @staticmethod
-    def _fake_scoring(payloads, profil=None):
+    def _fake_scoring(payloads, profil=None, axes=None):
         """Note tout à 9, et facture un appel de scoring comme le vrai le ferait.
 
         Le noteur est simulé : sa comptabilité l'est donc aussi, à l'identique de ce

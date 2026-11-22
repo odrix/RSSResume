@@ -14,7 +14,9 @@ aussi.
 from __future__ import annotations
 
 import json
+import string
 
+from rssresume.axes import Axes
 from rssresume.profil import SECURITE_PAR_DEFAUT, Securite, load_profil
 
 #: Taille de lot pour la notation : au-delà, le modèle survole et la fin du lot se dégrade.
@@ -70,9 +72,12 @@ SCORING_INTRO = (
     "le SEUL critère de pertinence :\n\n"
 )
 
-SCORING_RULES = """Tu reçois une liste d'articles (id, titre, résumé court). Pour CHAQUE article tu produis :
+#: Un gabarit et non un texte : la liste des thématiques et les exemples du barème 7-8
+#: viennent des axes du profil (`axes.py`). `string.Template` plutôt que `format`, pour la
+#: raison donnée en tête de module — le format JSON attendu, plus bas, a ses accolades.
+SCORING_RULES = string.Template("""Tu reçois une liste d'articles (id, titre, résumé court). Pour CHAQUE article tu produis :
 - "score" : entier de 0 à 10 selon le barème ci-dessous ;
-- "thematique" : exactement une valeur parmi reglementaire, cyber, marche, stack, autre ;
+- "thematique" : $thematique
 - "angle" : UNE phrase expliquant en quoi l'article compte (ou non) pour ce profil précis.
 
 Barème :
@@ -80,8 +85,7 @@ Barème :
 1-2  ne concerne pas ce profil
 3-4  intérêt faible
 5-6  à mentionner en passant : une curiosité, un fait à connaître, sans le creuser
-7-8  pertinent, un résumé suffit (obligation à respecter, faille sur ses propres outils,
-     mouvement d'un concurrent direct)
+7-8  pertinent, un résumé suffit ($exemples)
 9-10 majeur pour ce profil : mérite d'être développé plus que les autres
 
 Règles impératives :
@@ -93,7 +97,7 @@ Règles impératives :
 - Réponds UNIQUEMENT par du JSON valide, sans texte avant ni après, sans balises Markdown.
 
 Format JSON exact attendu :
-{"resultats": [{"id": "...", "score": 0, "thematique": "...", "angle": "..."}]}"""
+{"resultats": [{"id": "...", "score": 0, "thematique": "...", "angle": "..."}]}""")
 
 ARTICLE_INTRO = "Tu résumes des articles de veille pour le profil suivant :\n\n"
 
@@ -107,9 +111,17 @@ Règles :
 - Rends le résumé seul, sans commentaire ni balise Markdown."""
 
 
-def scoring_system(profil: str | None = None) -> str:
-    """Prompt de scoring, profil de pertinence inclus."""
-    return f"{SCORING_INTRO}{load_profil(profil).texte}\n\n{SCORING_RULES}\n\n{INJECTION_GUARD}"
+def scoring_system(profil: str | None = None, axes: Axes | None = None) -> str:
+    """Prompt de scoring, profil de pertinence et axes de veille inclus.
+
+    Sans axes, les cinq d'origine : le texte est alors celui d'avant la clé, à l'octet
+    près, et l'empreinte de scoring qui en dérive aussi.
+    """
+    axes = axes or Axes.par_defaut()
+    regles = SCORING_RULES.substitute(
+        thematique=axes.consigne_thematique(), exemples=axes.exemples_pertinent()
+    )
+    return f"{SCORING_INTRO}{load_profil(profil).texte}\n\n{regles}\n\n{INJECTION_GUARD}"
 
 
 def article_system(profil: str | None = None) -> str:

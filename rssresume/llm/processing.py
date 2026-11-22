@@ -17,8 +17,8 @@ import logging
 import re
 from typing import Any
 
+from rssresume.axes import Axes
 from rssresume.llm import prompts
-from rssresume.models import DEFAULT_THEMATIQUE, THEMATIQUES
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +33,15 @@ class ProcessingError(RuntimeError):
     """
 
 
-def scoring_fingerprint(profil: str | None, model: str) -> str:
-    """Empreinte courte du prompt de notation, profil et modèle compris.
+def scoring_fingerprint(profil: str | None, model: str, axes: Axes | None = None) -> str:
+    """Empreinte courte du prompt de notation, profil, axes et modèle compris.
 
-    Sert de clé de cache côté tags FreshRSS : toute retouche du profil, du barème ou du
-    modèle produit une empreinte différente et déclenche donc la renotation. C'est ce qui
-    rend le profil injectable sans risque — changer de profil ne peut pas laisser traîner
-    des scores calculés contre l'ancien.
+    Sert de clé de cache côté tags FreshRSS : toute retouche du profil, des axes, du
+    barème ou du modèle produit une empreinte différente et déclenche donc la renotation.
+    C'est ce qui rend le profil injectable sans risque — changer de profil ne peut pas
+    laisser traîner des scores calculés contre l'ancien.
     """
-    material = f"{prompts.scoring_system(profil)}\n{model}"
+    material = f"{prompts.scoring_system(profil, axes)}\n{model}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
@@ -50,7 +50,7 @@ def full_text(article: dict) -> str:
     return (article.get("content") or "").strip() or (article.get("summary") or "").strip()
 
 
-def read_scores(raw: str, lot: list[dict]) -> list[dict]:
+def read_scores(raw: str, lot: list[dict], axes: Axes | None = None) -> list[dict]:
     """Relit la réponse d'un lot de notation et la réaligne sur les articles envoyés.
 
     Renvoie {id, score, thematique, angle, notee} par article du lot, dans l'ordre
@@ -62,7 +62,11 @@ def read_scores(raw: str, lot: list[dict]) -> list[dict]:
 
     Une réponse dont RIEN n'est exploitable reste une erreur : ce n'est plus un trou dans
     un lot, c'est un lot qui n'a pas été traité.
+
+    La thématique est ramenée aux `axes` du profil, les cinq d'origine à défaut : une
+    valeur hors liste tombe sur le dernier axe.
     """
+    axes = axes or Axes.par_defaut()
     alignees = _by_rank(_resultats(_extract_json(raw)), len(lot))
     manquantes = [article for article, note in zip(lot, alignees) if not note]
     if len(manquantes) == len(lot):
@@ -80,7 +84,7 @@ def read_scores(raw: str, lot: list[dict]) -> list[dict]:
         {
             "id": str(article["id"]),
             "score": _clean_score(note.get("score")),
-            "thematique": _clean_thematique(note.get("thematique")),
+            "thematique": axes.rabattre(note.get("thematique")),
             "angle": str(note.get("angle") or "").strip(),
             # Faux pour un trou du lot : la note qui suit est une valeur de remplissage,
             # pas un jugement du modèle.
@@ -128,12 +132,6 @@ def _clean_score(value: Any) -> int:
         return max(0, min(10, int(value)))
     except (TypeError, ValueError):
         return 0
-
-
-def _clean_thematique(value: Any) -> str:
-    """Contraint la thématique à la liste fermée."""
-    candidate = str(value or "").strip().lower()
-    return candidate if candidate in THEMATIQUES else DEFAULT_THEMATIQUE
 
 
 def _by_rank(resultats: list[dict], taille: int) -> list[dict]:

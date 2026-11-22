@@ -252,7 +252,7 @@ class DigestService:
 
     def _scoring_fingerprint(self) -> str | None:
         """L'empreinte du noteur actif, `None` quand il n'y en a pas."""
-        return self._scorer.scoring_fingerprint(self._config.profil) if self._scorer else None
+        return self._scorer.scoring_fingerprint(self._config.profil, self._config.axes) if self._scorer else None
 
     def _parametres(self, regle: SelectionRule) -> dict:
         """Les réglages qui expliquent le contenu du journal, relus sans la config.
@@ -509,7 +509,12 @@ class DigestService:
             thematique = self._etiquettes.theme_de(article.tags)
             # La thématique est exigée autant que le score : une note partielle n'est pas
             # un cache utilisable, elle rangerait l'article dans le mauvais groupe.
-            if porte == digest and score is not None and thematique is not None:
+            if (
+                porte == digest
+                and score is not None
+                and thematique is not None
+                and self._config.axes.contient(thematique)
+            ):
                 # L'angle, lui, n'est pas dans les tags : cet article ira au résumé sans
                 # sa phrase de contexte, ce dont le prompt tient compte.
                 notes[article.item_id] = Note(score=score, thematique=thematique)
@@ -529,6 +534,7 @@ class DigestService:
         calculees = self._scorer.score_articles(
             [self._to_payload(article) for article in a_noter],
             profil=self._config.profil,
+            axes=self._config.axes,
         )
         # Un article que le modèle a sauté ressort avec `notee` à faux et un score de
         # remplissage. Il est écarté ici, et de la journée : entrer avec un zéro le

@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 from rssresume.certfr import StackError
+from rssresume.axes import Axes, CLE_AXES
 from rssresume.llm.prompts import article_system, scoring_system
 from tests.support import empreinte
 from rssresume.profil import (
@@ -295,6 +296,51 @@ class InjectedProfileTests(unittest.TestCase):
         self.assertNotEqual(empreinte(), empreinte(AUTRE_PROFIL))
         # Même profil, même empreinte : relancer la journée ne repaie rien.
         self.assertEqual(empreinte(AUTRE_PROFIL), empreinte(AUTRE_PROFIL))
+
+
+class AxesDeVeilleAcceptanceTests(unittest.TestCase):
+    def setUp(self):
+        self.axes = Axes.declares([
+            {"slug": "qualite", "libelle": "Qualité", "description": "tests et fiabilité"},
+            {"slug": "livraison", "libelle": "Livraison", "description": "outillage et déploiement"},
+            {"slug": "experience", "libelle": "Expérience", "description": "usage et conception"},
+        ])
+
+    def test_custom_axes_are_in_the_prompt_not_the_defaults(self):
+        prompt = scoring_system(AUTRE_PROFIL, self.axes)
+        for slug in ("qualite", "livraison", "experience"):
+            self.assertIn(slug, prompt)
+        self.assertNotIn("exactement une valeur parmi reglementaire, cyber, marche, stack, autre", prompt)
+
+    def test_a_thematique_outside_axes_falls_back_to_the_last_one(self):
+        from rssresume.llm.processing import read_scores
+        lot = [{"id": "a", "title": "Article", "summary": "Résumé"}]
+        notes = read_scores('{"resultats":[{"id":"a","score":8,"thematique":"cyber","angle":"impact"}]}', lot, self.axes)
+        self.assertEqual("experience", notes[0]["thematique"])
+
+    def test_cache_reloads_a_declared_theme_slug(self):
+        from rssresume.external.freshrss import Etiquettes
+        etiquettes = Etiquettes("adrien")
+        self.assertEqual("qualite", etiquettes.theme_de(("adrien-theme-qualite",)))
+        self.assertTrue(self.axes.contient("qualite"))
+
+    def test_absent_key_keeps_prompt_and_validation_unchanged(self):
+        axes = Axes.declares(None)
+        prompt = scoring_system(AUTRE_PROFIL, axes)
+        self.assertIn("exactement une valeur parmi reglementaire, cyber, marche, stack, autre", prompt)
+        self.assertEqual("autre", axes.rabattre("inconnu"))
+
+    def test_slug_and_axis_count_are_validated_with_a_clear_error(self):
+        for axes_fautifs in (
+            [{"slug": "ok", "libelle": "OK", "description": "valide"},
+             {"slug": "deux", "libelle": "Deux", "description": "valide"}],
+            [{"slug": "Mauvais!", "libelle": "Mauvais", "description": "valide"},
+             {"slug": "deux", "libelle": "Deux", "description": "valide"},
+             {"slug": "trois", "libelle": "Trois", "description": "valide"}],
+        ):
+            with self.subTest(axes=axes_fautifs):
+                with self.assertRaises(ValueError):
+                    profil_depuis_dict({CLE_PROFIL: "Profil", CLE_AXES: axes_fautifs})
 
 
 if __name__ == "__main__":

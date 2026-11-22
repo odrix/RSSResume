@@ -117,7 +117,7 @@ Une note, c'est trois champs — et les trois servent :
 | Champ | Ce que c'est | Où il sert |
 | --- | --- | --- |
 | `score` | 0 à 10 | seuil de sélection, plafond, tag `score-NN` |
-| `thematique` | reglementaire, cyber, marche, stack, autre | ordre de lecture du digest, tag `theme-<x>` |
+| `thematique` | l'un des axes du profil, ou les cinq axes historiques absents de `axes` | ordre de lecture du digest, tag `theme-<x>` |
 | `angle` | une phrase : en quoi l'article compte pour ce profil | passé au résumeur avec l'article |
 
 Les trois arrivent dans le même appel. Le score seul pilotait tout et les deux autres étaient
@@ -994,7 +994,7 @@ d'eux et charger une personne, et des sous-classes qui ne disent que la source.
 | `AnnuaireFichier` | `RSSRESUME_PROFILE_FILE` seule | ce document, nommé d'après son fichier |
 | `AnnuaireVide` | rien de déclaré | personne : ni lecture FreshRSS, ni résumé, ni marquage |
 
-Le dossier **et** une variable à profil unique posés ensemble lèvent au lancement : servir l'un
+Le dossier **et** une variable à profil unique posées ensemble lèvent au lancement : servir l'un
 en ignorant l'autre ferait disparaître ou apparaître une personne sans que rien ne le dise. Le
 `username` — le nom du fichier — suit `^[a-z0-9][a-z0-9_-]{1,31}$`, parce qu'il nomme un
 répertoire et préfixe des labels ; un `.json` mal nommé est signalé (`console.error`, une fois)
@@ -1241,6 +1241,12 @@ les articles concernés sont renotés automatiquement — sans que tu aies à pu
 Le nettoyage ne balaie pas les onze valeurs possibles : seuls les tags réellement portés par les
 articles concernés sont retirés, ce qui donne un appel par tag distinct. Le tag `digested` n'est
 jamais touché par ce nettoyage.
+
+La clé `axes` porte de 3 à 6 rubriques `{slug, libelle, description}`. Chaque slug devient
+un tag `theme-<slug>` et doit commencer par une lettre, avec seulement des minuscules, chiffres
+ou tirets jusqu'à 24 caractères. Une thématique rendue hors liste tombe sur le dernier axe.
+Sans clé, les cinq thématiques historiques restent strictement identiques au comportement d'avant.
+Modifier les axes change l'empreinte du prompt et fait renoter une fois les articles concernés.
 
 ## Les tags posés dans FreshRSS
 
@@ -1520,37 +1526,3 @@ quatre ; le tag `digested` seulement sur les deux retenus.
 En face, `output/2026-08-23/tech.log.json` garde ce que ces lignes ne disent pas : les scores des
 quatre articles, l'angle retenu pour chacun, et le coût des trois appels — un scoring, un digest,
 une synthèse.
-
-## Découpage du code
-
-```mermaid
-flowchart LR
-    CLI[cli.py] --> DIG[digest.py<br/>orchestration]
-    DIG --> FR[external/freshrss.py]
-    FR --> HTTP[tools/http.py<br/>réessai réseau]
-    DIG --> SU[summaries.py]
-    DIG --> MO[montage.py<br/>mode global]
-    DIG --> AU[audio.py]
-    MO --> AU
-    DIG --> MA[external/mailer.py]
-    DIG --> RL[runlog.py<br/>journal .log.json]
-    DIG --> CF[certfr/<br/>appariement déterministe]
-    CF --> STK[certfr/stack.py<br/>appariement sur les composants déclarés]
-    DIG --> SC[LLMProvider<br/>scorer]
-    SU --> LLMP[LLMProvider<br/>digest]
-    MO --> LLMM[LLMProvider<br/>montage]
-    AU --> TTS[LLMProvider<br/>voix]
-    SC & LLMP & LLMM & TTS --> BASE[llm/base.py<br/>opérations + transport]
-    BASE --> OAI[llm/openai.py]
-    BASE --> MIS[llm/mistral.py]
-    BASE --> PRO[llm/prompts.py]
-    BASE --> HTTP
-    BASE -->|usage, caractères| RL
-    CFG[llm/providers.py<br/>+ providers.json] -.->|Settings injectés| BASE
-    RL --> PRI[pricing.py]
-    CFG -.->|prix| PRI
-```
-
-`digest.py` ne connaît ses collaborateurs qu'à travers les contrats de
-[protocols.py](rssresume/protocols.py), ce qui permet aux tests de les remplacer par des doublures
-sans réseau.

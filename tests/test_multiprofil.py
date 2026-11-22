@@ -626,7 +626,7 @@ class ResumeurEspion(SummaryGenerator):
         return super().summarize(category, articles, notes)
 
 
-def noter_neuf(articles, profil=None):
+def noter_neuf(articles, profil=None, axes=None):
     """Tout vaut 9 : chaque article lu est retenu, résumé et montré."""
     return [{"id": a["id"], "score": 9, "thematique": "cyber", "angle": ""} for a in articles]
 

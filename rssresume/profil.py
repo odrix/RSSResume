@@ -3,8 +3,9 @@
 Le profil de pertinence est le seul élément vraiment personnel du système. Il est
 utilisé par les trois prompts — noter, résumer un article, dicter le digest audio — et
 c'est lui qui décide de tout le reste : ce qui monte au-dessus du seuil, ce qui est
-raconté, et sous quel angle. Ouvrir l'outil à quelqu'un d'autre, c'est changer ce texte
-et rien d'autre.
+raconté, et sous quel angle. Ses clés `axes` personnalisent aussi les rubriques du
+scoring et changent l'empreinte de cache : ouvrir l'outil à quelqu'un d'autre peut donc
+changer ce texte, ses axes, ou les deux.
 
 Les deux autres sont personnelles pour la même raison, et se lisent au même endroit :
 ce qu'on exploite (la liste de composants sur laquelle les avis CERT-FR sont appariés)
@@ -46,6 +47,7 @@ import uuid
 from typing import TYPE_CHECKING, Iterable
 
 from rssresume.certfr.stack import CLE_STACK, Stack, StackError
+from rssresume.axes import Axes, AxesError, CLE_AXES
 from rssresume.tools import console
 
 if TYPE_CHECKING:
@@ -172,12 +174,16 @@ class Profil:
         prenom: str = "",
         identifiant: str = "",
         securite: Securite = SECURITE_PAR_DEFAUT,
+        axes: Axes | None = None,
     ):
         #: L'identifiant stable de la personne (un UUID), qui nomme son répertoire de
         #: sortie. Vide tant que le document n'en porte pas : c'est l'annuaire qui le
         #: génère et l'écrit, pas la lecture d'un document.
         self.id = identifiant
         self.texte = texte
+        #: Les axes personnalisent les rubriques du scoring. Absents du document, ils
+        #: restent les cinq thématiques d'origine — leur empreinte doit donc rester identique.
+        self.axes = axes if axes is not None else Axes.par_defaut()
         #: Vide quand le document ne déclare rien : aucun avis n'est alors apparié, et
         #: la phrase du digest le dit plutôt que d'annoncer que rien ne nous concerne.
         self.stack = stack if stack is not None else Stack()
@@ -254,6 +260,10 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
         stack = Stack.declaree(document.get(CLE_STACK))
     except StackError as exc:
         raise ValueError(f"{origine} : {exc}") from exc
+    try:
+        axes = Axes.declares(document.get(CLE_AXES))
+    except AxesError as exc:
+        raise ValueError(f"{origine} : {exc}") from exc
     identifiant = document.get(CLE_ID)
     if identifiant is not None and not id_valide(identifiant):
         raise ValueError(
@@ -267,6 +277,7 @@ def profil_depuis_dict(document: object, origine: str = "profil") -> Profil:
         _prenom(document.get(CLE_PRENOM), origine),
         identifiant or "",
         Securite.depuis_document(document.get(CLE_SECURITE), origine),
+        axes,
     )
 
 

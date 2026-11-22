@@ -63,7 +63,7 @@ class Etiquettes:
         racine = re.escape(self.prefixe)
         self._motif_score = re.compile(rf"^{racine}score-(\d{{2}})$")
         self._motif_scoring = re.compile(rf"^{racine}scoring-([0-9a-f]+)$")
-        self._motif_theme = re.compile(rf"^{racine}theme-([a-z]+)$")
+        self._motif_theme = re.compile(rf"^{racine}theme-([a-z][a-z0-9-]*)$")
 
     def score(self, score: int) -> str:
         return self.prefixe + SCORE_TAG_TEMPLATE.format(score=score)
