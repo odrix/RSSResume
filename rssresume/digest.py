@@ -215,10 +215,20 @@ class DigestService:
         """Un sous-répertoire par journée, au format yyyy-MM-dd."""
         return self._config.output_dir / day.isoformat()
 
+    def _categories_disponibles(self) -> list[str]:
+        """Les catégories contre lesquelles on valide `--categories`.
+
+        Sans surcharge CLI, `RSSRESUME_CATEGORIES` garde son rôle historique : fournir
+        le catalogue d'installation quand on ne veut pas le lire dans FreshRSS. Avec
+        `--categories`, la vérification doit porter sur les vraies catégories FreshRSS,
+        sinon une catégorie existante y serait dite inconnue.
+        """
+        if self._config.categories_surcharge is not None:
+            return self._freshrss_client.list_categories()
+        return self._config.categories or self._freshrss_client.list_categories()
+
     def _select_categories(self) -> list[str]:
-        return self._config.categories_servies(
-            self._config.categories or self._freshrss_client.list_categories()
-        )
+        return self._config.categories_servies(self._categories_disponibles())
 
     def _build_digest(
         self,
@@ -353,7 +363,15 @@ class DigestService:
         regle: SelectionRule,
     ) -> CategoryDigest:
         articles = self._freshrss_client.fetch_daily_articles(category, day)
-        console.category(category, f"{len(articles)} article(s)")
+        articles_a_traiter = articles
+        if self._config.limite_articles is not None:
+            articles_a_traiter = articles[:self._config.limite_articles]
+            console.category(
+                category,
+                f"{len(articles)} article(s), {len(articles_a_traiter)} traité(s) (limite --limit)",
+            )
+        else:
+            console.category(category, f"{len(articles)} article(s)")
 
         if not articles:
             # Aucun article : marqueur vide, ni résumé IA ni synthèse vocale.
@@ -366,11 +384,11 @@ class DigestService:
                 marker_path=marker_path,
             )
 
-        notes, new_notes, stale = self._score(articles)
+        notes, new_notes, stale = self._score(articles_a_traiter)
         # Le journal veut toutes les notes, pas seulement celles calculées : c'est la
         # seule vue où un score relu des tags et un score frais se lisent côte à côte.
         journal.set_notes(notes, new_notes)
-        selection = self._select(articles, notes, regle)
+        selection = self._select(articles_a_traiter, notes, regle)
         journal.set_seuil_applique(selection.seuil)
         # Enrichis ici et non chez le résumeur : les avis de vulnérabilité arrivent
         # souvent réduits à leur titre, et leur page est maintenant lue par trois
@@ -384,7 +402,7 @@ class DigestService:
             # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
             # Ni résumé ni synthèse vocale — l'audio n'aurait rien à dire.
             marker_path = self._write_marker(
-                day_dir, slug, self._score_listing(articles, notes, selection.seuil)
+                day_dir, slug, self._score_listing(articles_a_traiter, notes, selection.seuil)
             )
             console.detail(
                 f"aucun article retenu : {marker_path.name} (ni IA ni synthèse vocale)"
@@ -401,7 +419,7 @@ class DigestService:
                 marker_path=marker_path,
                 # C'est ici que la liste de veille sert le plus : la catégorie n'a rien
                 # à raconter, mais elle a lu des articles, et certains valent un lien.
-                watchlist=self._watchlist(articles, selected, notes),
+                watchlist=self._watchlist(articles_a_traiter, selected, notes),
                 notes=notes,
             )
 
@@ -420,7 +438,7 @@ class DigestService:
             )
 
         if write_tags:
-            self._write_tags(articles, selected, new_notes, stale)
+            self._write_tags(articles_a_traiter, selected, new_notes, stale)
 
         return CategoryDigest(
             category=category,

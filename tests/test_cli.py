@@ -140,6 +140,79 @@ def lance(argv, racine, debug_env=False, env=None):
     return code, sortie.getvalue(), build
 
 
+class CategoriesLimitOptionTests(unittest.TestCase):
+    def test_categories_overrides_the_environment_selection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["News"])
+            env = dossier_profils(tmpdir, PROFIL)
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+                with mock.patch.object(cli.FreshRSSClient, "list_categories", return_value=["Tech", "News"]):
+                    with mock.patch.object(cli, "build_service") as build:
+                        cli.main(["--categories", "Tech,News", "--date", JOUR.isoformat(), "--dry-run"])
+
+            service_config = build.call_args.args[0]
+            self.assertEqual(["Tech", "News"], service_config.categories_surcharge)
+
+    def test_limit_is_passed_to_the_service(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = make_config(tmpdir)
+            env = dossier_profils(tmpdir, PROFIL)
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+                with mock.patch.object(cli, "build_service") as build:
+                    cli.main(["--limit", "3", "--date", JOUR.isoformat(), "--dry-run"])
+
+            service_config = build.call_args.args[0]
+            self.assertEqual(3, service_config.limite_articles)
+
+    def test_unknown_category_is_reported_and_stops_the_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["Tech", "News"])
+            env = dossier_profils(tmpdir, PROFIL)
+            sortie = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+                with mock.patch.object(cli.FreshRSSClient, "list_categories", return_value=["Tech", "News"]):
+                    with contextlib.redirect_stderr(sortie):
+                        console.enable(True)
+                        try:
+                            code = cli.main(["--categories", "Tech,Introuvable", "--date", JOUR.isoformat(), "--dry-run"])
+                        finally:
+                            console.enable(False)
+
+            self.assertEqual(2, code)
+            self.assertIn("Introuvable", sortie.getvalue())
+            self.assertIn("inconnue", sortie.getvalue())
+
+    def test_categories_check_fails_explicitly_when_freshrss_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["Tech", "News"])
+            env = dossier_profils(tmpdir, PROFIL)
+            sortie = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+                with mock.patch.object(
+                    cli.FreshRSSClient,
+                    "list_categories",
+                    side_effect=RuntimeError("FreshRSS injoignable"),
+                ):
+                    with contextlib.redirect_stderr(sortie):
+                        console.enable(True)
+                        try:
+                            code = cli.main(["--categories", "Tech", "--date", JOUR.isoformat(), "--dry-run"])
+                        finally:
+                            console.enable(False)
+
+            self.assertEqual(2, code)
+            self.assertIn("impossible de vérifier --categories", sortie.getvalue())
+            self.assertIn("FreshRSS injoignable", sortie.getvalue())
+
+    def test_limit_must_be_a_positive_integer(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.parse_args(["--limit", "0"])
+
+
 class JournalTests(unittest.TestCase):
     def test_the_journal_never_builds_the_service(self):
         with tempfile.TemporaryDirectory() as tmpdir:
