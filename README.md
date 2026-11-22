@@ -710,6 +710,43 @@ concernés.
 
 `--dry-run` n'écrit rien, y compris les scores : chaque essai repaie alors le scoring complet.
 
+### Évaluer le prompt de scoring
+
+Le jeu de référence versionné se trouve dans `tests/eval/reference.json`. Il contient 36
+articles publics anonymisés, sans donnée du fichier `input/`. Chaque article porte une
+fourchette de note attendue et un verdict :
+
+```json
+{
+  "seuil": 7,
+  "articles": [
+    {
+      "id": "real-001",
+      "titre": "Titre public anonymisé",
+      "resume": "Extrait court, sans donnée personnelle",
+      "note_attendue": [8, 10],
+      "verdict": "doit"
+    }
+  ]
+}
+```
+
+La commande charge et valide le format avant tout appel : entre 30 et 50 articles, des
+identifiants uniques, des titres et résumés non vides, une note attendue entre 0 et 10,
+avec `doit` ou `ne doit pas` comme verdict. Elle lance le prompt de scoring courant,
+compare les notes aux fourchettes, calcule les faux positifs et faux négatifs au seuil du
+jeu, puis affiche aussi la consommation et le coût depuis les appels enregistrés dans
+`runlog` et tarifés par `pricing` :
+
+```bash
+python -m rssresume.eval
+python -m rssresume.eval --jeu tests/eval/autre-jeu.json --seuil 8
+python -m rssresume.eval --profil adrien
+```
+
+Cette commande peut payer des appels réels au fournisseur configuré. Elle est volontairement
+hors de la suite unittest ; celle-ci utilise une doublure de noteur et ne fait aucun appel réseau.
+
 ### Divers
 
 - sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées — pour
