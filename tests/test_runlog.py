@@ -195,7 +195,7 @@ class DayAggregationTests(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             racine = pathlib.Path(tmpdir)
-            jour = self._journee(tmpdir)
+            jour = DayAggregationTests._journee(tmpdir)
 
             ecrits = {
                 nom: json.loads((racine / nom).read_text(encoding="utf-8"))["couts"]
