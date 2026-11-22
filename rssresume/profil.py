@@ -43,10 +43,13 @@ import os
 import pathlib
 import re
 import uuid
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from rssresume.certfr.stack import CLE_STACK, Stack, StackError
 from rssresume.tools import console
+
+if TYPE_CHECKING:
+    from rssresume.categories import Catalogue
 
 #: Le texte du profil seul, pour un profil court. Ne porte ni stack ni destinataire :
 #: une valeur d'environnement est une ligne, pas un document.
@@ -398,6 +401,31 @@ class Annuaire:
     def profil(self, username: str) -> Profil:
         """Le profil d'un nom déjà listé. Fautif : `ValueError`."""
         raise NotImplementedError
+
+    def catalogue(self) -> Catalogue:
+        """Le catalogue des catégories (`categories.Catalogue`) : ouvert, sauf en base.
+
+        Seule la base sait le porter — un dossier de profils n'a pas d'endroit commun où
+        le ranger. Ouvert, il sert tout à tout le monde, et la tournée ne l'accepte que
+        pour une seule personne. Import différé : `categories` dépend de ce module.
+        """
+        from rssresume.categories import CatalogueOuvert
+
+        return CatalogueOuvert()
+
+    def remede_sans_catalogue(self) -> str:
+        """Ce qu'il faut faire pour avoir un catalogue, depuis cette source de profils.
+
+        Hors de la base, il n'y a nulle part où le ranger : le seul remède est d'y passer,
+        et le message doit le dire plutôt que de proposer une commande qui exige la base.
+        """
+        return (
+            f"Hors de la base, aucun catalogue n'est possible : passer à la base des profils "
+            f"({ENV_PROFILES_DB}, puis python -m rssresume.api importer <dossier>, et retirer "
+            f"{ENV_PROFILES_DIR} / {ENV_PROFIL_FILE}), puis importer le catalogue "
+            "(python -m rssresume.api importer-catalogue <fichier.json>, voir "
+            "docs/categories.exemple.json)."
+        )
 
     def lecteur(self, username: str) -> Lecteur:
         """La personne `username`, profil chargé. Inconnue ou fautive : `ValueError`.

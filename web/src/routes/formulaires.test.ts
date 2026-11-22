@@ -23,3 +23,14 @@ describe('politique de référent des pages', () => {
 		expect(fautives).toEqual([]);
 	});
 });
+
+describe('rendu du contenu non fiable', () => {
+	/* Les résumés viennent d'un modèle, les titres et les liens de flux que n'importe qui
+	 * écrit. Svelte échappe toute expression `{…}` ; `{@html}` est la seule porte qui ne
+	 * l'est pas, et aucun composant du site n'a de raison de l'ouvrir. */
+	it("aucun composant n'utilise {@html}", () => {
+		const fautifs = pages(join(import.meta.dirname, '..'))
+			.filter((chemin) => /\{@html\b/.test(readFileSync(chemin, 'utf8')));
+		expect(fautifs).toEqual([]);
+	});
+});

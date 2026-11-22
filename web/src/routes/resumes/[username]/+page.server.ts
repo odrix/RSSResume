@@ -20,10 +20,13 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	}
 	// L'API les rend déjà ainsi ; retrié ici pour que la page n'en dépende pas.
 	journees.sort((a, b) => b.date.localeCompare(a.date));
+	// Demandé seulement quand il sert : dire à qui n'a encore rien quand arrive son premier résumé.
+	const passage = !erreur && !journees.length ? await contexte().consultation.passage() : null;
 	return {
 		username: params.username,
 		proprietaire: params.username === utilisateur.username,
 		journees,
+		passage,
 		erreur
 	};
 };

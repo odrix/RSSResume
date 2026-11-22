@@ -8,6 +8,7 @@ et rendent des objets, la requête (`serveur.GestionnaireApi`) se charge du rest
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import urllib.parse
 from typing import TYPE_CHECKING
@@ -15,6 +16,7 @@ from typing import TYPE_CHECKING
 from rssresume.annuaire_sqlite import AnnuaireSqlite, Fiche, ProfilDejaPris, ProfilInconnu
 from rssresume.api.sorties import Sorties
 from rssresume.profil import username_valide, valider_username
+from rssresume.scheduler import DailySchedule
 
 if TYPE_CHECKING:
     from rssresume.api.serveur import GestionnaireApi
@@ -42,9 +44,10 @@ class Route:
     motif: re.Pattern
     methodes: tuple[str, ...] = ()
 
-    def __init__(self, annuaire: AnnuaireSqlite, sorties: Sorties):
+    def __init__(self, annuaire: AnnuaireSqlite, sorties: Sorties, passage: DailySchedule):
         self.annuaire = annuaire
         self.sorties = sorties
+        self.passage = passage
 
     def parametres(self, chemin: str) -> list[str] | None:
         """Les segments variables décodés, si `chemin` est de cette forme ; sinon `None`."""
@@ -163,6 +166,42 @@ class RouteJournees(Route):
         requete.repondre_json(200, [journee.en_json() for journee in self.sorties.journees(fiche.id)])
 
 
+class RouteJournee(Route):
+    """`/api/v1/profils/{username}/journees/{date}` : ce que la journée raconte."""
+
+    motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)/journees/([^/]+)")
+    methodes = ("GET",)
+
+    def get(self, requete, username, date):
+        fiche = self.fiche(username)
+        contenu = self.sorties.contenu(fiche.id, date)
+        if contenu is None:
+            raise ErreurApi(404, "Journée introuvable.")
+        requete.repondre_json(200, contenu.en_json())
+
+
+class RoutePassage(Route):
+    """`/api/v1/passage` : l'heure du passage quotidien, et le prochain.
+
+    Servi par l'API parce que c'est elle qui partage l'environnement du travailleur : le
+    site n'a pas à recopier un réglage qui, recopié, finirait par diverger.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/passage")
+    methodes = ("GET",)
+
+    def get(self, requete, *parametres):
+        prochain = self.passage.next_run(dt.datetime.now(self.passage.timezone))
+        requete.repondre_json(
+            200,
+            {
+                "heure": self.passage.heure.isoformat("minutes"),
+                "fuseau": str(self.passage.timezone),
+                "prochain": prochain.isoformat(timespec="seconds"),
+            },
+        )
+
+
 class RouteAudio(Route):
     """`/api/v1/profils/{username}/journees/{date}/audios/{nom}` : un audio, en flux."""
 
@@ -178,4 +217,4 @@ class RouteAudio(Route):
 
 
 #: Les routes servies, dans l'ordre où elles sont essayées.
-ROUTES = (RouteProfils, RouteProfil, RouteJournees, RouteAudio)
+ROUTES = (RouteProfils, RouteProfil, RouteJournees, RouteJournee, RouteAudio, RoutePassage)

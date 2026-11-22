@@ -279,6 +279,7 @@ pas été écrits à l'époque : la ligne en tient lieu renvoie aux tests qui co
   s'y réfèrent par nom de champ : le JSON est ce qui les rend adressables. Le gain porterait sur des
   accolades, quand l'essentiel du volume est `content`.
 
+
 ### BL-040 — Régime de sécurité réglé dans le profil
 
 - **Catégorie** : prompts
@@ -300,3 +301,89 @@ pas été écrits à l'époque : la ligne en tient lieu renvoie aux tests qui co
 - **Notes** : `curieux` cite quand même, en une phrase, une faille qui touche la stack déclarée
   (décision prise au plan). Le régime n'entre pas dans l'empreinte de scoring : le changer ne fait
   pas renoter. Le site efface encore la clé quand il enregistre un profil : BL-054.
+
+### BL-047 — Page des résumés : le texte et les articles, pas seulement l'audio
+
+- **Catégorie** : web
+- **Priorité** : 1
+- **Description** : `/resumes/<username>` n'affiche que des lecteurs audio. Ni texte, ni articles,
+  ni liens, et les journées sans audio n'apparaissent pas. Or les journaux `<categorie>.log.json`
+  portent tout ce que montre l'email. Exposer par l'API le contenu d'une journée lu des journaux
+  (résumés, articles retenus avec lien et source, articles « à surveiller »), et l'afficher avec
+  l'audio. Journée sans article : visible, avec sa raison. État vide : dire à quelle heure arrive le
+  premier résumé.
+- **Bénéfice attendu** : le site devient un endroit où lire sa veille, pas seulement l'écouter, et
+  l'audio en lien de BL-044 a une page où atterrir.
+- **Tests d'acceptation** :
+  - [x] la route API rend le contenu d'une journée à son seul propriétaire (ou à un admin) ;
+  - [x] les liens d'articles sont échappés (sortie de modèle et contenu de flux non fiables) ;
+  - [x] une journée sans audio est listée ;
+  - [x] tests API en unittest, tests du site.
+- **Réalisé le** : 2026-11-22
+- **Livraison** : branche backlog/BL-047-page-resumes
+- **Notes** : l'API n'a que le jeton du site, donc le contrôle propriétaire/admin se fait côté site
+  (`ConsultationResumes`), comme pour l'audio. Les URL non http(s) sont retirées deux fois (API et
+  site), et aucun composant n'utilise `{@html}`. Une journée en cours d'écriture répond `en_cours`
+  au lieu d'une erreur ou d'une journée vide. L'heure annoncée est celle du début du passage :
+  `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` sont désormais aussi posées sur le service `api` du
+  compose. Le même défaut de liens existe dans l'email : BL-064.
+
+
+### BL-052 — Étudier le coût et le passage à l'échelle avec des inscriptions ouvertes
+
+- **Catégorie** : docs
+- **Priorité** : 1
+- **Description** : étude, sans code. Chaque profil note tous les articles de ses catégories, et se
+  fait résumer les siens : la facture croît en profils × articles, et l'inscription est ouverte.
+  Chaque profil pose aussi une quinzaine de libellés dans le FreshRSS partagé (`score-NN`,
+  `theme-*`, `scoring-<hash>`) : à trente personnes, la barre latérale devient inutilisable. À
+  chiffrer à partir des journaux (`runlog`, `pricing`) : coût par profil et par jour, avant et après
+  BL-038. Options à comparer : un plafond de profils servis ou un quota, un scoring mutualisé par
+  gabarit (une note par gabarit et par article, et non par personne), un cache de scoring sorti des
+  libellés FreshRSS vers la base SQLite. Recommandation, avec le seuil de profils où chaque option
+  devient nécessaire.
+- **Bénéfice attendu** : savoir combien coûte un inscrit avant qu'ils soient cinquante.
+- **Tests d'acceptation** :
+  - [x] un document court dans `docs/` : coût mesuré, options, recommandation, seuils de bascule ;
+  - [x] les items de code qui en découlent sont ajoutés à ce backlog.
+- **Réalisé le** : 2026-11-22
+- **Livraison** : branche backlog/BL-052-etude-cout
+- **Notes** : [docs/cout-et-passage-a-l-echelle.md](docs/cout-et-passage-a-l-echelle.md), mesuré
+  sur dix journées de production de septembre 2026, un profil. Le tarif de `gpt-5.6-luna` manque à
+  la grille : le coût est donné en deux bornes (0,09 à 0,17 $ par profil et par jour). Le scoring
+  ne pèse que 2 % ; la voix, le résumé et le montage font le reste — le scoring mutualisé par
+  gabarit n'est donc pas retenu. Items créés : BL-055 à BL-063 ; BL-025 passe en priorité 2 et
+  dépend de BL-056.
+
+### BL-037 — Catalogue des catégories : publiques par métier, privées par propriétaire
+
+- **Catégorie** : pipeline
+- **Priorité** : 1
+- **Description** : aujourd'hui chaque profil reçoit toutes les catégories du FreshRSS partagé, y
+  compris la veille concurrentielle TransfertPro (alertes Google, « Veille marché ») — et l'email
+  en affiche les sources et les articles « à surveiller ». Décrire chaque catégorie dans un fichier
+  de données hors du code, à la manière de `llm/providers.json` : libellé FreshRSS, description
+  lisible, métiers concernés, et visibilité — `publique`, ou `privee` avec ses propriétaires
+  (`username`). Une catégorie privée n'est jamais servie, notée, résumée ni montrée à un autre
+  profil. Une catégorie absente du catalogue n'est servie à personne : une nouvelle catégorie
+  FreshRSS ne doit pas apparaître chez tout le monde parce que quelqu'un l'a créée. Plan à faire
+  valider (articulation avec `RSSRESUME_CATEGORIES`, `RSSRESUME_CERTFR_CATEGORIES`, la tournée qui
+  lit une seule fois).
+- **Bénéfice attendu** : le prérequis de l'ouverture — rien de la veille TransfertPro ne fuit vers
+  un externe, et le site peut présenter les catégories à choisir.
+- **Tests d'acceptation** :
+  - [x] le fichier est validé au chargement ; une entrée fautive lève au lancement ;
+  - [x] une catégorie privée n'atteint ni le scoring, ni le résumé, ni l'email d'un non-propriétaire ;
+  - [x] une catégorie FreshRSS absente du catalogue n'est servie à personne, et le log le dit ;
+  - [x] le marquage comme lu de la tournée reste inchangé ;
+  - [x] README et FONCTIONNEMENT décrivent le fichier.
+- **Réalisé le** : 2026-11-22
+- **Livraison** : branche backlog/BL-037-catalogue-categories
+- **Notes** : le catalogue ne vit pas dans un fichier mais dans une table `categories` de la base des
+  profils (`RSSRESUME_PROFILES_DB`), choix fait au plan : le vrai catalogue nomme la veille privée et
+  ses propriétaires, il reste hors du dépôt. Le JSON reste le format d'échange, importé par
+  `python -m rssresume.api importer-catalogue <fichier>` ; le dépôt n'en versionne qu'un exemple
+  générique (`docs/categories.exemple.json`). Sans catalogue, un profil seul est servi comme avant ;
+  à deux profils ou plus la tournée refuse de démarrer — y compris en mode dossier, qui doit donc
+  passer à la base. Les catégories servies à personne restent marquées lues, comme avant. Hors
+  périmètre : `--send-only` d'une journée produite avant l'import renvoie ses journaux tels quels.

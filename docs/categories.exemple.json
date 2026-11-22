@@ -1,0 +1,30 @@
+{
+  "_lisez_moi": [
+    "Le catalogue des catégories : une entrée par catégorie FreshRSS, la clé étant son libellé.",
+    "Une catégorie absente d'ici n'est servie à personne.",
+    "visibilite : publique (tout le monde), ou privee avec ses proprietaires (des username).",
+    "Le vrai catalogue vit hors du dépôt (par exemple input/categories.json) et s'importe dans la base :",
+    "python -m rssresume.api importer-catalogue input/categories.json"
+  ],
+  "Tech generaliste": {
+    "description": "Actualité tech large : langages, cloud, outils.",
+    "metiers": ["developpeur", "cto"],
+    "visibilite": "publique"
+  },
+  "News": {
+    "description": "L'actualité générale, pour le contexte.",
+    "metiers": [],
+    "visibilite": "publique"
+  },
+  "1 - Alertes et avis CERT-FR ANSSI": {
+    "description": "Avis de sécurité du CERT-FR, appariés sur la stack de chacun.",
+    "metiers": ["developpeur", "cto", "ops"],
+    "visibilite": "publique"
+  },
+  "Veille concurrentielle": {
+    "description": "Concurrents et alertes du marché.",
+    "metiers": ["cto"],
+    "visibilite": "privee",
+    "proprietaires": ["moi"]
+  }
+}

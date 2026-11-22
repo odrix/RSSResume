@@ -255,9 +255,15 @@ def main(argv: list[str] | None = None) -> int:
         FreshRSSClient(config, include_read=args.include_read),
         lambda profil, client: build_service(profil, freshrss_client=client),
     )
-    echecs = tournee.run(
-        day, args.profil, send_email=send_email, write_tags=write_tags, mark_read=mark_read
-    )
+    try:
+        echecs = tournee.run(
+            day, args.profil, send_email=send_email, write_tags=write_tags, mark_read=mark_read
+        )
+    except ValueError as exc:
+        # Le catalogue refusé ou corrompu : un message qui dit quoi faire, pas une trace
+        # de pile. Un profil fautif, lui, n'arrive pas jusqu'ici — la tournée l'isole.
+        console.error(f"Tournée : {exc}")
+        return 2
     return 1 if echecs else 0
 
 

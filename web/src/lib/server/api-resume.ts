@@ -7,6 +7,7 @@
  * navigateur.
  */
 
+import type { ContenuJournee, Passage } from '#lib/journee.js';
 import type { Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
 
 export interface AudioJournee {
@@ -88,6 +89,14 @@ export class ClientApiResume {
 
 	listerJournees(username: string): Promise<Journee[]> {
 		return this.#json('GET', `${this.#profil(username)}/journees`);
+	}
+
+	lireJournee(username: string, date: string): Promise<ContenuJournee> {
+		return this.#json('GET', `${this.#profil(username)}/journees/${encodeURIComponent(date)}`);
+	}
+
+	lirePassage(): Promise<Passage> {
+		return this.#json('GET', '/api/v1/passage');
 	}
 
 	/** Le flux audio brut, statut et en-têtes compris : le relais les recopie.
