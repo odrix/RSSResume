@@ -16,6 +16,7 @@ import os
 import pathlib
 import zoneinfo
 
+from rssresume.categories import Catalogue, CatalogueOuvert
 from rssresume.certfr.stack import Stack
 from rssresume.models import SelectionRule
 from rssresume.profil import CLE_EMAIL, ENV_PROFIL_FILE, Lecteur, load_profil
@@ -247,6 +248,10 @@ class AppConfig:
     #: l'installation : ses tags FreshRSS ne portent aucun préfixe, et sa sortie est la
     #: racine. C'est l'état de `from_env`, jamais celui d'un digest réellement servi.
     username: str = ""
+    #: Le catalogue des catégories : à qui chacune est servie. Ouvert par défaut — tout à
+    #: tout le monde, comme avant lui ; c'est la tournée qui pose celui de l'annuaire, et
+    #: qui refuse le catalogue ouvert dès qu'elle sert plus d'une personne.
+    catalogue: Catalogue = dataclasses.field(default_factory=CatalogueOuvert)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -340,6 +345,29 @@ class AppConfig:
             smtp_to=list(personne.emails),
         )
 
+    def categories_installation(self, disponibles: list[str]) -> list[str]:
+        """Les catégories que l'installation traite, avant de savoir pour qui.
+
+        `RSSRESUME_EXCLUDED_CATEGORIES` s'applique ici, à tout le monde : c'est un réglage
+        de l'installation, que le catalogue rend redondant sans le remplacer. Comparée sans
+        casse ni accents, comme le catalogue : un libellé recopié dans l'environnement perd
+        ses accents en route.
+        """
+        exclues = {casefold_ascii(nom) for nom in self.excluded_categories}
+        return [
+            categorie
+            for categorie in disponibles
+            if categorie and casefold_ascii(categorie) not in exclues
+        ]
+
+    def categories_servies(self, disponibles: list[str]) -> list[str]:
+        """Les catégories de l'installation que la personne de cette configuration reçoit.
+
+        Le seul endroit où le catalogue filtre ce qu'un digest lit : ce qui n'en sort pas
+        n'est ni noté, ni résumé, ni montré.
+        """
+        return self.catalogue.servies(self.categories_installation(disponibles), self.username)
+
     def selection_rule(self, category: str) -> SelectionRule:
         """La règle de sélection d'une catégorie : son seuil, son repli, son plafond.
 
@@ -357,8 +385,8 @@ class AppConfig:
     def est_deterministe(self, category: str) -> bool:
         """Vrai quand cette catégorie est routée hors du pipeline LLM.
 
-        La comparaison retire la casse **et** les accents, là où `excluded_categories` ne
-        replie que la casse. C'est délibéré et ce n'est pas une préférence : le libellé
+        La comparaison retire la casse **et** les accents, comme `categories_installation`
+        et le catalogue. C'est délibéré et ce n'est pas une préférence : le libellé
         réel en porte — « 1 - Alertes et avis CERT-FR ANSSI » —, et un libellé recopié
         dans une variable d'environnement les perd régulièrement en route ; `.env.local`
         contient déjà un `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. Une catégorie qu'on

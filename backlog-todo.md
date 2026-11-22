@@ -39,29 +39,6 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
 
 ---
 
-### BL-037 — Catalogue des catégories : publiques par métier, privées par propriétaire
-
-- **Catégorie** : pipeline
-- **Priorité** : 1
-- **Description** : aujourd'hui chaque profil reçoit toutes les catégories du FreshRSS partagé, y
-  compris la veille concurrentielle TransfertPro (alertes Google, « Veille marché ») — et l'email
-  en affiche les sources et les articles « à surveiller ». Décrire chaque catégorie dans un fichier
-  de données hors du code, à la manière de `llm/providers.json` : libellé FreshRSS, description
-  lisible, métiers concernés, et visibilité — `publique`, ou `privee` avec ses propriétaires
-  (`username`). Une catégorie privée n'est jamais servie, notée, résumée ni montrée à un autre
-  profil. Une catégorie absente du catalogue n'est servie à personne : une nouvelle catégorie
-  FreshRSS ne doit pas apparaître chez tout le monde parce que quelqu'un l'a créée. Plan à faire
-  valider (articulation avec `RSSRESUME_CATEGORIES`, `RSSRESUME_CERTFR_CATEGORIES`, la tournée qui
-  lit une seule fois).
-- **Bénéfice attendu** : le prérequis de l'ouverture — rien de la veille TransfertPro ne fuit vers
-  un externe, et le site peut présenter les catégories à choisir.
-- **Tests d'acceptation** :
-  - [ ] le fichier est validé au chargement ; une entrée fautive lève au lancement ;
-  - [ ] une catégorie privée n'atteint ni le scoring, ni le résumé, ni l'email d'un non-propriétaire ;
-  - [ ] une catégorie FreshRSS absente du catalogue n'est servie à personne, et le log le dit ;
-  - [ ] le marquage comme lu de la tournée reste inchangé ;
-  - [ ] README et FONCTIONNEMENT décrivent le fichier.
-
 ### BL-038 — Abonnement de chaque profil à ses catégories
 
 - **Catégorie** : pipeline
@@ -122,23 +99,175 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
   - [ ] la lettre « aucun article » porte une date en toutes lettres ;
   - [ ] `--send-only` rend la même lettre que le passage du jour.
 
-### BL-052 — Étudier le coût et le passage à l'échelle avec des inscriptions ouvertes
+### BL-055 — Tarifer `gpt-5.6-luna` dans la grille livrée
 
-- **Catégorie** : docs
+- **Catégorie** : prompts
 - **Priorité** : 1
-- **Description** : étude, sans code. Chaque profil note tous les articles de ses catégories, et se
-  fait résumer les siens : la facture croît en profils × articles, et l'inscription est ouverte.
-  Chaque profil pose aussi une quinzaine de libellés dans le FreshRSS partagé (`score-NN`,
-  `theme-*`, `scoring-<hash>`) : à trente personnes, la barre latérale devient inutilisable. À
-  chiffrer à partir des journaux (`runlog`, `pricing`) : coût par profil et par jour, avant et après
-  BL-038. Options à comparer : un plafond de profils servis ou un quota, un scoring mutualisé par
-  gabarit (une note par gabarit et par article, et non par personne), un cache de scoring sorti des
-  libellés FreshRSS vers la base SQLite. Recommandation, avec le seuil de profils où chaque option
-  devient nécessaire.
-- **Bénéfice attendu** : savoir combien coûte un inscrit avant qu'ils soient cinquante.
+- **Description** : `gpt-5.6-luna` porte le résumé, le montage et l'éphéméride, mais n'a pas
+  d'entrée dans le bloc `prices` d'`openai` (`llm/providers.json`) : son `cout` vaut `null` dans tous
+  les journaux, `total` aussi, et `tarification_complete` est faux chaque jour. `pricing.tarif`
+  refuse à raison de le rattacher à `gpt-5`. Selon qu'il est facturé comme `gpt-5` ou comme
+  `gpt-5-mini`, un profil coûte 0,17 $ ou 0,09 $ par jour (étude
+  [cout-et-passage-a-l-echelle.md](docs/cout-et-passage-a-l-echelle.md)) : aucun budget ni plafond
+  n'est calculable sans lui. Relever le tarif publié (entrée et sortie par million de tokens,
+  raisonnement facturé en sortie) et l'ajouter à la grille livrée, avec sa source et sa date dans
+  un `_pourquoi`.
+- **Bénéfice attendu** : un coût réel dans chaque journal, et le prérequis du budget de BL-057.
 - **Tests d'acceptation** :
-  - [ ] un document court dans `docs/` : coût mesuré, options, recommandation, seuils de bascule ;
-  - [ ] les items de code qui en découlent sont ajoutés à ce backlog.
+  - [ ] `pricing.tarif("gpt-5.6-luna")` rend le tarif livré ;
+  - [ ] un journal d'une journée à luna a `tarification_complete` vrai et un `total` non nul ;
+  - [ ] le test qui garantit que `gpt-5.6-luna` n'est pas rattaché à `gpt-5` reste vert.
+
+### BL-056 — Cache de scoring en SQLite, hors des libellés FreshRSS
+
+- **Catégorie** : pipeline
+- **Priorité** : 1
+- **Description** : le cache de scoring vit dans des libellés FreshRSS préfixés par profil — 11
+  `score-NN`, 5 `theme-*`, un `scoring-<hash>` par édition du profil, plus `digested` : au moins 18
+  libellés par profil dans le FreshRSS partagé, et 30 à 50 `edit-tag` par profil et par jour. Dès 3
+  à 5 profils, la barre latérale est inutilisable. Déplacer le cache dans la base SQLite existante
+  (`annuaire_sqlite.py`), clé `(item_id, empreinte)` → score, thématique, angle. L'angle est enfin
+  persisté (une note relue des tags revient aujourd'hui sans lui). Deux profils au texte identique
+  partagent la même empreinte, donc la même note, sans mutualisation par gabarit. Le cache est
+  injecté au constructeur derrière un contrat de `protocols.py` ; `--no-tags` et `--dry-run`
+  n'écrivent pas plus dans la base qu'aujourd'hui dans FreshRSS. `digested` et le marquage comme lu
+  restent dans FreshRSS. À la migration, une journée est renotée une fois (environ 0,004 $ par
+  profil) : à dire, pas à contourner. Plan à faire valider.
+- **Bénéfice attendu** : le FreshRSS partagé ne porte plus aucun libellé de notation, quel que soit
+  le nombre d'inscrits — le prérequis technique de l'ouverture.
+- **Tests d'acceptation** :
+  - [ ] un article déjà noté sous la même empreinte n'est pas renvoyé au modèle, et sa note revient
+        avec thème et angle ;
+  - [ ] une empreinte différente (profil édité, modèle changé) provoque une nouvelle notation ;
+  - [ ] aucun libellé `score-`, `theme-` ni `scoring-` n'est plus posé ;
+  - [ ] deux profils au texte identique ne notent un article qu'une fois ;
+  - [ ] `--dry-run` n'écrit rien dans la base ;
+  - [ ] relancer une journée ne recoûte pas le scoring, comme aujourd'hui ;
+  - [ ] FONCTIONNEMENT décrit le cache et sa table.
+
+### BL-057 — Plafond de profils servis et budget journalier de la tournée
+
+- **Catégorie** : pipeline
+- **Priorité** : 1
+- **Dépend de** : BL-055
+- **Description** : l'inscription est ouverte et chaque profil coûte entre 0,11 et 0,19 $ par jour
+  de semaine en borne haute (étude BL-052) : rien ne borne la facture. Deux réglages de
+  l'installation, hors des secrets : un nombre maximal de profils servis, et un budget journalier en
+  dollars. La tournée sert les profils dans un ordre stable (ancienneté du compte), estime le coût
+  d'un profil d'après ses derniers journaux (0,19 $ par défaut faute d'historique), et s'arrête
+  avant de dépasser le budget. Les profils non servis sont nommés dans le log et le récapitulatif,
+  jamais ignorés en silence ; ils ne bloquent pas le marquage comme lu. Ordre de grandeur : 1 $ par
+  jour sert 5 profils « tout » ou 8 à 9 profils métier.
+- **Bénéfice attendu** : la facture du jour ne dépend plus du nombre d'inscrits.
+- **Tests d'acceptation** :
+  - [ ] au-delà du plafond, les profils suivants ne sont pas servis et le log les nomme ;
+  - [ ] la tournée s'arrête avant le profil qui ferait dépasser le budget estimé ;
+  - [ ] l'ordre de service est stable d'un jour à l'autre ;
+  - [ ] le marquage comme lu a lieu quand tous les profils servables ont été servis ;
+  - [ ] sans réglage, comportement inchangé ;
+  - [ ] `.env.example` et FONCTIONNEMENT documentent les deux réglages.
+
+### BL-058 — Inscription fermée ou liste d'attente au plafond
+
+- **Catégorie** : web
+- **Priorité** : 2
+- **Dépend de** : BL-057
+- **Description** : avec un plafond de profils servis, un inscrit au-delà ne recevrait rien sans
+  savoir pourquoi. Quand le nombre de profils actifs atteint le plafond de BL-057, le formulaire
+  d'inscription le dit et propose une liste d'attente (adresse confirmée, sans profil servi).
+  L'admin voit la file et en fait entrer quelqu'un quand une place se libère ; la personne reçoit
+  un email à son entrée.
+- **Bénéfice attendu** : personne n'est inscrit sans être servi, et l'ouverture se fait au rythme
+  du budget.
+- **Tests d'acceptation** :
+  - [ ] au plafond, une nouvelle inscription entre en liste d'attente et le dit ;
+  - [ ] sous le plafond, l'inscription est inchangée ;
+  - [ ] une personne en attente n'est pas servie par la tournée ;
+  - [ ] l'admin fait entrer une personne de la file, qui reçoit un email ;
+  - [ ] `npm run check` et `npm test` verts, tests API en unittest.
+
+### BL-059 — Éphéméride calculée une fois par tournée
+
+- **Catégorie** : pipeline
+- **Priorité** : 3
+- **Description** : `cli.build_service` crée un `EphemerideService` par profil, et chacun refait le
+  même appel au modèle pour la même journée (environ 0,003 $ par profil et par jour en borne
+  haute). Calculer l'éphéméride une fois dans la tournée et l'injecter à chaque service. Si BL-042
+  rend son domaine personnel, la mémoriser par domaine plutôt que par tournée.
+- **Bénéfice attendu** : un appel par jour au lieu d'un par profil, et la même éphéméride pour tous.
+- **Tests d'acceptation** :
+  - [ ] une tournée de trois profils fait un seul appel d'éphéméride ;
+  - [ ] chaque `journee.json` porte la même éphéméride ;
+  - [ ] l'échec de l'appel retombe sur la table, comme aujourd'hui.
+
+### BL-060 — Audio de journée en option ou à la demande
+
+- **Catégorie** : pipeline
+- **Priorité** : 2
+- **Dépend de** : BL-044
+- **Description** : la synthèse vocale représente 41 % du coût d'un profil en borne haute, 76 % en
+  borne basse (environ 4 300 caractères par jour à 16 $ le million chez voxtral), payée même par
+  qui ne l'écoute jamais. Nouvelle clé du document de profil (audio quotidien oui ou non, défaut à
+  décider), et, une fois BL-044 fait, une synthèse à la première écoute depuis le lien audio, à
+  partir du texte du montage déjà journalisé ; son coût est journalisé dans la journée.
+- **Bénéfice attendu** : vers 20 à 30 profils, le poste le plus lourd n'est plus payé que par ceux
+  qui écoutent.
+- **Tests d'acceptation** :
+  - [ ] un profil sans audio n'appelle pas la synthèse, et sa lettre ne joint ni ne lie aucun mp3 ;
+  - [ ] la synthèse à la demande produit le mp3 une seule fois et le journalise ;
+  - [ ] clé absente : comportement par défaut documenté ;
+  - [ ] `--send-only` rend la même lettre.
+
+### BL-061 — Bilan de coût par profil sur une période, option CLI `--couts`
+
+- **Catégorie** : cli
+- **Priorité** : 2
+- **Description** : chiffrer BL-052 a demandé de rapatrier des journaux et de les agréger à la main,
+  en écartant les rejeux (`notes_calculees` < `articles`), en séparant semaine et week-end et en
+  bornant les modèles non tarifés. Nouvelle option `--couts [--du AAAA-MM-JJ --au AAAA-MM-JJ]`,
+  lecture seule comme `--journal` : par profil, coût moyen par jour (semaine, week-end), répartition
+  par typologie, coût par article noté et par retenu, journées écartées et pourquoi, modèles non
+  tarifés. Aucun appel, rien d'écrit.
+- **Bénéfice attendu** : savoir à tout moment combien coûte chaque inscrit, et rejouer l'étude
+  BL-052 en une commande.
+- **Tests d'acceptation** :
+  - [ ] sur des journaux de test, les moyennes et la répartition sont exactes ;
+  - [ ] une journée rejouée est écartée et signalée ;
+  - [ ] un modèle non tarifé est nommé, et le total le dit incomplet ;
+  - [ ] aucun fournisseur n'est requis pour lancer la commande ;
+  - [ ] le README documente l'option.
+
+### BL-062 — Tournée en parallèle
+
+- **Catégorie** : pipeline
+- **Priorité** : 4
+- **Description** : la tournée sert les profils l'un après l'autre, en 104 à 149 s par profil un
+  jour de semaine : une fenêtre de 2 h tient environ 50 profils. La servir en parallèle (nombre de
+  profils simultanés réglable) suppose de sortir de l'état de module de `runlog` (le journal actif
+  `_actif` est une variable globale) au profit d'un journal porté par le contexte du profil ; les
+  lectures FreshRSS partagées (`_Session`) doivent le rester. Plan à faire valider.
+- **Bénéfice attendu** : vers 40 à 50 profils, la tournée tient dans sa fenêtre.
+- **Tests d'acceptation** :
+  - [ ] deux profils servis en parallèle écrivent chacun des journaux exacts, sans appel compté
+        chez l'autre ;
+  - [ ] la lecture FreshRSS reste unique par catégorie et par tournée ;
+  - [ ] l'échec d'un profil n'arrête pas les autres ;
+  - [ ] parallélisme à 1 : comportement identique à l'actuel.
+
+### BL-063 — Rétention des sorties par profil
+
+- **Catégorie** : pipeline
+- **Priorité** : 4
+- **Description** : chaque profil écrit 1,9 Mo par jour, dont 96 % de mp3 : 0,7 Go par an, 35 Go à
+  50 profils. Réglage de l'installation : nombre de jours de conservation des mp3, purgés par la
+  tournée à la fin de son passage. Les journaux `<categorie>.log.json` et `journee.json` restent :
+  ils portent le texte, les coûts, et `--send-only`.
+- **Bénéfice attendu** : un disque qui ne croît plus qu'avec les journaux, entre 30 et 50 profils.
+- **Tests d'acceptation** :
+  - [ ] les mp3 plus vieux que la durée réglée sont supprimés, les journaux restent ;
+  - [ ] sans réglage, rien n'est supprimé ;
+  - [ ] `--journal` lit encore une journée purgée ;
+  - [ ] `.env.example` documente le réglage.
 
 ### BL-022 — Exclure du pipeline les flux non résumables
 
@@ -471,9 +600,12 @@ régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
 ### BL-025 — Faire le ménage dans les libellés de scoring
 
 - **Catégorie** : freshrss
-- **Priorité** : 4
+- **Priorité** : 2
+- **Dépend de** : BL-056
 - **Description** : les libellés `<profil>-score-NN` et un `<profil>-scoring-<hash>` par version de
   prompt s'accumulent dans la barre latérale FreshRSS, comme les anciens libellés sans préfixe.
+  Une fois le cache passé en base (BL-056), le ménage s'étend aux libellés `score-`, `theme-` et
+  `scoring-` de **tous** les profils (étude BL-052).
   Ajouter une commande de maintenance qui liste les libellés correspondant à ces motifs avec le
   nombre d'articles portant chacun, et supprime via l'API Google Reader les `scoring-<hash>`
   obsolètes (empreinte différente de la courante) et les libellés sans préfixe. Simulation par

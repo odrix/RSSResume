@@ -486,6 +486,79 @@ c'est elle qu'édite l'[API HTTP](#api-http), et le passage la sert exactement c
 — même validation, même `--profil`, sortie sous `output/<id>/`. Elle est exclusive des trois
 autres variables.
 
+#### Le catalogue des catégories
+
+Tout ce que contient le FreshRSS partagé n'est pas à tout le monde : une veille concurrentielle
+d'entreprise ne doit être ni notée, ni résumée, ni montrée à quelqu'un d'extérieur. Le
+**catalogue** décrit chaque catégorie FreshRSS — description lisible, métiers concernés,
+visibilité — dans une table `categories` de la base des profils. Il s'écrit en JSON, hors du
+dépôt (par exemple `input/categories.json`), sur le modèle de
+[docs/categories.exemple.json](docs/categories.exemple.json) :
+
+```json
+{
+  "_lisez_moi": ["Une entrée par catégorie FreshRSS. Absente d'ici : servie à personne."],
+  "Tech generaliste": {"description": "Actualité tech large : langages, cloud, outils.", "metiers": ["developpeur", "cto"], "visibilite": "publique"},
+  "Veille concurrentielle": {"description": "Concurrents et alertes du marché.", "metiers": ["cto"], "visibilite": "privee", "proprietaires": ["moi"]}
+}
+```
+
+- la clé est le libellé FreshRSS, comparé rogné, sans casse ni accents ; une clé qui commence
+  par `_` et dont la valeur est un texte ou une liste est un commentaire — avec un objet pour
+  valeur, c'est une catégorie (`_Archive` en est une) ;
+- `description` (texte non vide), `metiers` (liste de textes, libre pour l'instant) et
+  `visibilite` sont exigés ; `publique` est servie à tout le monde, `privee` aux seuls
+  `proprietaires` (des `username`, qui n'ont pas à exister déjà) ;
+- une catégorie **absente** du catalogue n'est servie à personne : une catégorie créée dans
+  FreshRSS n'apparaît chez personne tant qu'on ne l'a pas décrite, et une faute de recopie
+  dans un libellé prive la catégorie de lecteurs au lieu de la donner à tous. Le passage
+  le dit dans ses logs (`Catalogue : hors catalogue, servies à personne : …`) quand il
+  marque la journée lue — pas lors d'un `--dry-run`, d'un `--no-mark-read` ni d'un
+  `--profil` qui ne marque pas.
+
+Il se charge dans la base par :
+
+```bash
+python -m rssresume.api importer-catalogue input/categories.json
+```
+
+Le fichier est validé **en entier** avant toute écriture — une clé inconnue, une visibilité
+hors liste, une catégorie privée sans propriétaire ou publique avec, un propriétaire qui n'est
+pas un nom de profil valide, deux libellés identiques une fois casse et accents retirés : rien
+n'est écrit, le message nomme le libellé, code de sortie 2. Accepté, il **remplace** le
+catalogue : une catégorie retirée du fichier disparaît de la base. Le passage revalide la table
+à chaque lancement, et une ligne corrompue à la main le fait échouer.
+
+Sans catalogue — pas de base, ou table vide —, tout est servi à tout le monde, comme avant :
+c'est accepté pour **un seul profil**, avec un avertissement à chaque passage ; dès **deux
+profils**, le passage refuse de démarrer (message d'erreur, code de sortie 2) et dit quoi faire :
+
+- en base, importer le catalogue (`importer-catalogue`) ;
+- avec un dossier de profils (`RSSRESUME_PROFILES_DIR`) ou un document unique, il n'existe
+  **pas** de catalogue hors de la base : passer d'abord à la base — poser
+  `RSSRESUME_PROFILES_DB`, `python -m rssresume.api importer <dossier>`, retirer
+  `RSSRESUME_PROFILES_DIR` —, puis importer le catalogue. Une installation à plusieurs profils
+  en mode dossier ne tourne donc plus tant que cette migration n'est pas faite.
+
+Le catalogue dit *à qui* ; les variables d'environnement continuent de dire *quoi* et
+*comment* :
+
+| Variable | Avec le catalogue |
+| --- | --- |
+| `RSSRESUME_CATEGORIES` | restreint encore la sélection de l'installation ; le catalogue s'applique par-dessus |
+| `RSSRESUME_EXCLUDED_CATEGORIES` | appliquée d'abord, pour tout le monde, sans casse ni accents ; redondante avec un catalogue, non dépréciée |
+| `RSSRESUME_CERTFR_CATEGORIES` | dit *comment* traiter la catégorie ; elle doit figurer au catalogue pour être servie |
+| `RSSRESUME_CATEGORY_THRESHOLDS` | inchangée, s'applique aux catégories servies |
+
+Le marquage comme lu ne change pas : une catégorie servie à personne — hors catalogue, ou
+privée sans propriétaire parmi les profils — est lue à la fin du passage pour être marquée
+avec le reste, une fois, et seulement quand tout le monde a été servi. Si cette lecture
+échoue, l'erreur est journalisée et ce qui a été servi est marqué quand même : les emails sont
+partis, un rejeu ne doit pas les renvoyer.
+
+`--send-only` renvoie les journaux déjà écrits sans les refiltrer : une journée produite avant
+l'import du catalogue peut contenir des catégories devenues privées.
+
 ### Renvoyer l'email d'une journée
 
 Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est l'envoi
@@ -629,8 +702,9 @@ concernés.
 
 ### Divers
 
-- sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées.
-- `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse).
+- sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées — pour
+  chaque profil, celles que le [catalogue](#le-catalogue-des-catégories) lui sert.
+- `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse et aux accents).
 - tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
   `python -m rssresume.llm.processing` (nécessite la clé du fournisseur actif, `OPENAI_API_KEY` par défaut).
 
@@ -701,6 +775,15 @@ L'import conserve l'`id` des documents (il en génère un sinon, et l'affiche), 
 les fichiers, et se rejoue sans rien réécrire. Tant qu'il n'a pas eu lieu, la base est vide
 et le passage ne sert personne.
 
+Dès que la base compte deux profils, le passage exige le
+[catalogue des catégories](#le-catalogue-des-catégories) : l'importer avant — ou en même temps
+que — la mise en production, sans quoi le passage refuse de démarrer :
+
+```bash
+docker cp input/categories.json <conteneur-api>:/data/categories.json
+docker exec <conteneur-api> python -m rssresume.api importer-catalogue /data/categories.json
+```
+
 `input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
 `rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone.
 
@@ -755,6 +838,7 @@ Pour l'essayer en local :
 RSSRESUME_PROFILES_DB=input/profils.sqlite3 RSSRESUME_API_TOKEN=$(python -c "import secrets;print(secrets.token_urlsafe(48))") \
   python -m rssresume.api
 python -m rssresume.api importer input/profils    # migrer des documents JSON, une fois
+python -m rssresume.api importer-catalogue input/categories.json    # remplacer le catalogue
 ```
 
 ## Organisation du code
@@ -769,7 +853,8 @@ Un module par thème technique, dans [rssresume/](rssresume/) :
 | `models.py` | objets métier (`Article`, `CategoryDigest`) |
 | `protocols.py` | contrats des collaborateurs de `DigestService` |
 | `profil.py` | le document de la personne : profil de pertinence, stack, destinataire |
-| `annuaire_sqlite.py` | `AnnuaireSqlite` : les profils en base SQLite, lus par la tournée, écrits par l'API |
+| `annuaire_sqlite.py` | `AnnuaireSqlite` : les profils en base SQLite, lus par la tournée, écrits par l'API ; le catalogue des catégories |
+| `categories.py` | `Catalogue` : à qui chaque catégorie FreshRSS est servie, publique ou privée |
 | **`api/`** | **l'API HTTP du site** (`python -m rssresume.api`) |
 | `api/serveur.py` | serveur, jeton, corps JSON, envoi des audios par plages |
 | `api/routes.py` | une classe par forme d'URL |
