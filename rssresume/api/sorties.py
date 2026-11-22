@@ -12,6 +12,11 @@ from __future__ import annotations
 import datetime as dt
 import pathlib
 import re
+import urllib.parse
+
+from rssresume import newsletter, runlog
+from rssresume.models import Link
+from rssresume.newsletter import Lettre
 
 #: Le nom d'un répertoire de journée, tel que `digest.py` l'écrit.
 MOTIF_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -44,6 +49,83 @@ class Journee:
 
     def en_json(self) -> dict:
         return {"date": self.date.isoformat(), "audios": [audio.en_json() for audio in self.audios]}
+
+
+#: Les seuls schémas qu'un lien d'article peut porter jusqu'au site.
+SCHEMAS_LIENS = {"http", "https"}
+
+
+def lien_sur(url: str) -> str | None:
+    """L'URL si elle mène à une page web, `None` sinon.
+
+    Les URL viennent des flux, que n'importe qui écrit : un `javascript:` posé dans un
+    `href` s'exécuterait au clic, et Svelte n'assainit pas les attributs. Le site refait
+    le même contrôle, mais l'API ne doit pas compter sur son client pour être propre — ce
+    qu'elle rend, elle le rend sûr.
+    """
+    texte = (url or "").strip()
+    try:
+        morceaux = urllib.parse.urlsplit(texte)
+    except ValueError:
+        return None
+    if morceaux.scheme.lower() not in SCHEMAS_LIENS or not morceaux.netloc:
+        return None
+    return texte
+
+
+class ContenuJournee:
+    """Ce qu'une journée raconte : la lettre que l'email a portée, et les audios du disque.
+
+    La lettre et non les journaux bruts : c'est elle qui décide de ce qu'un lecteur voit —
+    quels articles sont « à lire », lesquels « à surveiller », quelle durée s'annonce.
+    Relire les journaux une seconde fois, ailleurs, finirait par ne plus dire comme l'email.
+    """
+
+    def __init__(self, date: dt.date, lettre: Lettre, audios: list[Audio]):
+        self.date = date
+        self.lettre = lettre
+        self.audios = audios
+
+    @property
+    def raison(self) -> str | None:
+        """La phrase d'une journée sans article, la même que l'email ; `None` sinon."""
+        if self.lettre.sections:
+            return None
+        return f"Aucun article trouvé pour le {newsletter.date_longue(self.date)}."
+
+    def en_json(self) -> dict:
+        """Les textes partent bruts : les échapper est le travail du rendu, qui seul sait
+        dans quel contexte ils tombent. Les URL, elles, sont filtrées ici."""
+        lettre = self.lettre
+        return {
+            "date": self.date.isoformat(),
+            "audios": [audio.en_json() for audio in self.audios],
+            "ecoute": newsletter.duree(lettre.total_secondes),
+            "racontees": lettre.racontees,
+            "montage": None
+            if lettre.montage is None
+            else {
+                "audio": lettre.montage_path.name if lettre.montage_path else None,
+                "ecoute": lettre.montage_ecoute,
+            },
+            "raison": self.raison,
+            "categories": [
+                {
+                    "categorie": section.category,
+                    "racontee": section.racontee,
+                    "resume": section.summary_text,
+                    "audio": section.audio_name,
+                    "ecoute": section.ecoute,
+                    "articles": [_lien_json(lien) for lien in section.links],
+                    "a_surveiller": [_lien_json(lien) for lien in section.watchlist],
+                }
+                for section in lettre.sections
+            ],
+        }
+
+
+def _lien_json(lien: Link) -> dict:
+    return {"titre": lien.title, "source": lien.source, "url": lien_sur(lien.url)}
 
 
 def date_valide(texte: str) -> dt.date | None:
@@ -89,6 +171,24 @@ class Sorties:
             if date is not None and entree.is_dir() and not entree.is_symlink():
                 journees.append(Journee(date, self._audios(entree)))
         return sorted(journees, key=lambda journee: journee.date, reverse=True)
+
+    def contenu(self, id: str, texte_date: str) -> ContenuJournee | None:
+        """Le contenu d'une journée produite, relu de ses journaux ; sinon `None`.
+
+        La lecture est exactement celle de `--send-only` — `read_day`, `read_montage`,
+        `Lettre.compose` — pour que le site montre ce que l'email a montré, sans un appel
+        IA ni une seconde façon de relire un journal.
+        """
+        date = date_valide(texte_date)
+        if date is None:
+            return None
+        jour = self.dossier(id) / date.isoformat()
+        if not jour.is_dir() or jour.is_symlink():
+            return None
+        if not jour.resolve().is_relative_to(self.dossier(id).resolve()):
+            return None
+        lettre = Lettre.compose(date, runlog.read_day(jour), montage=runlog.read_montage(jour))
+        return ContenuJournee(date, lettre, self._audios(jour))
 
     def audio(self, id: str, texte_date: str, nom: str) -> Audio | None:
         """L'audio demandé, s'il existe et reste sous le dossier du profil ; sinon `None`."""

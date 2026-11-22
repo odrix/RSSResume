@@ -54,6 +54,11 @@ services:
       RSSRESUME_OUTPUT_DIR: /data/output
       RSSRESUME_PROFILES_DB: /data/profils.sqlite3
       RSSRESUME_API_PORT: "8080"
+      # L'heure du passage, avec les mêmes défauts que le travailleur : l'API l'annonce au
+      # site (`GET /api/v1/passage`), qui dit à un nouvel inscrit quand arrive son premier
+      # résumé. Deux valeurs différentes ici et là-haut feraient promettre une heure fausse.
+      RSSRESUME_SCHEDULE: ${RSSRESUME_SCHEDULE:-04:00}
+      RSSRESUME_TIMEZONE: ${RSSRESUME_TIMEZONE:-Europe/Paris}
       TZ: ${RSSRESUME_TIMEZONE:-Europe/Paris}
     # `expose` et non `ports` : jamais joignable depuis Internet. Le site, seul client, est
     # une application Dokploy distincte : il ne partage pas le réseau de ce compose, d'où le
