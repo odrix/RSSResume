@@ -11,7 +11,13 @@ from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.models import ORIGINE_MONTAGE, Article, CategoryDigest, Link, Montage
 from rssresume.summaries import SummaryGenerator
-from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
+from tests.support import (
+    FakeAudioGenerator,
+    FakeEmailSender,
+    FakeFreshRSSClient,
+    FakeScorer,
+    make_config,
+)
 
 DAY = dt.date(2026, 8, 23)
 
@@ -544,6 +550,44 @@ class AudioGlobalTests(unittest.TestCase):
         self.assertEqual("Bonjour Adrien. Voici la journée.", journal["montage"]["texte"])
         self.assertEqual("journee.wav", journal["montage"]["audio"])
         self.assertEqual(ORIGINE_MONTAGE, journal["montage"]["origine"])
+
+
+class LimitArticlesTests(unittest.TestCase):
+    def test_limit_applies_before_scoring_and_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            articles = [
+                make_article(item_id=f"item-{numero}", title=f"Article {numero}")
+                for numero in range(1, 6)
+            ]
+            notes = [
+                {
+                    "id": article.item_id,
+                    "score": 9,
+                    "thematique": "tech",
+                    "angle": "Pourquoi cet article compte.",
+                    "notee": True,
+                }
+                for article in articles[:3]
+            ]
+            config = dataclasses.replace(make_config(tmpdir), limite_articles=3, categories_surcharge=["Tech"])
+            scorer = FakeScorer(notes)
+            summary = mock.Mock()
+            summary.summarize.return_value = "Résumé limité"
+            service = DigestService(
+                config=config,
+                freshrss_client=FakeFreshRSSClient({"Tech": articles}),
+                summary_generator=summary,
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+                scorer=scorer,
+            )
+
+            digests = service.run(DAY, send_email=False)
+
+            payload = scorer.score_articles.call_args.args[0]
+            self.assertEqual(["item-1", "item-2", "item-3"], [article["id"] for article in payload])
+            self.assertEqual(3, len(digests[0].articles))
+            summary.summarize.assert_called_once()
 
 
 if __name__ == "__main__":

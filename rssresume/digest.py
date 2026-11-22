@@ -353,7 +353,11 @@ class DigestService:
         regle: SelectionRule,
     ) -> CategoryDigest:
         articles = self._freshrss_client.fetch_daily_articles(category, day)
-        console.category(category, f"{len(articles)} article(s)")
+        if self._config.limite_articles is not None:
+            articles = articles[:self._config.limite_articles]
+            console.category(category, f"{len(articles)} article(s) (limite --limit)")
+        else:
+            console.category(category, f"{len(articles)} article(s)")
 
         if not articles:
             # Aucun article : marqueur vide, ni résumé IA ni synthèse vocale.

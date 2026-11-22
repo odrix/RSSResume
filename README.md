@@ -424,6 +424,8 @@ python -m rssresume --date 2026-08-23      # rejouer une journée précise
 | `--send-only` | renvoie l'email d'une journée déjà produite, sans rien recalculer |
 | `--journal` | imprime ce qu'une journée déjà produite dit d'elle-même ; ne lit que le disque |
 | `--audio-mode category\|global` | un audio par catégorie, ou un seul pour la journée ; l'emporte sur `RSSRESUME_AUDIO_MODE` |
+| `--categories A,B` | ne traite que ces catégories ; l'emporte sur `RSSRESUME_CATEGORIES` |
+| `--limit N` | ne score et ne résume que les N premiers articles de chaque catégorie |
 | `--debug` | ajoute le détail des articles au journal, et l'imprime en fin de passage ; l'emporte sur `RSSRESUME_DEBUG` |
 | `--dry-run` | raccourci pour `--no-email --no-tags --no-mark-read` |
 

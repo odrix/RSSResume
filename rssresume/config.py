@@ -270,6 +270,13 @@ class AppConfig:
     #: Les catégories explicitement suivies par la personne. `None` conserve le
     #: comportement d'avant la clé ; une liste limite ensuite le catalogue déjà filtré.
     categories_abonnees: tuple[str, ...] | None = None
+    #: Surcouche de ligne de commande pour les catégories. Distincte de `categories` :
+    #: celle-ci porte aussi la variable d'environnement, dont le comportement historique
+    #: reste inchangé ; l'option doit en revanche signaler toute catégorie inconnue.
+    categories_surcharge: list[str] | None = None
+    #: Plafond d'articles ramené à la catégorie pendant une mise au point. `None` conserve
+    #: le passage intégral ; appliqué avant scoring et résumé, jamais au marquage global.
+    limite_articles: int | None = None
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -387,9 +394,28 @@ class AppConfig:
         """Les catégories de l'installation que la personne de cette configuration reçoit.
 
         Le seul endroit où le catalogue filtre ce qu'un digest lit : ce qui n'en sort pas
-        n'est ni noté, ni résumé, ni montré.
+        n'est ni noté, ni résumé, ni montré. `categories_surcharge` change uniquement
+        la liste demandée par une ligne de commande : elle l'emporte sur la variable
+        d'environnement, mais reste soumise aux exclusions, au catalogue et aux abonnements.
         """
-        categories = self.catalogue.servies(self.categories_installation(disponibles), self.username)
+        if self.categories_surcharge is not None:
+            canon = {casefold_ascii(nom): nom for nom in disponibles if nom}
+            inconnues = [
+                nom for nom in self.categories_surcharge
+                if casefold_ascii(nom) not in canon
+            ]
+            if inconnues:
+                raise ValueError(
+                    "--categories : catégorie(s) inconnue(s) : "
+                    + ", ".join(inconnues)
+                    + ". Catégories disponibles : "
+                    + (", ".join(disponibles) or "(aucune)")
+                    + "."
+                )
+            categories_base = [canon[casefold_ascii(nom)] for nom in self.categories_surcharge]
+        else:
+            categories_base = self.categories_installation(disponibles)
+        categories = self.catalogue.servies(categories_base, self.username)
         if self.categories_abonnees is None:
             return categories
         suivies = {casefold_ascii(categorie) for categorie in self.categories_abonnees}

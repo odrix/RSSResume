@@ -8,7 +8,7 @@ import datetime as dt
 
 from rssresume import certfr, ephemeride, llm, runlog
 from rssresume.audio import AudioGenerator
-from rssresume.config import AUDIO_MODES, AppConfig
+from rssresume.config import AUDIO_MODES, AppConfig, _split_categories
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
@@ -143,7 +143,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Shorthand for --no-email --no-tags --no-mark-read.",
     )
+    # Ajout des options pour les catégories
+    parser.add_argument(
+        "--categories",
+        metavar="A,B",
+        help="Traiter seulement ces catégories, séparées par des virgules, au lieu de RSSRESUME_CATEGORIES.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=_entier_positif,
+        metavar="N",
+        help="Limiter à N articles chaque catégorie pour le scoring et le résumé.",
+    )
     return parser.parse_args(argv)
+
+
+def _entier_positif(value: str) -> int:
+    """Le nombre d'articles du CLI : nul ou négatif est une commande impossible."""
+    try:
+        nombre = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("doit être un entier positif") from exc
+    if nombre < 1:
+        raise argparse.ArgumentTypeError("doit être un entier positif")
+    return nombre
 
 
 def send_only(config: AppConfig, day: dt.date) -> int:
@@ -224,6 +247,13 @@ def main(argv: list[str] | None = None) -> int:
         config = dataclasses.replace(config, audio_mode=args.audio_mode)
     if args.debug:
         config = dataclasses.replace(config, debug=True)
+    if args.categories:
+        config = dataclasses.replace(
+            config,
+            categories_surcharge=_split_categories(args.categories, "--categories"),
+        )
+    if args.limit:
+        config = dataclasses.replace(config, limite_articles=args.limit)
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(config.timezone).date()
     # Lu au lancement, comme la configuration : deux sources de profils posées ensemble
     # ou un `--profil` inconnu échouent avant toute lecture et tout appel.
@@ -249,10 +279,22 @@ def main(argv: list[str] | None = None) -> int:
     mark_read = not (args.dry_run or args.no_mark_read)
     if args.dry_run:
         console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
+
+    client_freshrss = FreshRSSClient(config, include_read=args.include_read)
+    if args.categories:
+        try:
+            disponibles = client_freshrss.list_categories()
+            config.categories_servies(disponibles)
+        except ValueError as exc:
+            console.error(f"Tournée : {exc}")
+            return 2
+        except Exception:
+            pass
+
     tournee = Tournee(
         config,
         annuaire,
-        FreshRSSClient(config, include_read=args.include_read),
+        client_freshrss,
         lambda profil, client: build_service(profil, freshrss_client=client),
     )
     try:
