@@ -119,7 +119,8 @@ export class Inscription {
 				stack: [],
 				// L'adresse du compte vient d'être prouvée : c'est le premier destinataire.
 				email: [compte.email],
-				prenom: brouillon.prenom
+				prenom: brouillon.prenom,
+				securite: 'exploitant'
 			});
 		} catch (erreur) {
 			if (!(erreur instanceof ErreurApi)) throw erreur;

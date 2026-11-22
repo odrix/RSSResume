@@ -42,7 +42,13 @@ export class ErreurApi extends Error {
  * `Profil` complet passé par erreur n'enverrait ni `id` ni `modifie_le`, que l'API seule
  * attribue. */
 function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
-	return { profil: saisie.profil, stack: saisie.stack, email: saisie.email, prenom: saisie.prenom };
+	return {
+		profil: saisie.profil,
+		stack: saisie.stack,
+		email: saisie.email,
+		prenom: saisie.prenom,
+		securite: saisie.securite
+	};
 }
 
 export interface OptionsClient {

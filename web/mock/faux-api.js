@@ -10,7 +10,7 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
 
 /**
  * @typedef {string | { nom: string, alias?: string[] }} ComposantStack
- * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, modifie_le: string }} ProfilStocke
+ * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, securite: 'exploitant' | 'decideur' | 'curieux', modifie_le: string }} ProfilStocke
  * @typedef {{ titre: string, source: string, url: string | null }} LienStocke
  * @typedef {{ categorie: string, racontee: boolean, resume: string, audio: string | null, ecoute: string | null, articles: LienStocke[], a_surveiller: LienStocke[] }} CategorieStockee
  * @typedef {{ ecoute?: string | null, racontees?: number, montage?: { audio: string | null, ecoute: string | null } | null, raison?: string | null, en_cours?: boolean, categories?: CategorieStockee[] }} ContenuStocke
@@ -180,6 +180,7 @@ export class FausseApi {
 			stack: corps.stack ?? [],
 			email: corps.email ?? [],
 			prenom: corps.prenom ?? '',
+			securite: corps.securite ?? 'exploitant',
 			modifie_le: new Date().toISOString()
 		};
 		this.profils.set(profil.username, profil);
@@ -206,6 +207,7 @@ export class FausseApi {
 			stack: corps.stack ?? [],
 			email: corps.email ?? [],
 			prenom: corps.prenom ?? '',
+			securite: corps.securite ?? 'exploitant',
 			modifie_le: new Date().toISOString()
 		});
 		return json(200, profil);
@@ -344,6 +346,9 @@ function valider(corps) {
 		}
 	}
 	if (corps.prenom !== undefined && typeof corps.prenom !== 'string') return 'prenom : un texte est attendu';
+	if (corps.securite !== undefined && !['exploitant', 'decideur', 'curieux'].includes(corps.securite)) {
+		return 'securite : exploitant, decideur ou curieux est attendu';
+	}
 	return null;
 }
 

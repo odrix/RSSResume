@@ -3,7 +3,13 @@ import { mp3Silencieux } from '../../../mock/faux-api.js';
 import { ClientApiResume, ErreurApi } from './api-resume.js';
 import { JETON, monter } from './outils-test.js';
 
-const SAISIE = { profil: 'CTO', stack: ['Traefik'], email: ['moi@example.com'], prenom: 'Adrien' };
+const SAISIE = {
+	profil: 'CTO',
+	stack: ['Traefik'],
+	email: ['moi@example.com'],
+	prenom: 'Adrien',
+	securite: 'decideur' as const
+};
 
 async function erreurDe(promesse: Promise<unknown>): Promise<ErreurApi> {
 	try {

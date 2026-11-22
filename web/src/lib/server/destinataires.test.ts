@@ -10,7 +10,7 @@ import { EMAIL_ADMIN, ORIGINE, jetonDuLien, monter } from './outils-test.js';
 const MOI = 'moi@example.com';
 
 function saisie(email: string[]): ProfilSaisi {
-	return { profil: 'CTO', stack: [], email, prenom: '' };
+	return { profil: 'CTO', stack: [], email, prenom: '', securite: 'exploitant' };
 }
 
 async function echec<E extends Error>(promesse: Promise<unknown>, type: new (...a: never[]) => E): Promise<E> {

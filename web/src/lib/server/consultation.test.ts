@@ -38,7 +38,7 @@ describe('ConsultationResumes', () => {
 		moi = await env.creerConfirme('moi@example.com', 'moi');
 		autre = await env.creerConfirme('autre@example.com', 'autre');
 		admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
-		await env.api.creerProfil('moi', { profil: 'CTO', stack: [], email: [], prenom: '' });
+		await env.api.creerProfil('moi', { profil: 'CTO', stack: [], email: [], prenom: '', securite: 'exploitant' });
 		env.fausseApi.ajouterAudio('moi', DATE, 'cyber.mp3', mp3Silencieux(1));
 		env.fausseApi.ajouterContenu('moi', DATE, CONTENU);
 		env.fausseApi.requetes.length = 0;

@@ -7,6 +7,7 @@ describe('formulaire de profil', () => {
 		donnees.set('profil', '  CTO d’un SaaS  ');
 		donnees.set('prenom', ' Adrien ');
 		donnees.set('email', 'a@example.com\nb@example.com, c@example.com;');
+		donnees.set('securite', 'decideur');
 		for (const [nom, alias] of [
 			['Traefik', ''],
 			['Keycloak', 'RH-SSO, Red Hat SSO'],
@@ -19,7 +20,8 @@ describe('formulaire de profil', () => {
 			profil: 'CTO d’un SaaS',
 			prenom: 'Adrien',
 			email: ['a@example.com', 'b@example.com', 'c@example.com'],
-			stack: ['Traefik', { nom: 'Keycloak', alias: ['RH-SSO', 'Red Hat SSO'] }]
+			stack: ['Traefik', { nom: 'Keycloak', alias: ['RH-SSO', 'Red Hat SSO'] }],
+			securite: 'decideur'
 		});
 	});
 
@@ -28,7 +30,8 @@ describe('formulaire de profil', () => {
 			profil: '',
 			prenom: '',
 			email: [],
-			stack: []
+			stack: [],
+			securite: 'exploitant'
 		});
 	});
 
