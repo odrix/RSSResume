@@ -930,6 +930,7 @@ Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil
 | `email` | où le digest arrive | `AppConfig.smtp_to`, pour les deux transports |
 | `prenom` | par quel nom l'audio de journée ouvre | `MontageService`, en mode `global` seulement |
 | `securite` | le détail dû aux vulnérabilités : `exploitant`, `decideur` ou `curieux` | `SummaryGenerator` et `MontageService`, dans la consigne des CVE |
+| `categories` | les catégories publiques suivies, ou privées dont la personne est propriétaire | filtre avant le scoring dans `AppConfig.categories_servies` |
 
 Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne — c'est une
 salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle fait échouer le
@@ -1157,7 +1158,7 @@ Le document est validé par `profil_depuis_dict` **à l'écriture** — l'API re
 refuserait, avec le même message — **et à la lecture**, parce qu'une base se modifie aussi à la
 main. Il est normalisé à l'écriture (texte rogné, adresses en liste, clés inconnues retirées) :
 ce que le site relit est ce que la tournée servira. L'`id` et le `username` ne changent jamais
-après la création ; un `PUT` qui les envoie différents est refusé plutôt qu'ignoré.
+après la création ; un `PUT` qui les envoie différents est refusé plutôt que d'être ignoré.
 
 ### Deux processus sur une base
 

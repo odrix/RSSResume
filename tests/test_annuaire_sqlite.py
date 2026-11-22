@@ -147,6 +147,12 @@ class AnnuaireSqliteTests(Base):
         self.assertNotIn("axes", fiche.document)
         self.assertFalse(self.annuaire.profil("bea").axes.sont_declares)
 
+    def test_an_empty_categories_list_removes_the_subscription(self):
+        fiche = self.annuaire.creer("bea", {"profil": "B", "categories": []})
+
+        self.assertNotIn("categories", fiche.document)
+        self.assertIsNone(self.annuaire.profil("bea").categories)
+
 
 class DepuisEnvTests(Base):
     def test_the_database_variable_selects_the_database(self):
