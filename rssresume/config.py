@@ -16,6 +16,7 @@ import os
 import pathlib
 import zoneinfo
 
+from rssresume.axes import Axes
 from rssresume.categories import Catalogue, CatalogueOuvert
 from rssresume.certfr.stack import Stack
 from rssresume.models import SelectionRule
@@ -263,6 +264,9 @@ class AppConfig:
     #: tout le monde, comme avant lui ; c'est la tournée qui pose celui de l'annuaire, et
     #: qui refuse le catalogue ouvert dès qu'elle sert plus d'une personne.
     catalogue: Catalogue = dataclasses.field(default_factory=CatalogueOuvert)
+    #: Axes de veille du profil : personnalisés dans le document ou les cinq d'origine
+    #: quand la clé est absente. Ils voyagent avec le texte du profil dans la tournée.
+    axes: Axes = dataclasses.field(default_factory=Axes.par_defaut)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -330,6 +334,7 @@ class AppConfig:
             certfr_categories=_split_categories(
                 _env(ENV_CERTFR_CATEGORIES), ENV_CERTFR_CATEGORIES
             ),
+            axes=personne.axes,
         )
 
     def pour(self, lecteur: Lecteur) -> "AppConfig":

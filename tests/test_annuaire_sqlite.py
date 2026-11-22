@@ -141,6 +141,12 @@ class AnnuaireSqliteTests(Base):
         with self.assertRaises(ValueError):
             self.annuaire.profil("bea")
 
+    def test_an_empty_axes_list_removes_the_custom_axes(self):
+        fiche = self.annuaire.creer("bea", {"profil": "B", "axes": []})
+
+        self.assertNotIn("axes", fiche.document)
+        self.assertFalse(self.annuaire.profil("bea").axes.sont_declares)
+
 
 class DepuisEnvTests(Base):
     def test_the_database_variable_selects_the_database(self):

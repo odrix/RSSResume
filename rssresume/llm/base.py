@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 
 from rssresume import runlog
+from rssresume.axes import Axes
 from rssresume.llm import processing, prompts, providers
 from rssresume.profil import SECURITE_PAR_DEFAUT, Securite
 from rssresume.llm.providers import (
@@ -101,7 +102,7 @@ class LLMProvider:
 
     # -- les opérations métier ----------------------------------------------
 
-    def score_articles(self, articles: list[dict], profil: str | None = None) -> list[dict]:
+    def score_articles(self, articles: list[dict], profil: str | None = None, axes: Axes | None = None) -> list[dict]:
         """Note la pertinence de chaque article, sur titre + résumé court uniquement.
 
         Renvoie un dict {id, score, thematique, angle} par article d'entrée, dans le même
@@ -122,7 +123,7 @@ class LLMProvider:
                 depart + 1,
                 depart + len(lot),
             )
-            scored.extend(self._score_batch(lot, profil))
+            scored.extend(self._score_batch(lot, profil, axes))
 
         if len(scored) != len(articles):
             raise processing.ProcessingError(
@@ -214,14 +215,14 @@ class LLMProvider:
         runlog.record_tts(voice.model, voice.voice, text)
         return audio
 
-    def scoring_fingerprint(self, profil: str | None = None) -> str:
+    def scoring_fingerprint(self, profil: str | None = None, axes: Axes | None = None) -> str:
         """Empreinte du prompt de notation, modèle compris.
 
         Sert de clé de cache : tant qu'elle ne change pas, un article déjà noté n'est pas
         renoté. Changer de profil, de barème, de modèle — ou de fournisseur, puisque le
         modèle en dépend — produit une empreinte différente et déclenche la renotation.
         """
-        return processing.scoring_fingerprint(profil, self._settings.call(SCORING).model)
+        return processing.scoring_fingerprint(profil, self._settings.call(SCORING).model, axes)
 
     # -- transport -----------------------------------------------------------
 
@@ -270,7 +271,7 @@ class LLMProvider:
 
     # -- interne -------------------------------------------------------------
 
-    def _score_batch(self, lot: list[dict], profil: str | None) -> list[dict]:
+    def _score_batch(self, lot: list[dict], profil: str | None, axes: Axes | None = None) -> list[dict]:
         """Note un lot en un seul appel, en le redécoupant si la réponse est coupée.
 
         Un lot qui ne tient pas dans le plafond de sortie tuait la journée entière. Il
@@ -281,7 +282,7 @@ class LLMProvider:
         """
         try:
             brut = self._chat(
-                SCORING, prompts.scoring_system(profil), prompts.scoring_user(self._lot(lot))
+                SCORING, prompts.scoring_system(profil, axes), prompts.scoring_user(self._lot(lot))
             )
         except TruncatedResponse:
             if len(lot) <= prompts.SCORING_MIN_BATCH:
@@ -297,10 +298,10 @@ class LLMProvider:
                 moitie,
                 len(lot) - moitie,
             )
-            return self._score_batch(lot[:moitie], profil) + self._score_batch(
-                lot[moitie:], profil
+            return self._score_batch(lot[:moitie], profil, axes) + self._score_batch(
+                lot[moitie:], profil, axes
             )
-        return processing.read_scores(brut, lot)
+        return processing.read_scores(brut, lot, axes)
 
     @staticmethod
     def _lot(lot: list[dict]) -> list[dict]:

@@ -17,9 +17,9 @@ console.enable(False)
 SCORING_MODEL = "modele-de-test"
 
 
-def empreinte(profil=None):
-    """L'empreinte que `FakeScorer` produit, pour la comparer dans les tests."""
-    return processing.scoring_fingerprint(profil, SCORING_MODEL)
+def empreinte(profil=None, axes=None):
+    """L'empreinte que `FakeScorer` produit, pour comparer le cache des tests."""
+    return processing.scoring_fingerprint(profil, SCORING_MODEL, axes)
 
 
 class FakeFreshRSSClient:
@@ -67,8 +67,8 @@ class FakeScorer:
             return_value=[] if notes is None else notes, side_effect=side_effect
         )
 
-    def scoring_fingerprint(self, profil=None):
-        return empreinte(profil)
+    def scoring_fingerprint(self, profil=None, axes=None):
+        return empreinte(profil, axes)
 
 
 class FakeAudioGenerator:

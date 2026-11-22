@@ -6,6 +6,7 @@ import datetime as dt
 import pathlib
 from typing import Iterable, Protocol
 
+from rssresume.axes import Axes
 from rssresume.certfr import Revue, Stack
 from rssresume.models import Article, CategoryDigest, Ephemeride, Montage, Note
 
@@ -33,10 +34,10 @@ class FreshRSSClientProtocol(Protocol):
 class ScorerProtocol(Protocol):
     """Ce que `DigestService` attend d'un noteur : un `LLMProvider`, ou une doublure."""
 
-    def score_articles(self, articles: list[dict], profil: str | None = None) -> list[dict]:
+    def score_articles(self, articles: list[dict], profil: str | None = None, axes: Axes | None = None) -> list[dict]:
         ...
 
-    def scoring_fingerprint(self, profil: str | None = None) -> str:
+    def scoring_fingerprint(self, profil: str | None = None, axes: Axes | None = None) -> str:
         ...
 
 

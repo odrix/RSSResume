@@ -274,7 +274,7 @@ quand les avis emploient plusieurs écritures, `nom` étant celui qui sera écri
 ```json
 "stack": [
   "Traefik",
-  {"nom": "Keycloak", "alias": ["Red Hat Single Sign-On", "RH-SSO"]},
+  {"nom": "Keycloak", "alias": ["RH-SSO"]},
   {"nom": "noyau Linux", "alias": ["Linux kernel"]}
 ]
 ```
@@ -661,7 +661,12 @@ RSSRESUME_PROFILE_FILE=input/moi/profile.json
   "stack": ["Traefik", {"nom": "Keycloak", "alias": ["RH-SSO"]}],
   "email": "moi@example.com",
   "prenom": "Adrien",
-  "securite": "exploitant"
+  "securite": "exploitant",
+  "axes": [
+    {"slug": "qualite", "libelle": "Qualité", "description": "tests, fiabilité, dette technique, pratiques de qualité"},
+    {"slug": "livraison", "libelle": "Livraison", "description": "CI/CD, déploiement, exploitation, productivité de l'équipe"},
+    {"slug": "experience", "libelle": "Expérience", "description": "usage, accessibilité, conception et recherche utilisateur"}
+  ]
 }
 ```
 
@@ -790,7 +795,7 @@ docker exec <conteneur-api> python -m rssresume.api importer-catalogue /data/cat
 ```
 
 `input/` **n'entre pas dans l'image** : [.dockerignore](.dockerignore) ne laisse passer que
-`rssresume/`, et le répertoire est gitignoré, donc absent du dépôt que Dokploy clone.
+`rssresume/`, et le répertoire est gitignoré, donc absent du dépôt.
 
 Un document fautif ou un fichier mal nommé ne coûtent que la journée de leur personne, et se
 lisent dans les logs ; un dossier absent fait échouer le lancement — un conteneur qui ne démarre

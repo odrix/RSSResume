@@ -189,6 +189,20 @@ class ProfilsTests(ServeurTestCase):
         # Sans clé, le défaut — celui que la tournée servira.
         self.assertEqual("exploitant", self.json("GET", "/api/v1/profils/zoe")[1]["securite"])
 
+    def test_an_empty_axes_list_returns_to_default_axes(self):
+        self.json("POST", "/api/v1/profils", {**self.BEA, "axes": [
+            {"slug": "qualite", "libelle": "Qualité", "description": "tests et fiabilité"},
+            {"slug": "livraison", "libelle": "Livraison", "description": "déploiement"},
+            {"slug": "experience", "libelle": "Expérience", "description": "usage"},
+        ]})
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Veille", "stack": [], "email": [], "prenom": "", "axes": []
+        })
+
+        self.assertEqual(200, statut)
+        self.assertNotIn("axes", modifie)
+
     def test_unknown_profiles_are_not_found(self):
         self.assertEqual(404, self.appel("GET", "/api/v1/profils/absent")[0])
         self.assertEqual(404, self.appel("PUT", "/api/v1/profils/absent", {"profil": "x"})[0])
