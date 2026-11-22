@@ -10,6 +10,11 @@
 /** Un composant surveillé : `"Traefik"` ou `{"nom": "Keycloak", "alias": ["RH-SSO"]}`. */
 export type ComposantStack = string | { nom: string; alias?: string[] };
 
+/** Les trois degrés de détail dus aux vulnérabilités. */
+export type Securite = 'exploitant' | 'decideur' | 'curieux';
+
+export const REGIMES_SECURITE: Securite[] = ['exploitant', 'decideur', 'curieux'];
+
 /** Ce que l'API rend d'un profil, intégralement. */
 export interface Profil {
 	/** UUID attribué par l'API à la création, immuable. Le site adresse pourtant les
@@ -20,6 +25,7 @@ export interface Profil {
 	stack: ComposantStack[];
 	email: string[];
 	prenom: string;
+	securite: Securite;
 	modifie_le: string;
 }
 
@@ -38,6 +44,7 @@ export interface ProfilSaisi {
 	stack: ComposantStack[];
 	email: string[];
 	prenom: string;
+	securite: Securite;
 }
 
 /** Une ligne de l'éditeur de stack : deux champs texte, quel que soit le composant. */
@@ -89,7 +96,8 @@ export function lireFormulaireProfil(donnees: FormData): ProfilSaisi {
 		profil: String(donnees.get('profil') ?? '').trim(),
 		prenom: String(donnees.get('prenom') ?? '').trim(),
 		email: decouper(String(donnees.get('email') ?? ''), /[\s,;]+/),
-		stack: depuisLignes(noms.map((nom, i) => ({ nom, alias: alias[i] ?? '' })))
+		stack: depuisLignes(noms.map((nom, i) => ({ nom, alias: alias[i] ?? '' }))),
+		securite: String(donnees.get('securite') ?? 'exploitant') as Securite
 	};
 }
 

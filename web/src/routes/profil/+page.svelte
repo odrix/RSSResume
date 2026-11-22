@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { versLignes, type LigneStack, type ProfilSaisi } from '#lib/profil.js';
+	import { REGIMES_SECURITE, versLignes, type LigneStack, type ProfilSaisi } from '#lib/profil.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -66,6 +66,26 @@
 	<label>
 		Prénom <span class="aide">(facultatif — la salutation de l'audio)</span>
 		<input name="prenom" autocomplete="given-name" value={source?.prenom ?? ''} />
+	</label>
+
+	<label>
+		Régime de sécurité
+		<select
+			name="securite"
+			aria-invalid={form && 'champ' in form && form.champ === 'securite' ? 'true' : undefined}
+		>
+			{#each REGIMES_SECURITE as regime}
+				<option value={regime} selected={source?.securite === regime}>
+					{regime === 'exploitant' ? 'Exploitant' : regime === 'decideur' ? 'Décideur' : 'Curieux'}
+				</option>
+			{/each}
+		</select>
+		<span class="aide"><strong>Exploitant</strong> — tout le détail, gradué selon votre stack.</span>
+		<span class="aide"><strong>Décideur</strong> — une phrase par faille sans versions, sauf sur un composant de votre stack.</span>
+		<span class="aide"><strong>Curieux</strong> — seulement les failles exploitées ou majeures, en une phrase chacune.</span>
+		{#if form && 'champ' in form && form.champ === 'securite'}
+			<span class="erreur-champ">{form.message}</span>
+		{/if}
 	</label>
 
 	<label>

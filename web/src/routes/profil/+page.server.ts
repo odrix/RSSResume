@@ -37,7 +37,10 @@ export const actions: Actions = {
 			if (erreur instanceof ErreurDestinataire) return fail(422, { message: erreur.message, saisie });
 			if (!(erreur instanceof ErreurApi)) throw erreur;
 			// 422 : la validation de l'API, affichée telle quelle avec la saisie conservée.
-			return fail(erreur.statut === 422 ? 422 : 502, { message: erreur.message, saisie });
+			const champ = erreur.statut === 422 && /(?:^|[ :,])securite/i.test(erreur.message)
+				? 'securite'
+				: null;
+			return fail(erreur.statut === 422 ? 422 : 502, { message: erreur.message, saisie, champ });
 		}
 	}
 };

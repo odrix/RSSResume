@@ -103,7 +103,7 @@ describe('Inscription', () => {
 
 	it('ne confirme pas quand le username est déjà pris côté API', async () => {
 		const { inscription, api, courrier, comptes } = monter();
-		await api.creerProfil('moi', { profil: 'déjà là', stack: [], email: [], prenom: '' });
+		await api.creerProfil('moi', { profil: 'déjà là', stack: [], email: [], prenom: '', securite: 'exploitant' });
 		await inscription.inscrire(SAISIE, ORIGINE);
 		const erreur = await echec(
 			inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte)),
