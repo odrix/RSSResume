@@ -288,8 +288,9 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             console.error(f"Tournée : {exc}")
             return 2
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — impossible de vérifier --categories si FreshRSS est indisponible
+            console.error(f"Tournée : impossible de vérifier --categories ({exc!r})")
+            return 2
 
     tournee = Tournee(
         config,
