@@ -363,6 +363,38 @@ class RegimeSecuriteTests(PromptCase):
         # La règle commune tient toujours : un sujet par CVE, le nom exact.
         self.assertIn("UNE vulnérabilité = UN sujet à elle seule", prompt)
 
+    def test_decideur_without_stack_announces_no_action_nor_fixed_version(self):
+        """La règle commune demande « ce qu'il y a à faire » : sans cette levée, le modèle
+        annoncerait « appliquez le correctif 7.4.5 » à qui n'applique rien."""
+        consigne = prompts.cve_instruction(False, Securite.DECIDEUR)
+
+        self.assertIn("rien à faire à annoncer", consigne)
+        self.assertIn("ni correctif à appliquer ni version vers laquelle migrer", consigne)
+        self.assertIn("la phrase dit que la faille existe et ce qu'elle pèse", consigne)
+        # La levée vient après la règle commune, qu'elle corrige.
+        self.assertGreater(
+            consigne.index("rien à faire à annoncer"), consigne.index("ce qu'il y a à faire")
+        )
+
+    def test_curieux_reads_the_advisory_page_rather_than_the_title(self):
+        """C'est dans la page de l'avis, pas dans le titre, que se lit « déjà exploitée »."""
+        for declaree in (False, True):
+            with self.subTest(stack_declaree=declaree):
+                consigne = prompts.cve_instruction(declaree, Securite.CURIEUX)
+                self.assertIn(prompts.CVE_CONTENT_INSTRUCTION, consigne)
+                self.assertIn("plutôt que de paraphraser le titre", consigne)
+
+    def test_every_regime_and_stack_combination_yields_a_consigne(self):
+        for securite in Securite:
+            for declaree in (False, True):
+                with self.subTest(securite=securite, stack_declaree=declaree):
+                    regime = prompts.RegimeCve.pour(securite, declaree)
+                    self.assertIs(securite, regime.securite)
+                    self.assertTrue(regime.consigne().strip())
+                    # Le contrat tient pour chaque régime : ni `regle` ni `detail` ne lèvent.
+                    self.assertTrue(regime.regle())
+                    self.assertIsInstance(regime.detail(), str)
+
     def test_decideur_with_stack_keeps_the_detail_on_matched_components(self):
         prompt = self._regime(Securite.DECIDEUR, stack=self.STACK)
 

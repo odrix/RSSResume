@@ -307,7 +307,7 @@ choisit la consigne (`RegimeCve` et ses trois sous-classes dans
 | `securite` | Sans stack déclarée | Avec stack déclarée |
 | --- | --- | --- |
 | `exploitant` (défaut) | tout le détail, pour toutes — le régime d'origine | gradué sur le champ `stack`, comme ci-dessus |
-| `decideur` | **une** phrase par CVE : identifiant, produit, ce que la faille permet, exploitée ou non ; aucune version, aucune plage | gradué sur le champ `stack` : le détail complet sur un composant exploité, une phrase sans version ailleurs |
+| `decideur` | **une** phrase par CVE : identifiant, produit, ce que la faille permet, exploitée ou non ; aucune version, aucune plage, et rien à faire à annoncer — ni correctif, ni version corrigée | gradué sur le champ `stack` : le détail complet sur un composant exploité, une phrase sans version ailleurs |
 | `curieux` | seulement les failles déjà exploitées ou d'une ampleur qui fait l'actualité, une phrase chacune, sans version ; les autres au plus comptées dans une incise | pareil, et une faille dont l'article porte le champ `stack` se dit toujours, en une phrase, même sans exploitation connue |
 
 Le choix est fait **par le code**, comme `stack_declaree` : le modèle reçoit une consigne déjà

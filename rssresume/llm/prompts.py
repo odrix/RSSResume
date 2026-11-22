@@ -291,6 +291,14 @@ MERGE_INSTRUCTION = (
 #: le style, et les règles de fusion comme les paliers de longueur les diluaient. Ce bloc-ci
 #: vaut pour toutes ; le détail des versions, lui, dépend de ce qu'on exploite et se règle
 #: dans les deux blocs suivants.
+#:
+#: La consigne de lecture de l'avis est à part parce que deux règles la portent : la
+#: commune, et celle du régime `curieux`, qui la remplace mais a autant besoin de la page —
+#: c'est là, et non dans le titre, qu'on lit si une faille est déjà exploitée.
+CVE_CONTENT_INSTRUCTION = (
+    "Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y "
+    "ces éléments plutôt que de paraphraser le titre."
+)
 CVE_INSTRUCTION = (
     "Les vulnérabilités suivent une règle à part, où la précision prime sur le style. "
     "UNE vulnérabilité = UN sujet à elle seule : deux CVE différentes ne se fondent jamais dans la "
@@ -302,8 +310,8 @@ CVE_INSTRUCTION = (
     "vCenter Server », pas « l'hyperviseur ». "
     "Une à deux phrases factuelles, sans mise en scène ni formule d'accroche, et ce quel que soit "
     "le nombre d'articles du jour — les paliers de longueur ci-dessus ne s'appliquent pas ici. "
-    "Le champ « content » reprend le texte de la page de l'avis lorsqu'il a pu être lu : prends-y "
-    "ces éléments plutôt que de paraphraser le titre. Ce qui n'y figure pas ne se dit pas : une "
+    + CVE_CONTENT_INSTRUCTION
+    + " Ce qui n'y figure pas ne se dit pas : une "
     "version ou une date inventée sur un avis de sécurité est pire que l'absence d'information."
 )
 
@@ -352,7 +360,9 @@ CVE_SANS_VERSIONS_INSTRUCTION = (
     "que la faille permet, et qu'elle soit déjà exploitée si l'avis le dit. AUCUN numéro de "
     "version, aucune plage, aucune branche, aucune version corrigée : ces précisions servent à "
     "qui administre le produit, et récitées à voix haute elles couvrent ce qu'elle a besoin "
-    "d'entendre."
+    "d'entendre. Pour la même raison, rien à faire à annoncer, ni correctif à appliquer ni "
+    "version vers laquelle migrer : la phrase dit que la faille existe et ce qu'elle pèse, et "
+    "cela prime sur l'ordre des éléments donné plus haut."
 )
 
 #: Le régime `curieux` remplace la règle commune en entier, et non seulement son détail :
@@ -365,7 +375,9 @@ CVE_CURIEUX_INSTRUCTION = (
     "l'article dit déjà exploitées, ou d'une ampleur qui fait l'actualité — un produit que tout "
     "le monde utilise, une attaque en cours, un incident majeur. Pour chacune, UNE phrase : "
     "l'éditeur et le produit sous leur nom commercial exact, tel qu'il est écrit dans l'avis, ce "
-    "que la faille permet, et qu'elle est exploitée si c'est le cas. Aucun numéro de version, "
+    "que la faille permet, et qu'elle est exploitée si c'est le cas. "
+    + CVE_CONTENT_INSTRUCTION
+    + " Aucun numéro de version, "
     "aucune plage, aucune version corrigée. Deux failles retenues ne se fondent jamais dans la "
     "même phrase. Les autres ne se racontent pas : au plus une incise qui les compte sans les "
     "nommer — « et deux autres failles corrigées, sans exploitation connue ». Ce qui n'est pas "
@@ -384,8 +396,8 @@ class RegimeCve:
     """La consigne des vulnérabilités pour un régime de sécurité donné.
 
     Une classe par régime plutôt qu'une table de textes : deux régimes ne diffèrent que
-    par le détail ajouté à la règle commune, le troisième la remplace entière, et c'est
-    la redéfinition d'une méthode qui dit lequel fait quoi. Le choix du régime est fait
+    par le détail ajouté à la règle commune, le troisième remplace la règle elle-même, et
+    c'est la redéfinition de `regle` ou de `detail` qui dit lequel fait quoi. Le choix du régime est fait
     par le code, à partir du document, comme `stack_declaree` — jamais par le modèle.
     """
 
@@ -396,11 +408,15 @@ class RegimeCve:
         self.stack_declaree = stack_declaree
 
     def consigne(self) -> str:
-        """La règle commune, puis le détail propre au régime."""
-        return f"{CVE_INSTRUCTION} {self.detail()}"
+        """La règle, puis le détail propre au régime — le détail omis s'il est vide."""
+        return " ".join(partie for partie in (self.regle(), self.detail()) if partie)
+
+    def regle(self) -> str:
+        """Ce qui vaut pour toutes les failles retenues. La commune, sauf régime qui la remplace."""
+        return CVE_INSTRUCTION
 
     def detail(self) -> str:
-        """Ce que le régime dit des versions."""
+        """Ce que le régime ajoute à sa règle, selon la stack. Chaque sous-classe le dit."""
         raise NotImplementedError
 
     @staticmethod
@@ -435,10 +451,12 @@ class RegimeCurieux(RegimeCve):
 
     securite = Securite.CURIEUX
 
-    def consigne(self) -> str:
-        if self.stack_declaree:
-            return f"{CVE_CURIEUX_INSTRUCTION} {CVE_CURIEUX_STACK_INSTRUCTION}"
+    def regle(self) -> str:
+        # Remplacée et non complétée : la commune raconte toutes les failles.
         return CVE_CURIEUX_INSTRUCTION
+
+    def detail(self) -> str:
+        return CVE_CURIEUX_STACK_INSTRUCTION if self.stack_declaree else ""
 
 
 def cve_instruction(stack_declaree: bool, securite: Securite = SECURITE_PAR_DEFAUT) -> str:
