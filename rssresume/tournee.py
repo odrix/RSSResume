@@ -127,8 +127,12 @@ class Tournee:
         catalogue = installation.catalogue
         if catalogue.ouvert:
             return []
+        if installation.categories_surcharge is not None:
+            disponibles = self._freshrss_client.list_categories()
+        else:
+            disponibles = installation.categories or self._freshrss_client.list_categories()
         categories = installation.categories_installation(
-            installation.categories or self._freshrss_client.list_categories()
+            disponibles
         )
         hors = catalogue.hors_catalogue(categories)
         usernames = self._annuaire.usernames()

@@ -147,8 +147,9 @@ class CategoriesLimitOptionTests(unittest.TestCase):
             env = dossier_profils(tmpdir, PROFIL)
             with mock.patch.dict(os.environ, env, clear=True), \
                     mock.patch.object(cli.AppConfig, "from_env", return_value=config):
-                with mock.patch.object(cli, "build_service") as build:
-                    cli.main(["--categories", "Tech,News", "--date", JOUR.isoformat(), "--dry-run"])
+                with mock.patch.object(cli.FreshRSSClient, "list_categories", return_value=["Tech", "News"]):
+                    with mock.patch.object(cli, "build_service") as build:
+                        cli.main(["--categories", "Tech,News", "--date", JOUR.isoformat(), "--dry-run"])
 
             service_config = build.call_args.args[0]
             self.assertEqual(["Tech", "News"], service_config.categories_surcharge)
@@ -183,6 +184,29 @@ class CategoriesLimitOptionTests(unittest.TestCase):
             self.assertEqual(2, code)
             self.assertIn("Introuvable", sortie.getvalue())
             self.assertIn("inconnue", sortie.getvalue())
+
+    def test_categories_check_fails_explicitly_when_freshrss_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(make_config(tmpdir), categories=["Tech", "News"])
+            env = dossier_profils(tmpdir, PROFIL)
+            sortie = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(cli.AppConfig, "from_env", return_value=config):
+                with mock.patch.object(
+                    cli.FreshRSSClient,
+                    "list_categories",
+                    side_effect=RuntimeError("FreshRSS injoignable"),
+                ):
+                    with contextlib.redirect_stderr(sortie):
+                        console.enable(True)
+                        try:
+                            code = cli.main(["--categories", "Tech", "--date", JOUR.isoformat(), "--dry-run"])
+                        finally:
+                            console.enable(False)
+
+            self.assertEqual(2, code)
+            self.assertIn("impossible de vérifier --categories", sortie.getvalue())
+            self.assertIn("FreshRSS injoignable", sortie.getvalue())
 
     def test_limit_must_be_a_positive_integer(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

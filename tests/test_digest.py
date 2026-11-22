@@ -586,8 +586,12 @@ class LimitArticlesTests(unittest.TestCase):
 
             payload = scorer.score_articles.call_args.args[0]
             self.assertEqual(["item-1", "item-2", "item-3"], [article["id"] for article in payload])
-            self.assertEqual(3, len(digests[0].articles))
+            self.assertEqual(5, len(digests[0].articles))
             summary.summarize.assert_called_once()
+            self.assertEqual(
+                ["item-1", "item-2", "item-3", "item-4", "item-5"],
+                [article.item_id for article in service._freshrss_client.marked_as_read],
+            )
 
 
 if __name__ == "__main__":
