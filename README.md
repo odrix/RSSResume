@@ -503,15 +503,18 @@ dépôt (par exemple `input/categories.json`), sur le modèle de
 }
 ```
 
-- la clé est le libellé FreshRSS, comparé sans casse ni accents ; une clé qui commence par `_`
-  est un commentaire ;
+- la clé est le libellé FreshRSS, comparé rogné, sans casse ni accents ; une clé qui commence
+  par `_` et dont la valeur est un texte ou une liste est un commentaire — avec un objet pour
+  valeur, c'est une catégorie (`_Archive` en est une) ;
 - `description` (texte non vide), `metiers` (liste de textes, libre pour l'instant) et
   `visibilite` sont exigés ; `publique` est servie à tout le monde, `privee` aux seuls
   `proprietaires` (des `username`, qui n'ont pas à exister déjà) ;
 - une catégorie **absente** du catalogue n'est servie à personne : une catégorie créée dans
   FreshRSS n'apparaît chez personne tant qu'on ne l'a pas décrite, et une faute de recopie
   dans un libellé prive la catégorie de lecteurs au lieu de la donner à tous. Le passage
-  le dit dans ses logs (`Catalogue : hors catalogue, servies à personne : …`).
+  le dit dans ses logs (`Catalogue : hors catalogue, servies à personne : …`) quand il
+  marque la journée lue — pas lors d'un `--dry-run`, d'un `--no-mark-read` ni d'un
+  `--profil` qui ne marque pas.
 
 Il se charge dans la base par :
 
@@ -528,7 +531,14 @@ catalogue : une catégorie retirée du fichier disparaît de la base. Le passage
 
 Sans catalogue — pas de base, ou table vide —, tout est servi à tout le monde, comme avant :
 c'est accepté pour **un seul profil**, avec un avertissement à chaque passage ; dès **deux
-profils**, le passage refuse de démarrer et demande l'import.
+profils**, le passage refuse de démarrer (message d'erreur, code de sortie 2) et dit quoi faire :
+
+- en base, importer le catalogue (`importer-catalogue`) ;
+- avec un dossier de profils (`RSSRESUME_PROFILES_DIR`) ou un document unique, il n'existe
+  **pas** de catalogue hors de la base : passer d'abord à la base — poser
+  `RSSRESUME_PROFILES_DB`, `python -m rssresume.api importer <dossier>`, retirer
+  `RSSRESUME_PROFILES_DIR` —, puis importer le catalogue. Une installation à plusieurs profils
+  en mode dossier ne tourne donc plus tant que cette migration n'est pas faite.
 
 Le catalogue dit *à qui* ; les variables d'environnement continuent de dire *quoi* et
 *comment* :
@@ -536,13 +546,15 @@ Le catalogue dit *à qui* ; les variables d'environnement continuent de dire *qu
 | Variable | Avec le catalogue |
 | --- | --- |
 | `RSSRESUME_CATEGORIES` | restreint encore la sélection de l'installation ; le catalogue s'applique par-dessus |
-| `RSSRESUME_EXCLUDED_CATEGORIES` | appliquée d'abord, pour tout le monde ; redondante avec un catalogue, non dépréciée |
+| `RSSRESUME_EXCLUDED_CATEGORIES` | appliquée d'abord, pour tout le monde, sans casse ni accents ; redondante avec un catalogue, non dépréciée |
 | `RSSRESUME_CERTFR_CATEGORIES` | dit *comment* traiter la catégorie ; elle doit figurer au catalogue pour être servie |
 | `RSSRESUME_CATEGORY_THRESHOLDS` | inchangée, s'applique aux catégories servies |
 
 Le marquage comme lu ne change pas : une catégorie servie à personne — hors catalogue, ou
 privée sans propriétaire parmi les profils — est lue à la fin du passage pour être marquée
-avec le reste, une fois, et seulement quand tout le monde a été servi.
+avec le reste, une fois, et seulement quand tout le monde a été servi. Si cette lecture
+échoue, l'erreur est journalisée et ce qui a été servi est marqué quand même : les emails sont
+partis, un rejeu ne doit pas les renvoyer.
 
 `--send-only` renvoie les journaux déjà écrits sans les refiltrer : une journée produite avant
 l'import du catalogue peut contenir des catégories devenues privées.
@@ -692,7 +704,7 @@ concernés.
 
 - sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées — pour
   chaque profil, celles que le [catalogue](#le-catalogue-des-catégories) lui sert.
-- `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse).
+- `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse et aux accents).
 - tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
   `python -m rssresume.llm.processing` (nécessite la clé du fournisseur actif, `OPENAI_API_KEY` par défaut).
 

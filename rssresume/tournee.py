@@ -74,7 +74,6 @@ class Tournee:
             return []
 
         console.log(f"Tournée du {day.isoformat()} : {', '.join(cibles)}")
-        orphelines = self._orphelines(installation)
         lus: list[Article] = []
         echecs: list[str] = []
         for nom in cibles:
@@ -87,7 +86,7 @@ class Tournee:
         if not mark_read:
             console.log("Marquage comme lu : ignoré (--no-mark-read)")
         elif self._peut_marquer(cibles, echecs):
-            lus.extend(self._articles_orphelins(orphelines, day))
+            lus.extend(self._articles_orphelins(installation, day))
             self._marquer(lus)
         return echecs
 
@@ -106,15 +105,12 @@ class Tournee:
             raise ValueError(
                 f"Aucun catalogue des catégories pour {len(usernames)} profils "
                 f"({', '.join(usernames)}) : chacun recevrait toutes les catégories du FreshRSS, "
-                "veille privée comprise. Importer le catalogue dans la base "
-                "(python -m rssresume.api importer-catalogue <fichier.json>, voir "
-                "docs/categories.exemple.json)."
+                f"veille privée comprise. {self._annuaire.remede_sans_catalogue()}"
             )
         if usernames:
             console.log(
                 "Catalogue des catégories : aucun — toutes les catégories sont servies au seul "
-                "profil. À importer avant d'en ajouter un second "
-                "(python -m rssresume.api importer-catalogue <fichier.json>)."
+                f"profil. Avant d'en ajouter un second : {self._annuaire.remede_sans_catalogue()}"
             )
 
     def _orphelines(self, installation: AppConfig) -> list[str]:
@@ -123,6 +119,10 @@ class Tournee:
         Elles ne sont ni notées ni résumées, mais leurs articles sont lus à la fin pour être
         marqués comme les autres : sans cela, une catégorie hors catalogue garderait ses
         compteurs de non-lus pour toujours, et le marquage dépendrait du catalogue.
+
+        Calculées au moment de marquer, et seulement alors : un passage qui ne marquera
+        pas (`--dry-run`, `--no-mark-read`, `--profil`) n'a aucune raison d'interroger
+        FreshRSS pour elles.
         """
         catalogue = installation.catalogue
         if catalogue.ouvert:
@@ -146,13 +146,26 @@ class Tournee:
             )
         return hors + privees
 
-    def _articles_orphelins(self, orphelines: list[str], day: dt.date) -> list[Article]:
-        """Les articles du jour des catégories que personne n'a reçues, à marquer lus."""
-        return [
-            article
-            for categorie in orphelines
-            for article in self._freshrss_client.fetch_daily_articles(categorie, day)
-        ]
+    def _articles_orphelins(self, installation: AppConfig, day: dt.date) -> list[Article]:
+        """Les articles du jour des catégories que personne n'a reçues, à marquer lus.
+
+        Une panne de lecture ici est journalisée et ne coûte que ces articles-là : les
+        emails sont déjà partis, et lever maintenant laisserait toute la journée non lue —
+        un rejeu renverrait alors chaque email. Les orphelines resteront non lues, ce qui
+        ne coûte qu'un compteur dans FreshRSS.
+        """
+        try:
+            return [
+                article
+                for categorie in self._orphelines(installation)
+                for article in self._freshrss_client.fetch_daily_articles(categorie, day)
+            ]
+        except Exception as exc:  # noqa: BLE001 — le marquage de ce qui a été servi d'abord
+            console.error(
+                f"Catalogue : lecture des catégories servies à personne impossible ({exc!r}) ; "
+                "seul ce qui a été servi est marqué lu"
+            )
+            return []
 
     def _servir(
         self, installation: AppConfig, nom: str, day: dt.date, send_email: bool, write_tags: bool

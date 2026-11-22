@@ -271,6 +271,17 @@ class ProfilOptionTests(unittest.TestCase):
             self.assertEqual(["bea@example.com"], configs[1].smtp_to)
             self.assertEqual("Profil de bea", configs[1].profil)
 
+    def test_a_refused_catalogue_is_a_message_and_exit_code_2_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = self._dossier(tmpdir, "adrien", "bea")
+
+            code, sortie, build = lance(["--dry-run"], tmpdir, env=env)
+
+            self.assertEqual(2, code)
+            self.assertIn("importer-catalogue", sortie)
+            self.assertNotIn("Traceback", sortie)
+            build.assert_not_called()
+
     def test_the_option_serves_only_that_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             env = self._dossier(tmpdir, "adrien", "bea")

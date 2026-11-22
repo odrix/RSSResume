@@ -349,10 +349,16 @@ class AppConfig:
         """Les catégories que l'installation traite, avant de savoir pour qui.
 
         `RSSRESUME_EXCLUDED_CATEGORIES` s'applique ici, à tout le monde : c'est un réglage
-        de l'installation, que le catalogue rend redondant sans le remplacer.
+        de l'installation, que le catalogue rend redondant sans le remplacer. Comparée sans
+        casse ni accents, comme le catalogue : un libellé recopié dans l'environnement perd
+        ses accents en route.
         """
-        exclues = {nom.casefold() for nom in self.excluded_categories}
-        return [categorie for categorie in disponibles if categorie and categorie.casefold() not in exclues]
+        exclues = {casefold_ascii(nom) for nom in self.excluded_categories}
+        return [
+            categorie
+            for categorie in disponibles
+            if categorie and casefold_ascii(categorie) not in exclues
+        ]
 
     def categories_servies(self, disponibles: list[str]) -> list[str]:
         """Les catégories de l'installation que la personne de cette configuration reçoit.
@@ -379,8 +385,8 @@ class AppConfig:
     def est_deterministe(self, category: str) -> bool:
         """Vrai quand cette catégorie est routée hors du pipeline LLM.
 
-        La comparaison retire la casse **et** les accents, là où `excluded_categories` ne
-        replie que la casse. C'est délibéré et ce n'est pas une préférence : le libellé
+        La comparaison retire la casse **et** les accents, comme `categories_installation`
+        et le catalogue. C'est délibéré et ce n'est pas une préférence : le libellé
         réel en porte — « 1 - Alertes et avis CERT-FR ANSSI » —, et un libellé recopié
         dans une variable d'environnement les perd régulièrement en route ; `.env.local`
         contient déjà un `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. Une catégorie qu'on

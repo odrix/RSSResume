@@ -317,6 +317,12 @@ class AnnuaireSqlite(Annuaire):
                 ) from exc
         return Catalogue.depuis_document(document, str(self.chemin))
 
+    def remede_sans_catalogue(self) -> str:
+        return (
+            "Importer le catalogue dans la base (python -m rssresume.api importer-catalogue "
+            "<fichier.json>, voir docs/categories.exemple.json)."
+        )
+
     def remplacer_catalogue(self, catalogue: Catalogue) -> None:
         """Remplace tout le catalogue, dans une transaction.
 

@@ -276,6 +276,19 @@ class CatalogueBaseTests(Base):
     def test_an_empty_table_is_an_open_catalogue(self):
         self.assertTrue(self.annuaire.catalogue().ouvert)
 
+    def test_without_catalogue_two_database_profiles_are_told_to_import_it(self):
+        """En base, le remède est la seule commande d'import : pas de migration à proposer."""
+        self.annuaire.creer("bea", {"profil": "B"})
+        self.annuaire.creer("zoe", {"profil": "Z"})
+        client = test_multiprofil.FreshRSSQuiOublieLesLus({"Tech": []})
+        tournee = Tournee(make_config(self.tmpdir / "output"), self.annuaire, client, None)
+
+        with self.assertRaises(ValueError) as leve:
+            tournee.run(JOUR, send_email=False)
+
+        self.assertIn("importer-catalogue", str(leve.exception))
+        self.assertNotIn("importer <dossier>", str(leve.exception))
+
     def test_the_catalogue_import_replaces_the_table_and_refuses_a_faulty_document_without_writing(self):
         self.annuaire.remplacer_catalogue(
             Catalogue.depuis_document({"Tech": self.PUBLIQUE, "Ancienne": self.PUBLIQUE}, "test")

@@ -85,6 +85,26 @@ class CatalogueLectureTests(unittest.TestCase):
                 Catalogue.depuis_fichier(fichier)
         self.assertIn("JSON", str(leve.exception))
 
+    def test_an_underscore_key_holding_an_object_is_a_category_not_a_comment(self):
+        """Une vraie catégorie FreshRSS peut s'appeler `_Archive` : seule la valeur tranche."""
+        catalogue = Catalogue.depuis_document(
+            {"_note": "commentaire", "_liste": ["aussi"], "_Archive": publique()}, "test"
+        )
+
+        self.assertEqual(["_Archive"], [e.libelle for e in catalogue.entrees()])
+        with self.assertRaises(ValueError) as leve:
+            Catalogue.depuis_document({"Tech": publique(), "_Fautive": {"metiers": []}}, "test")
+        self.assertIn("_Fautive", str(leve.exception))
+
+    def test_labels_compare_trimmed_on_both_sides(self):
+        catalogue = Catalogue.depuis_document({" Veille marché ": privee()}, "test")
+
+        self.assertEqual("Veille marché", catalogue.entrees()[0].libelle)
+        self.assertEqual(["veille MARCHE  "], catalogue.servies(["veille MARCHE  "], "adrien"))
+        self.assertEqual([], catalogue.hors_catalogue(["  Veille marché"]))
+        with self.assertRaises(ValueError):
+            Catalogue.depuis_document({"Tech": publique(), " tech ": publique()}, "test")
+
     def test_an_owner_unknown_to_the_directory_is_not_an_error(self):
         """La personne peut s'inscrire après que sa catégorie a été décrite."""
         catalogue = Catalogue.depuis_document({"Veille": privee(proprietaires=["pas-encore-la"])}, "test")

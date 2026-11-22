@@ -363,6 +363,12 @@ class CategoriesServiesTests(unittest.TestCase):
 
         self.assertEqual(["Tech"], config.categories_installation(["Tech", "", "Non classé"]))
 
+    def test_an_exclusion_written_without_accents_still_excludes(self):
+        """Comme le catalogue : un libellé recopié dans l'environnement perd ses accents."""
+        config = self._config(excluded_categories=["NON CLASSE"])
+
+        self.assertEqual(["Tech"], config.categories_installation(["Tech", "Non classé"]))
+
     @mock.patch.dict(os.environ, BASE_ENV, clear=True)
     def test_the_environment_leaves_the_catalogue_open(self):
         """Ce que `from_env` donne sert tout à tout le monde : c'est la tournée qui pose

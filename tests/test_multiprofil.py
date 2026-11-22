@@ -638,9 +638,10 @@ class TourneeCatalogueTests(unittest.TestCase):
         ]
     )
 
-    def _tournee(self, tmpdir, noms, catalogue):
-        """Une tournée sur `JOURNEE`, catégories découvertes dans FreshRSS ; `catalogue`
-        à `None` laisse le dossier sans catalogue, donc ouvert."""
+    def _tournee(self, tmpdir, noms, catalogue, categories=()):
+        """Une tournée sur `JOURNEE`, catégories découvertes dans FreshRSS sauf si
+        `categories` les fixe ; `catalogue` à `None` laisse le dossier sans catalogue, donc
+        ouvert."""
         dossier = pathlib.Path(tmpdir) / "profils"
         dossier.mkdir()
         for nom in noms:
@@ -667,7 +668,9 @@ class TourneeCatalogueTests(unittest.TestCase):
                 scorer=espions["scorer"],
             )
 
-        config = dataclasses.replace(make_config(pathlib.Path(tmpdir) / "output"), categories=[])
+        config = dataclasses.replace(
+            make_config(pathlib.Path(tmpdir) / "output"), categories=list(categories)
+        )
         return Tournee(config, annuaire, client, assembleur), client
 
     def _notes(self, nom):
@@ -722,7 +725,7 @@ class TourneeCatalogueTests(unittest.TestCase):
                 sorted(a.item_id for a in client.marked_as_read),
             )
 
-    def test_nothing_is_marked_while_a_profile_failed_even_the_orphans(self):
+    def test_a_targeted_run_marks_nothing_not_even_the_orphans(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tournee, client = self._tournee(tmpdir, ["adrien", "bea"], self.CATALOGUE)
 
@@ -730,14 +733,60 @@ class TourneeCatalogueTests(unittest.TestCase):
 
             self.assertEqual(0, client.appels_marquage)
 
+    def test_a_failing_orphan_reading_is_logged_and_what_was_served_is_still_marked(self):
+        """Les emails sont partis : lever ici laisserait tout non lu, et un rejeu les renverrait."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tournee, client = self._tournee(tmpdir, ["adrien", "bea"], self.CATALOGUE)
+            lire = client.fetch_daily_articles
+
+            def lecture(categorie, day):
+                if categorie == "Nouvelle":
+                    raise RuntimeError("FreshRSS injoignable")
+                return lire(categorie, day)
+
+            with mock.patch.object(client, "fetch_daily_articles", side_effect=lecture), \
+                    mock.patch("rssresume.tournee.console.error") as erreur:
+                self.assertEqual([], tournee.run(JOUR))
+
+            self.assertEqual(1, client.appels_marquage)
+            self.assertEqual(["tech-1", "veille-1"], sorted(a.item_id for a in client.marked_as_read))
+            self.assertIn("FreshRSS injoignable", erreur.call_args.args[0])
+
+    def test_a_run_that_will_not_mark_never_lists_the_categories_for_the_orphans(self):
+        for options in ({"mark_read": False}, {"username": "bea"}):
+            with self.subTest(**options), tempfile.TemporaryDirectory() as tmpdir:
+                tournee, client = self._tournee(
+                    tmpdir, ["adrien", "bea"], self.CATALOGUE, categories=self.JOURNEE
+                )
+
+                with mock.patch.object(client, "list_categories") as liste, \
+                        mock.patch("rssresume.tournee.console.log") as log:
+                    tournee.run(JOUR, send_email=False, **options)
+
+                liste.assert_not_called()
+                self.assertFalse(any("hors catalogue" in appel.args[0] for appel in log.call_args_list))
+
+    def test_a_category_listing_failure_fails_each_profile_as_before(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tournee, client = self._tournee(tmpdir, ["adrien", "bea"], self.CATALOGUE)
+
+            with mock.patch.object(client, "list_categories", side_effect=RuntimeError("panne")):
+                self.assertEqual(["adrien", "bea"], tournee.run(JOUR, send_email=False))
+
+            self.assertEqual(0, client.appels_marquage)
+
     def test_an_open_catalogue_refuses_several_profiles(self):
+        """En mode dossier, le remède passe par la base : `importer-catalogue` seul l'exige."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tournee, client = self._tournee(tmpdir, ["adrien", "bea"], None)
 
             with self.assertRaises(ValueError) as leve:
                 tournee.run(JOUR, send_email=False)
 
-            self.assertIn("importer-catalogue", str(leve.exception))
+            message = str(leve.exception)
+            self.assertIn("RSSRESUME_PROFILES_DB", message)
+            self.assertIn("python -m rssresume.api importer <dossier>", message)
+            self.assertIn("importer-catalogue", message)
             self.assertEqual({}, self.espions)
             self.assertEqual(0, client.appels_marquage)
 

@@ -361,6 +361,20 @@ class Annuaire:
 
         return CatalogueOuvert()
 
+    def remede_sans_catalogue(self) -> str:
+        """Ce qu'il faut faire pour avoir un catalogue, depuis cette source de profils.
+
+        Hors de la base, il n'y a nulle part où le ranger : le seul remède est d'y passer,
+        et le message doit le dire plutôt que de proposer une commande qui exige la base.
+        """
+        return (
+            f"Hors de la base, aucun catalogue n'est possible : passer à la base des profils "
+            f"({ENV_PROFILES_DB}, puis python -m rssresume.api importer <dossier>, et retirer "
+            f"{ENV_PROFILES_DIR} / {ENV_PROFIL_FILE}), puis importer le catalogue "
+            "(python -m rssresume.api importer-catalogue <fichier.json>, voir "
+            "docs/categories.exemple.json)."
+        )
+
     def lecteur(self, username: str) -> Lecteur:
         """La personne `username`, profil chargé. Inconnue ou fautive : `ValueError`.
 

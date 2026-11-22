@@ -91,7 +91,7 @@ class Catalogue:
     def __init__(self, entrees: Iterable[CategorieCatalogue] = ()):
         self._entrees: dict[str, CategorieCatalogue] = {}
         for entree in entrees:
-            cle = casefold_ascii(entree.libelle)
+            cle = cle_categorie(entree.libelle)
             if cle in self._entrees:
                 raise ValueError(
                     f"Catalogue : « {entree.libelle} » et « {self._entrees[cle].libelle} » "
@@ -105,7 +105,7 @@ class Catalogue:
         return False
 
     def entree(self, libelle: str) -> CategorieCatalogue | None:
-        return self._entrees.get(casefold_ascii(libelle))
+        return self._entrees.get(cle_categorie(libelle))
 
     def entrees(self) -> list[CategorieCatalogue]:
         return list(self._entrees.values())
@@ -166,7 +166,7 @@ class Catalogue:
         entrees = [
             _entree(libelle, valeur, origine)
             for libelle, valeur in document.items()
-            if not (isinstance(libelle, str) and libelle.startswith(PREFIXE_COMMENTAIRE))
+            if not _commentaire(libelle, valeur)
         ]
         if not entrees:
             # Vide, le catalogue retomberait sur « tout à tout le monde » : c'est
@@ -195,6 +195,28 @@ class CatalogueOuvert(Catalogue):
 
     def hors_catalogue(self, categories: list[str]) -> list[str]:
         return []
+
+
+def cle_categorie(libelle: str) -> str:
+    """La forme sous laquelle deux libellés se comparent : rognée, sans casse ni accents.
+
+    La même des deux côtés — le libellé décrit, rogné à la lecture, et celui que FreshRSS
+    renvoie — sans quoi un espace de trop d'un seul côté suffirait à fermer la catégorie.
+    """
+    return casefold_ascii(libelle.strip())
+
+
+def _commentaire(libelle: object, valeur: object) -> bool:
+    """Vrai pour une clé de commentaire : `_` en tête, et une valeur qui n'est pas un objet.
+
+    La valeur tranche, pas le seul préfixe : une vraie catégorie FreshRSS peut s'appeler
+    `_Archive`, et l'ignorer la ferait disparaître du catalogue sans un mot.
+    """
+    return (
+        isinstance(libelle, str)
+        and libelle.startswith(PREFIXE_COMMENTAIRE)
+        and not isinstance(valeur, dict)
+    )
 
 
 def _entree(libelle: object, valeur: object, origine: str) -> CategorieCatalogue:
