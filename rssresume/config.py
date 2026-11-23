@@ -89,6 +89,15 @@ DEFAULT_AUDIO_MODE = AUDIO_MODE_CATEGORY
 #: l'on regarde, et c'est là que le bilan doit atterrir pour se chercher et s'archiver.
 ENV_DEBUG = "RSSRESUME_DEBUG"
 
+#: Le jeton de l'API, partagé par le site. Déclaré ici et non dans `api/serveur.py` :
+#: le travailleur le lit aussi, comme secret des liens signés de la lettre — c'est le
+#: seul secret que les deux processus ont déjà en commun.
+ENV_API_TOKEN = "RSSRESUME_API_TOKEN"
+
+#: L'adresse publique du site, d'où la lettre tire ses liens. Elle doit valoir l'`ORIGIN`
+#: du site : un lien vers une autre origine y serait refusé ou mènerait ailleurs.
+ENV_SITE_URL = "RSSRESUME_SITE_URL"
+
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
     """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
@@ -136,6 +145,24 @@ def load_audio_mode(name: str | None = None) -> str:
             f"Valeurs acceptées : {', '.join(AUDIO_MODES)}."
         )
     return mode
+
+
+def load_site_url(valeur: str | None = None) -> str | None:
+    """L'adresse du site sans `/` final, `None` si elle n'est pas posée.
+
+    Sans schéma, elle est refusée au lancement : `veille.example.com` posé tel quel
+    donnerait des liens relatifs, qu'un client mail résout n'importe où — et la lettre
+    partirait tous les matins avec des liens morts sans que rien ne le dise.
+    """
+    adresse = (valeur or "").strip().rstrip("/")
+    if not adresse:
+        return None
+    if not adresse.lower().startswith(("http://", "https://")):
+        raise ValueError(
+            f"{ENV_SITE_URL} : « {adresse} » n'est pas une adresse complète. "
+            "Écrire le schéma, par exemple https://veille.example.com."
+        )
+    return adresse
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -281,6 +308,16 @@ class AppConfig:
     #: Les flux que la personne retire du scoring et du résumé, déclarés dans son
     #: document. Appliqués avant `limite_articles` et, comme elle, jamais au marquage lu.
     flux_exclus: FluxExclus = dataclasses.field(default_factory=FluxExclus)
+    #: L'adresse publique du site, d'où la lettre tire ses liens. `None` : la lettre part
+    #: sans liens ni en-têtes de désabonnement, comme avant.
+    site_url: str | None = None
+    #: Le secret des liens signés de la lettre, lu dans `RSSRESUME_API_TOKEN` : l'API qui
+    #: vérifie le lien de désabonnement le connaît déjà. `None` : pas de lien de
+    #: désabonnement, les autres liens restent.
+    cle_signature: str | None = None
+    #: L'identifiant de la personne servie, posé par `pour` avec `username` : le lien de
+    #: désabonnement le nomme parce qu'il ne change jamais, quand le nom pourrait.
+    profil_id: str = ""
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -350,6 +387,8 @@ class AppConfig:
                 _env(ENV_CERTFR_CATEGORIES), ENV_CERTFR_CATEGORIES
             ),
             axes=personne.axes,
+            site_url=load_site_url(_env(ENV_SITE_URL)),
+            cle_signature=_env(ENV_API_TOKEN),
         )
 
     def pour(self, lecteur: Lecteur) -> "AppConfig":
@@ -371,6 +410,7 @@ class AppConfig:
         return dataclasses.replace(
             self,
             username=lecteur.username,
+            profil_id=lecteur.id,
             output_dir=self.output_dir / lecteur.id,
             profil=personne.texte,
             stack=personne.stack,

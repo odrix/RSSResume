@@ -5,15 +5,18 @@ la mise en page, le texte reste la seule version qu'un client en texte seul affi
 et un titre d'article venu d'un flux ne doit jamais s'échapper dans le balisage.
 """
 
+import dataclasses
 import datetime as dt
 import pathlib
 import tempfile
 import unittest
 import wave
 
+from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.ephemeride import fetes
 from rssresume.models import Article, CategoryDigest, Ephemeride, Montage
-from rssresume.newsletter import Lettre, Section, date_longue, duree
+from rssresume.newsletter import NOM_SERVICE, Abonnement, Lettre, Section, date_longue, duree
+from tests.support import FakeEmailSender, make_config
 
 #: La journée que la lettre raconte, et celle où elle part : le passage de 7 h résume
 #: la veille, donc les deux diffèrent tous les matins. Les tests le reproduisent.
@@ -513,6 +516,151 @@ class MontageTests(unittest.TestCase):
 
             self.assertEqual(["voix.wav"], [c.name for c in lettre.attachments])
             self.assertIn("Pièce jointe : voix.wav", lettre.text)
+
+
+SITE = "https://veille.example.com"
+LIEN_DESABONNEMENT = f"{SITE}/desabonnement/v1.jeton.signe"
+
+
+def abonnement(lien=LIEN_DESABONNEMENT, username="bea"):
+    return Abonnement(expediteur="La Veille", site_url=SITE, username=username, lien_desabonnement=lien)
+
+
+class AbonnementPiedTests(unittest.TestCase):
+    """Le pied d'une lettre qu'un inconnu reçoit : qui écrit, pourquoi, et comment arrêter.
+
+    Ce que ces tests protègent : les deux rendus portent les mêmes mentions et les mêmes
+    liens, et un nom de profil n'entre jamais brut dans le balisage."""
+
+    def _lettre(self, digests=None, **kwargs):
+        return Lettre.compose(
+            JOUR,
+            [digest()] if digests is None else digests,
+            generated_at=COMPOSEE_LE,
+            abonnement=abonnement(**kwargs),
+        )
+
+    def test_the_footer_says_who_sends_and_why_in_both_renderings(self):
+        lettre = self._lettre()
+
+        for rendu in (lettre.text, lettre.html):
+            self.assertIn(f"Envoyée par La Veille — {SITE}.", rendu)
+            self.assertIn("destinataire du profil « bea »", rendu)
+
+    def test_the_three_links_are_in_both_renderings(self):
+        lettre = self._lettre()
+
+        for libelle, url in (
+            ("Mes résumés", f"{SITE}/resumes"),
+            ("Modifier mon profil", f"{SITE}/profil"),
+            ("Se désabonner", LIEN_DESABONNEMENT),
+        ):
+            # Une URL par ligne en texte : c'est ce qu'un client texte rend cliquable.
+            self.assertIn(f"\n{libelle} : {url}\n", lettre.text + "\n")
+            self.assertIn(f'href="{url}"', lettre.html)
+            self.assertIn(f">{libelle}</a>", lettre.html)
+
+    def test_the_links_and_the_username_are_escaped_in_html(self):
+        lettre = self._lettre(lien=f"{SITE}/desabonnement/a\"b&c", username="<b>")
+
+        self.assertIn('href="https://veille.example.com/desabonnement/a&quot;b&amp;c"', lettre.html)
+        self.assertNotIn("<b>", lettre.html)
+        self.assertIn("&lt;b&gt;", lettre.html)
+
+    def test_without_a_signed_link_the_other_links_remain(self):
+        lettre = self._lettre(lien=None)
+
+        self.assertIn(f"{SITE}/profil", lettre.text)
+        self.assertNotIn("Se désabonner", lettre.text)
+        self.assertNotIn("Se désabonner", lettre.html)
+
+    def test_without_a_subscription_the_footer_has_no_link(self):
+        """Le site montre la même lettre : il n'a pas à se renvoyer à lui-même."""
+        lettre = Lettre.compose(JOUR, [digest()], generated_at=COMPOSEE_LE)
+
+        self.assertNotIn("Envoyée par", lettre.text)
+        self.assertNotIn("Envoyée par", lettre.html)
+        self.assertNotIn("<a href", lettre.html.split("Composée le")[1])
+
+    def test_the_letter_hands_its_unsubscribe_link_to_the_sender(self):
+        expediteur = FakeEmailSender()
+
+        self._lettre().envoyer(expediteur)
+        Lettre.compose(JOUR, [digest()], generated_at=COMPOSEE_LE).envoyer(expediteur)
+
+        self.assertEqual([LIEN_DESABONNEMENT, None], expediteur.desabonnements)
+        sujet, corps, _, html = expediteur.messages[0]
+        self.assertIn("Se désabonner", corps)
+        self.assertIn("Se désabonner", html)
+
+
+class LettreVideTests(unittest.TestCase):
+    """La lettre « aucun article » part chez les mêmes lecteurs que les autres."""
+
+    def test_the_date_is_written_out(self):
+        lettre = Lettre.compose(dt.date(2026, 8, 29), [], generated_at=COMPOSEE_LE)
+
+        for rendu in (lettre.text, lettre.html):
+            self.assertIn("Aucun article trouvé pour le samedi 29 août 2026.", rendu)
+            self.assertNotIn("2026-08-29", rendu)
+
+    def test_the_text_version_carries_the_footer(self):
+        lettre = Lettre.compose(JOUR, [], generated_at=COMPOSEE_LE, abonnement=abonnement())
+
+        self.assertIn("Composée le 28/08/2026 à 07:30.", lettre.text)
+        self.assertIn(f"Se désabonner : {LIEN_DESABONNEMENT}", lettre.text)
+        self.assertIn(f'href="{LIEN_DESABONNEMENT}"', lettre.html)
+
+
+class AbonnementDepuisConfigTests(unittest.TestCase):
+    """Le seul constructeur de l'abonnement, partagé par le passage du jour et le renvoi."""
+
+    def _config(self, tmpdir, **surcharges):
+        return dataclasses.replace(
+            make_config(tmpdir),
+            **{
+                "site_url": SITE,
+                "cle_signature": "k" * 48,
+                "username": "bea",
+                "profil_id": "0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71",
+                "smtp_from": "La Veille <veille@example.com>",
+                **surcharges,
+            },
+        )
+
+    def test_a_complete_configuration_signs_the_link(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = self._config(tmpdir)
+
+            abonne = Abonnement.depuis_config(config)
+
+            self.assertEqual("La Veille", abonne.expediteur)
+            self.assertEqual("bea", abonne.username)
+            self.assertTrue(abonne.lien_desabonnement.startswith(f"{SITE}/desabonnement/v1."))
+            demande = Desabonnement(Signataire("k" * 48, OBJET_DESABONNEMENT)).lire(
+                abonne.lien_desabonnement.rsplit("/", 1)[1]
+            )
+            self.assertEqual(config.profil_id, demande.profil_id)
+            self.assertTrue(demande.concerne(config.smtp_to))
+
+    def test_without_a_site_or_a_person_there_is_no_subscription(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertIsNone(Abonnement.depuis_config(self._config(tmpdir, site_url=None)))
+            self.assertIsNone(Abonnement.depuis_config(self._config(tmpdir, username="")))
+
+    def test_without_a_key_an_id_or_recipients_there_is_no_unsubscribe_link(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for surcharge in ({"cle_signature": None}, {"profil_id": ""}, {"smtp_to": []}):
+                with self.subTest(surcharge=surcharge):
+                    abonne = Abonnement.depuis_config(self._config(tmpdir, **surcharge))
+                    self.assertIsNone(abonne.lien_desabonnement)
+                    self.assertEqual(f"{SITE}/profil", abonne.lien_profil)
+
+    def test_a_sender_without_display_name_signs_with_the_service_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            abonne = Abonnement.depuis_config(self._config(tmpdir, smtp_from="veille@example.com"))
+
+            self.assertEqual(NOM_SERVICE, abonne.expediteur)
 
 
 if __name__ == "__main__":

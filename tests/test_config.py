@@ -17,12 +17,14 @@ from rssresume.config import (
     AUDIO_MODE_GLOBAL,
     DEFAULT_ARTICLE_CHAR_LIMIT,
     DEFAULT_TIMEZONE,
+    ENV_API_TOKEN,
     ENV_ARTICLE_CHAR_LIMIT,
     ENV_AUDIO_MODE,
     ENV_CERTFR_CATEGORIES,
     ENV_DEBUG,
     ENV_MAIL_TRANSPORT,
     ENV_RESEND_API_KEY,
+    ENV_SITE_URL,
     ENV_SMTP_TO,
     ENV_TIMEZONE,
     MAIL_TRANSPORT_RESEND,
@@ -262,6 +264,46 @@ class TimezoneTests(unittest.TestCase):
         self.assertIn("Europe/Pariss", str(raised.exception))
         # Le cas le plus fréquent est une base de fuseaux absente : le dire évite de chercher.
         self.assertIn("tzdata", str(raised.exception))
+
+
+class LiensDeLaLettreTests(unittest.TestCase):
+    """L'adresse du site et le secret d'où la lettre tire ses liens."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_without_the_variables_the_letter_has_no_links(self):
+        config = AppConfig.from_env()
+
+        self.assertIsNone(config.site_url)
+        self.assertIsNone(config.cle_signature)
+
+    @mock.patch.dict(
+        os.environ,
+        {**BASE_ENV, ENV_SITE_URL: " https://veille.example.com/ ", ENV_API_TOKEN: "k" * 48},
+        clear=True,
+    )
+    def test_the_site_loses_its_trailing_slash_and_the_key_is_the_api_token(self):
+        config = AppConfig.from_env()
+
+        self.assertEqual("https://veille.example.com", config.site_url)
+        self.assertEqual("k" * 48, config.cle_signature)
+
+    def test_a_site_without_scheme_fails_at_startup(self):
+        """Posée sans schéma, elle donnerait des liens relatifs, morts dans un client mail."""
+        for valeur in ("veille.example.com", "ftp://veille.example.com", "https://"):
+            with self.subTest(valeur=valeur):
+                with mock.patch.dict(os.environ, {**BASE_ENV, ENV_SITE_URL: valeur}, clear=True):
+                    with self.assertRaises(ValueError) as raised:
+                        AppConfig.from_env()
+                self.assertIn(ENV_SITE_URL, str(raised.exception))
+
+    def test_pour_sets_the_profile_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            identifiant = nouvel_id()
+
+            config = make_config(tmpdir).pour(Lecteur("bea", Profil("B", identifiant=identifiant)))
+
+            self.assertEqual(identifiant, config.profil_id)
+            self.assertEqual("", make_config(tmpdir).profil_id)
 
 
 class ArticleCharLimitTests(unittest.TestCase):

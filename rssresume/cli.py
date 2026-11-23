@@ -14,7 +14,7 @@ from rssresume.external.freshrss import FreshRSSClient
 from rssresume.llm import providers
 from rssresume.external import mail
 from rssresume.montage import MontageService
-from rssresume.newsletter import Lettre
+from rssresume.newsletter import Abonnement, Lettre
 from rssresume.profil import Annuaire
 from rssresume.summaries import SummaryGenerator
 from rssresume.tournee import Tournee
@@ -200,7 +200,7 @@ def send_only(config: AppConfig, day: dt.date) -> int:
     # jour même, ce qui est le cas courant ; sinon elle est recalculée localement, sans
     # aucun appel, comme le promet `--send-only`.
     envoi = dt.datetime.now(config.timezone).date()
-    lettre = Lettre.compose(
+    Lettre.compose(
         day,
         digests,
         ephemeride.pour_envoi(runlog.read_ephemeride(day_dir), envoi),
@@ -208,13 +208,10 @@ def send_only(config: AppConfig, day: dt.date) -> int:
         # produite est écrit là, il ne se redemande pas à la configuration du jour. Une
         # journée faite par catégorie n'a pas de montage, et rend `None`.
         montage=runlog.read_montage(day_dir),
-    )
-    sender.send(
-        subject=lettre.subject,
-        body=lettre.text,
-        attachments=lettre.attachments,
-        html=lettre.html,
-    )
+        # Le même constructeur que le passage du jour, sur la même configuration : le
+        # pied et le lien de désabonnement sont ceux qu'aurait eus l'envoi du matin.
+        abonnement=Abonnement.depuis_config(config),
+    ).envoyer(sender)
     return 0
 
 

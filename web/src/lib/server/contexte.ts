@@ -20,6 +20,7 @@ import { ouvrirBase } from './base.js';
 import { Comptes } from './comptes.js';
 import { ConsultationResumes } from './consultation.js';
 import { CourrierAbsent, CourrierJournal, CourrierResend, type Courrier } from './courrier.js';
+import { Desabonnement } from './desabonnement.js';
 import { Destinataires } from './destinataires.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
@@ -38,6 +39,7 @@ export class Contexte {
 	readonly destinataires: Destinataires;
 	readonly relaisAudio: RelaisAudio;
 	readonly consultation: ConsultationResumes;
+	readonly desabonnement: Desabonnement;
 	/** Par adresse visée : freine qui s'acharne sur un compte, d'où qu'il vienne. */
 	readonly limiteParEmail = new LimiteurTentatives(5, 15 * MINUTE_MS);
 	/** Par IP : freine qui balaie les adresses. Plus large, une IP pouvant être partagée. */
@@ -66,6 +68,7 @@ export class Contexte {
 		);
 		this.relaisAudio = new RelaisAudio(this.api);
 		this.consultation = new ConsultationResumes(this.api);
+		this.desabonnement = new Desabonnement(this.api);
 
 		this.sessions.purgerExpirees();
 		this.jetons.purgerExpires();

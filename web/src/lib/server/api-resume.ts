@@ -20,6 +20,12 @@ export interface Journee {
 	audios: AudioJournee[];
 }
 
+/** Ce qu'un lien de désabonnement désigne, avant qu'on l'applique. */
+export interface DemandeDesabonnement {
+	username: string;
+	destinataires: number;
+}
+
 /** Une réponse d'erreur de l'API, ou son absence.
  *
  * `statut` vaut 0 quand l'API n'a pas répondu du tout : la page doit pouvoir dire « le
@@ -129,6 +135,18 @@ export class ClientApiResume {
 	 * la liste dépend de la personne, et seule « Mon profil » la demande. */
 	listerCategories(username: string): Promise<CategoriesProposees> {
 		return this.#json('GET', `${this.#profil(username)}/categories`);
+	}
+
+	/** Ce que le lien de désabonnement viderait, sans rien changer. Le jeton part dans le
+	 * corps et non dans l'URL : l'API journalise les chemins, pas les corps. */
+	lireDesabonnement(jeton: string): Promise<DemandeDesabonnement> {
+		return this.#json('POST', '/api/v1/desabonnements/lecture', { jeton });
+	}
+
+	/** Vide les destinataires du profil que le jeton désigne. 404 s'il est invalide ou déjà
+	 * servi : l'API ne distingue pas les deux, et le site n'a pas à le faire. */
+	desabonner(jeton: string): Promise<{ username: string }> {
+		return this.#json('POST', '/api/v1/desabonnements', { jeton });
 	}
 
 	/** Gardés en mémoire quelques minutes : chaque visite anonyme de l'inscription les

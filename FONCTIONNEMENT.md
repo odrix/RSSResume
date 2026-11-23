@@ -441,7 +441,45 @@ Vendredi 28 août 2026, saint Augustin. 1988…  <- introduction : le jour de l'
 
 2 catégories · 12 articles retenus · 17 à surveiller
 1 résumé audio en pièce jointe. Composée le 30/08/2026 à 07:30.
+Envoyée par La Veille — https://veille.example.com.      <- avec RSSRESUME_SITE_URL
+Vous la recevez parce que cette adresse est destinataire du profil « bea ».
+Mes résumés · Modifier mon profil · Se désabonner
 ```
+
+**Le pied parle à un inconnu.** Un destinataire ajouté par quelqu'un d'autre n'a jamais vu le
+site : le pied dit qui envoie (le nom d'affichage de `SMTP_FROM`, « RSSResume » à défaut),
+pourquoi cette adresse reçoit la lettre, et donne trois liens — les résumés, le profil, le
+désabonnement ; des ancres en HTML, une URL par ligne en texte. Ils viennent de
+`RSSRESUME_SITE_URL`, et `newsletter.Abonnement.depuis_config` les construit, seul
+constructeur, appelé par le passage du jour comme par `--send-only` : les deux rendent le même
+pied. Sans la variable, aucun lien ; le site, qui montre la même lettre, compose sans abonnement
+et ne se renvoie pas à lui-même. La lettre « aucun article » porte le pied elle aussi, et sa
+date en toutes lettres.
+
+**Le lien de désabonnement est signé, pas stocké** (`desabonnement.py`). Le jeton,
+`v1.<id du profil>.<empreintes>.<signature>`, porte l'identifiant du profil et une empreinte à
+clé **par adresse** à qui la lettre est partie — huit caractères base64url (6 octets d'HMAC de
+l'adresse en minuscules), triées et mises bout à bout —, signés en HMAC-SHA256 avec une clé
+dérivée de `RSSRESUME_API_TOKEN`, le secret que le travailleur et l'API ont déjà en commun ; le
+site relaie le jeton sans connaître la clé. Il se recalcule à l'identique, ce qui garde
+`--send-only` fidèle sans rien écrire. Il vaut tant qu'**au moins une** des adresses de la
+lettre reçoit encore le résumé : la liste vit après l'envoi — une invitation confirmée, une
+adresse retirée —, et une empreinte de la liste entière rendait caducs les liens de toutes les
+lettres déjà parties, au risque qu'un destinataire lisant « déjà utilisé » signale la lettre
+comme indésirable. Il ne sert qu'une fois sans table de jetons : désabonner vide les
+destinataires, aucune empreinte ne correspond plus, et un second clic est refusé. Les
+empreintes sont à clé parce qu'elles voyagent en clair : un simple hachage laisserait vérifier
+hors ligne qu'une adresse devinée en fait partie ; courtes parce qu'il y en a une par
+destinataire, et qu'à clé, huit caractères suffisent à ne pas confondre par hasard une adresse
+ajoutée avec l'une de la lettre (une chance sur 2⁴⁸ par paire). Sans le jeton dans l'environnement du
+travailleur, la lettre garde ses deux autres liens et part sans désabonnement.
+
+**Les en-têtes `List-Unsubscribe` et `List-Unsubscribe-Post`** (RFC 8058) accompagnent ce lien :
+Gmail et Yahoo les exigent des expéditeurs en volume, et le client mail en fait un bouton qui
+poste sur l'URL sans rien afficher. `Lettre.envoyer` passe l'URL à l'expéditeur, chaque
+transport l'écrit à sa manière — dans le message pour le SMTP, dans le JSON pour Resend.
+Désabonner porte sur le profil entier et non sur une adresse : la lettre part en un seul envoi,
+`To:` commun, et rien ne dit lequel des destinataires a cliqué.
 
 **Les liens sont posés dans le texte, en HTML** (`ancres.py`). Pour chaque article retenu, on
 cherche dans le résumé le groupe de mots le plus distinctif de son titre — un nom propre, un
@@ -1231,6 +1269,19 @@ est décrit dans le [README](README.md#api-http).
 - **Audios** : lus dans `output/<id>/<date>/`, envoyés par blocs de 64 Kio, jamais chargés en
   mémoire. `Range` est servi sous ses trois formes (`a-b`, `a-`, `-n`) en 206 ; une plage hors du
   fichier donne 416 ; un en-tête illisible ou multiple, le fichier entier (ce que la RFC permet).
+- **Désabonnement** : `POST /api/v1/desabonnements/lecture` dit ce qu'un lien de la lettre
+  désabonnerait sans rien changer, `POST /api/v1/desabonnements` l'applique. Le jeton voyage
+  dans le corps JSON et non dans l'URL — les logs d'accès portent les chemins —, et le Bearer
+  reste exigé : le site relaie le lien, il ne le vérifie pas. L'API le vérifie avec la clé
+  dérivée de son propre jeton, puis `AnnuaireSqlite.desabonner` relit le profil par son `id`,
+  lit ses destinataires par le même parseur que le travailleur (une adresse écrite en chaîne
+  reste une adresse), cherche parmi eux une adresse de la lettre et retire la clé `email`, le tout dans une seule
+  transaction `BEGIN IMMEDIATE` : deux clics simultanés ne passent pas tous les deux. Tout
+  refus — jeton faux, profil supprimé, lien déjà servi — est le même 404. Côté site, la page
+  `/desabonnement/{jeton}` n'applique rien à l'affichage (un antivirus ouvre les liens) ; son
+  action reçoit le bouton comme le POST en un clic des clients mail. Ce dernier arrive sans
+  `Origin` : la protection CSRF de SvelteKit est donc levée (`csrf.trustedOrigins: ['*']`) et
+  réécrite à l'identique dans `hooks.server.ts` (`csrf.ts`), cette seule route exceptée.
 - **Chemins** : trois barrières indépendantes entre une URL et le disque. La date doit suivre
   `AAAA-MM-JJ` **et** passer `date.fromisoformat` ; le nom ne doit contenir ni `/`, ni `\`, ni
   `..`, et figurer dans la liste des `.mp3` / `.wav` de la journée (liens symboliques exclus) ;

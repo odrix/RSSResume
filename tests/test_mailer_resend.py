@@ -84,6 +84,23 @@ class ResendEmailSenderTests(unittest.TestCase):
             self.assertEqual("Le corps", envoye["text"])
             # Pas de clé « attachments » vide : Resend n'a rien à en faire.
             self.assertNotIn("attachments", envoye)
+            # Ni d'en-têtes sans lien de désabonnement.
+            self.assertNotIn("headers", envoye)
+
+    def test_the_unsubscribe_link_travels_as_headers(self):
+        # Longue exprès : en JSON, rien ne la plie ni ne l'encode, contrairement au SMTP.
+        url = "https://veille.example.com/desabonnement/v1.0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71." + "A" * 120
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+                ResendEmailSender(config_resend(tmpdir)).send(
+                    "Sujet", "Corps", [], "<p>Corps</p>", desabonnement=url
+                )
+
+            envoye = json.loads(urlopen.call_args.args[0].data)
+            self.assertEqual(
+                {"List-Unsubscribe": f"<{url}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
+                envoye["headers"],
+            )
 
     def test_an_attachment_travels_in_base64_with_its_type(self):
         with tempfile.TemporaryDirectory() as tmpdir:

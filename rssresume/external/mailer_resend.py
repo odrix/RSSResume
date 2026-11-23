@@ -25,6 +25,7 @@ import urllib.request
 from typing import Iterable
 
 from rssresume.config import AppConfig
+from rssresume.desabonnement import LIST_UNSUBSCRIBE_POST
 from rssresume.tools import console, http
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
@@ -54,6 +55,7 @@ class ResendEmailSender:
         body: str,
         attachments: Iterable[pathlib.Path],
         html: str | None = None,
+        desabonnement: str | None = None,
     ) -> None:
         if not self.is_configured():
             raise RuntimeError("Resend configuration is incomplete.")
@@ -64,7 +66,7 @@ class ResendEmailSender:
             f"Email : envoi à {destinataires} via Resend "
             f"({len(attachments)} pièce(s) jointe(s))"
         )
-        identifiant = self._post(self._payload(subject, body, attachments, html))
+        identifiant = self._post(self._payload(subject, body, attachments, html, desabonnement))
         console.log(f"Email : envoyé{f' ({identifiant})' if identifiant else ''}")
 
     def _payload(
@@ -73,6 +75,7 @@ class ResendEmailSender:
         body: str,
         attachments: list[pathlib.Path],
         html: str | None = None,
+        desabonnement: str | None = None,
     ) -> dict:
         """Le message tel que Resend l'attend, pièces jointes en base64.
 
@@ -91,6 +94,13 @@ class ResendEmailSender:
             payload["html"] = html
         if attachments:
             payload["attachments"] = [self._attachment(chemin) for chemin in attachments]
+        if desabonnement:
+            # Les mêmes en-têtes que le SMTP écrit lui-même : Resend les recopie dans le
+            # message qu'il compose.
+            payload["headers"] = {
+                "List-Unsubscribe": f"<{desabonnement}>",
+                "List-Unsubscribe-Post": LIST_UNSUBSCRIBE_POST,
+            }
         return payload
 
     @staticmethod

@@ -217,6 +217,40 @@ sont facultatifs ; s'ils sont présents, le site les relaie.
 Le site relaie `Range` tel quel et recopie statut et en-têtes : sans `206`, un lecteur
 `<audio>` ne peut pas avancer dans un fichier qu'il n'a pas fini de télécharger.
 
+### `POST /api/v1/desabonnements/lecture`
+
+Corps `{"jeton": "…"}`, le dernier segment du lien de désabonnement de la lettre
+(`/desabonnement/{jeton}`). → `200`, ce que le lien désabonnerait, **sans rien modifier** :
+
+```json
+{"username": "bea", "destinataires": 2}
+```
+
+- `404` → `{"erreur": "Lien de désabonnement invalide ou déjà utilisé."}`, quelle qu'en soit la
+  raison : jeton illisible, signature fausse, profil supprimé, ou plus aucune des adresses de
+  la lettre parmi les destinataires. Une liste qui a changé depuis l'envoi garde le lien
+  valable tant qu'il y reste au moins une adresse de la lettre.
+
+Un `POST` et non un `GET` : le jeton voyage dans le corps, hors des chemins que l'API
+journalise. Le site l'appelle pour afficher la page du lien ; un antivirus de messagerie qui
+ouvre le lien ne désabonne donc personne.
+
+### `POST /api/v1/desabonnements`
+
+Corps `{"jeton": "…"}`. → `200 {"username": "bea"}` : les destinataires du profil sont vidés
+(la clé `email` du document est retirée).
+
+- `404` → même message que la lecture. Un lien ne sert qu'une fois : il porte une empreinte
+  de chaque adresse de la lettre, et aucune ne correspond plus une fois les destinataires retirés.
+
+Le jeton compte huit caractères par destinataire de la lettre, en plus d'environ 85 : le site
+en borne la longueur à 4 096.
+
+Le site ne vérifie pas le jeton, il ne connaît pas la clé : il le relaie tel quel, sans
+session ni cookie. C'est la seule route du site qui accepte un `POST` d'une autre origine — le
+désabonnement en un clic (`List-Unsubscribe-Post`) que Gmail et Yahoo envoient depuis le
+client mail (`web/src/lib/server/csrf.ts`).
+
 ### `GET /api/v1/gabarits`
 
 → `200`, les gabarits métier disponibles, triés par identifiant :

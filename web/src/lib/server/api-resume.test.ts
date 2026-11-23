@@ -256,4 +256,24 @@ describe('ClientApiResume', () => {
 		expect(forgee.url).toBe('http://api.test/api/v1/profils/moi/journees/..%2Fx');
 		expect((await erreurDe(api.lireJournee('moi', '2026-11-20'))).introuvable).toBe(true);
 	});
+
+	it('envoie le jeton de désabonnement dans un corps JSON, jamais dans le chemin', async () => {
+		const { api, fausseApi } = monter();
+		await api.creerProfil('moi', SAISIE);
+		fausseApi.ajouterDesabonnement('v1.abc.def', 'moi');
+		fausseApi.requetes.length = 0;
+
+		expect(await api.lireDesabonnement('v1.abc.def')).toEqual({ username: 'moi', destinataires: 1 });
+		expect(await api.desabonner('v1.abc.def')).toEqual({ username: 'moi' });
+		expect((await erreurDe(api.desabonner('v1.abc.def'))).introuvable).toBe(true);
+
+		const [lecture, desabonnement] = fausseApi.requetes;
+		expect([lecture.method, lecture.url]).toEqual(['POST', 'http://api.test/api/v1/desabonnements/lecture']);
+		expect([desabonnement.method, desabonnement.url]).toEqual(['POST', 'http://api.test/api/v1/desabonnements']);
+		for (const requete of [lecture, desabonnement]) {
+			expect(requete.headers.get('content-type')).toBe('application/json');
+			expect(requete.headers.get('authorization')).toBe(`Bearer ${JETON}`);
+			expect(await requete.json()).toEqual({ jeton: 'v1.abc.def' });
+		}
+	});
 });

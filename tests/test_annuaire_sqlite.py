@@ -20,6 +20,7 @@ from rssresume.annuaire_sqlite import AnnuaireSqlite, ProfilDejaPris, ProfilInco
 from rssresume.api import __main__ as api_main
 from rssresume.api.importation import Importateur
 from rssresume.categories import Catalogue
+from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.digest import DigestService
 from rssresume.profil import (
     ENV_PROFIL,
@@ -171,6 +172,66 @@ class AnnuaireSqliteTests(Base):
         self.assertNotIn("flux_exclus", fiche.document)
         self.assertNotIn("flux_exclus", self.annuaire.fiche("bea").complet_json())
         self.assertFalse(self.annuaire.profil("bea").flux_exclus)
+
+
+class DesabonnerTests(Base):
+    """Le lien de désabonnement vide les destinataires, une fois, et seulement les siens."""
+
+    def setUp(self):
+        super().setUp()
+        self.service = Desabonnement(Signataire("k" * 48, OBJET_DESABONNEMENT))
+        self.fiche = self.annuaire.creer(
+            "bea", {"profil": "B", "stack": ["Traefik"], "email": ["b@example.com", "c@example.com"]}
+        )
+
+    def _demande(self, emails=("b@example.com", "c@example.com"), id=None):
+        return self.service.lire(self.service.jeton(id or self.fiche.id, list(emails)))
+
+    def test_the_recipients_are_emptied_and_the_document_stays_normalised(self):
+        fiche = self.annuaire.desabonner(self._demande())
+
+        self.assertEqual("bea", fiche.username)
+        relue = self.annuaire.fiche("bea")
+        # Comme `document_normalise` l'écrirait sans destinataire : la clé est omise.
+        self.assertNotIn("email", relue.document)
+        self.assertEqual(["Traefik"], relue.document["stack"])
+        self.assertEqual((), tuple(self.annuaire.profil("bea").emails))
+        self.assertGreaterEqual(relue.modifie_le, self.fiche.modifie_le)
+
+    def test_the_link_serves_only_once(self):
+        demande = self._demande()
+
+        self.assertIsNotNone(self.annuaire.desabonner(demande))
+        self.assertIsNone(self.annuaire.desabonner(demande))
+
+    def test_a_link_of_a_letter_sent_to_a_smaller_list_still_works(self):
+        """La liste a grandi depuis l'envoi : le lien des lettres déjà parties vaut encore."""
+        self.assertIsNotNone(self.annuaire.desabonner(self._demande(emails=["B@example.com"])))
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
+
+    def test_a_link_for_none_of_the_current_recipients_changes_nothing(self):
+        """Aucune adresse de la lettre ne reçoit plus le résumé : le lien ne désigne plus personne."""
+        self.assertIsNone(self.annuaire.desabonner(self._demande(emails=["z@example.com"])))
+        self.assertEqual(["b@example.com", "c@example.com"], self.annuaire.fiche("bea").document["email"])
+
+    def test_an_unknown_profile_changes_nothing(self):
+        self.assertIsNone(self.annuaire.desabonner(self._demande(id=nouvel_id())))
+
+    def test_a_single_address_stored_as_a_string_is_read_like_the_worker_does(self):
+        """Une base se modifie aussi à la main : `"email": "a@x.fr"` reste une adresse."""
+        document = {**self.fiche.document, "email": "a@x.fr"}
+        with self.annuaire._connexion() as connexion:
+            connexion.execute(
+                "UPDATE profils SET document = ? WHERE id = ?", (json.dumps(document), self.fiche.id)
+            )
+        # Le lien tel que le travailleur le signe : sur les adresses que le profil lu donne.
+        emails = self.annuaire.profil("bea").emails
+
+        fiche = self.annuaire.desabonner(self._demande(emails=emails))
+
+        self.assertEqual(("a@x.fr",), tuple(emails))
+        self.assertIsNotNone(fiche)
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
 
 
 class DepuisEnvTests(Base):
