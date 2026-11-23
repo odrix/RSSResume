@@ -56,8 +56,11 @@ Le document de la personne, au format de `rssresume/profil.py` :
 | `email`  | liste d'adresses                                | toujours une **liste** en sortie ; vide = aucun envoi |
 | `prenom` | texte                                           | `""` quand absent                          |
 | `securite` | `"exploitant"`, `"decideur"` ou `"curieux"`   | `"exploitant"` quand absent ; toute autre valeur → `422` |
+
+| `flux_exclus` | liste de titres de flux FreshRSS            | ni notés ni résumés, marqués lus quand même ; titre exact, casse et accents ignorés ; absente de la réponse quand vide ; entrée vide ou doublon → `422` |
 | `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent = les rubriques par défaut |
 | `categories` | liste de noms de catégories                 | facultatif ; absent = tout le catalogue ouvert |
+
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
 document stocké avait une adresse seule ou pas de prénom. `axes` et `categories` n'y

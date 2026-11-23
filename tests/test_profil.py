@@ -6,6 +6,7 @@ document soit lu en entier, et qu'un document fautif fasse échouer le lancement
 que de laisser noter une journée contre un critère qui n'est pas celui qu'on croit.
 """
 
+import datetime as dt
 import json
 import os
 import pathlib
@@ -17,8 +18,10 @@ from rssresume.certfr import StackError
 from rssresume.axes import Axes, CLE_AXES
 from rssresume.llm.prompts import article_system, scoring_system
 from tests.support import empreinte
+from rssresume.models import Article
 from rssresume.profil import (
     CLE_EMAIL,
+    CLE_FLUX_EXCLUS,
     CLE_PRENOM,
     CLE_PROFIL,
     CLE_SECURITE,
@@ -26,6 +29,7 @@ from rssresume.profil import (
     DEFAULT_PROFIL,
     ENV_PROFIL,
     ENV_PROFIL_FILE,
+    FluxExclus,
     Securite,
     load_profil,
     profil_depuis_dict,
@@ -270,6 +274,81 @@ class SecuriteTests(unittest.TestCase):
             with self.subTest(valeur=valeur):
                 with self.assertRaises(ValueError):
                     self._securite(valeur)
+
+
+def article_du_flux(flux, categorie="Tech"):
+    return Article(
+        item_id="item-1",
+        category=categorie,
+        title="Épisode 512",
+        url="https://example.com/episode",
+        published_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=dt.timezone.utc),
+        feed_title=flux,
+        content_text="",
+    )
+
+
+class FluxExclusTests(unittest.TestCase):
+    """La clé `flux_exclus` : les flux qui ne se résument pas, retirés du scoring.
+
+    L'appariement porte sur le titre du flux, à l'égalité près de la casse et des accents :
+    une inclusion écarterait en silence un flux voisin, et ce qu'on ne reçoit plus ne se
+    remarque qu'à son absence.
+    """
+
+    def _exclus(self, valeur):
+        return charge({CLE_PROFIL: AUTRE_PROFIL, CLE_FLUX_EXCLUS: valeur}).flux_exclus
+
+    def test_the_declared_titles_are_read_and_kept_as_written(self):
+        exclus = self._exclus([" NoLimitSecu ", "FreshRSS releases"])
+
+        self.assertEqual(("NoLimitSecu", "FreshRSS releases"), exclus.titres)
+        self.assertEqual(["NoLimitSecu", "FreshRSS releases"], exclus.en_document())
+
+    def test_matching_ignores_case_and_accents(self):
+        exclus = self._exclus(["NoLimitSecu", "Journal des Évolutions"])
+
+        for flux in ("nolimitsecu", "NOLIMITSECU", "  NoLimitSecu ", "journal des evolutions"):
+            with self.subTest(flux=flux):
+                self.assertTrue(exclus.exclut(article_du_flux(flux)))
+
+    def test_matching_reads_the_feed_title_not_the_category(self):
+        exclus = self._exclus(["NoLimitSecu"])
+
+        self.assertFalse(exclus.exclut(article_du_flux("Le Monde Informatique", categorie="NoLimitSecu")))
+        self.assertTrue(exclus.exclut(article_du_flux("NoLimitSecu", categorie="Cybersécurité")))
+
+    def test_a_feed_title_merely_containing_an_excluded_one_is_kept(self):
+        exclus = self._exclus(["Go"])
+
+        self.assertFalse(exclus.exclut(article_du_flux("Google Cloud Blog")))
+        self.assertFalse(exclus.exclut(article_du_flux("The Go Blog")))
+        self.assertTrue(exclus.exclut(article_du_flux("go")))
+
+    def test_an_absent_or_empty_list_excludes_nothing(self):
+        for exclus in (charge({CLE_PROFIL: AUTRE_PROFIL}).flux_exclus, self._exclus([]),
+                       charge(AUTRE_PROFIL).flux_exclus, FluxExclus()):
+            with self.subTest(exclus=exclus.titres):
+                self.assertFalse(exclus)
+                self.assertFalse(exclus.exclut(article_du_flux("NoLimitSecu")))
+                self.assertEqual([], exclus.en_document())
+
+    def test_two_lists_excluding_the_same_feeds_are_equal_and_show_their_titles(self):
+        """`AppConfig` est une dataclass : sans égalité, deux configs identiques différeraient."""
+        self.assertEqual(FluxExclus(["NoLimitSecu"]), FluxExclus(["nolimitsecu "]))
+        self.assertEqual(hash(FluxExclus(["NoLimitSecu"])), hash(FluxExclus(["NOLIMITSECU"])))
+        self.assertNotEqual(FluxExclus(["NoLimitSecu"]), FluxExclus(["FreshRSS releases"]))
+        self.assertEqual(FluxExclus(), FluxExclus([]))
+        self.assertEqual("FluxExclus(['NoLimitSecu'])", repr(FluxExclus(["NoLimitSecu"])))
+
+    def test_a_malformed_list_fails_at_startup(self):
+        for valeur in ("NoLimitSecu", {"NoLimitSecu": True}, ["NoLimitSecu", ""], ["  "], [3],
+                       ["NoLimitSecu", "nolimitsecu"]):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(ValueError) as leve:
+                    profil_depuis_dict({CLE_PROFIL: "x", CLE_FLUX_EXCLUS: valeur}, origine="bea")
+                self.assertIn("bea", str(leve.exception))
+                self.assertIn(CLE_FLUX_EXCLUS, str(leve.exception))
 
 
 class InjectedProfileTests(unittest.TestCase):

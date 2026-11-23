@@ -153,6 +153,25 @@ class AnnuaireSqliteTests(Base):
         self.assertNotIn("categories", fiche.document)
         self.assertIsNone(self.annuaire.profil("bea").categories)
 
+    def test_excluded_feeds_survive_writing_and_reading(self):
+        """Une clé que `document_normalise` ne connaîtrait pas disparaîtrait en silence."""
+        fiche = self.annuaire.creer("bea", {"profil": "B", "flux_exclus": [" NoLimitSecu ", "FreshRSS releases"]})
+
+        self.assertEqual(["NoLimitSecu", "FreshRSS releases"], fiche.document["flux_exclus"])
+        self.assertEqual(
+            ("NoLimitSecu", "FreshRSS releases"), self.annuaire.profil("bea").flux_exclus.titres
+        )
+        self.assertEqual(
+            ["NoLimitSecu", "FreshRSS releases"], self.annuaire.fiche("bea").complet_json()["flux_exclus"]
+        )
+
+    def test_an_empty_excluded_feeds_list_is_omitted_from_the_document(self):
+        fiche = self.annuaire.creer("bea", {"profil": "B", "flux_exclus": []})
+
+        self.assertNotIn("flux_exclus", fiche.document)
+        self.assertNotIn("flux_exclus", self.annuaire.fiche("bea").complet_json())
+        self.assertFalse(self.annuaire.profil("bea").flux_exclus)
+
 
 class DepuisEnvTests(Base):
     def test_the_database_variable_selects_the_database(self):

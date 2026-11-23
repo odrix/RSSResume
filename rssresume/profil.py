@@ -25,6 +25,12 @@ personne est propriétaire : `"categories": ["Tech", "Veille marché"]`. Absente
 personne reçoit tout ce que le catalogue lui autorise. Ce qu'elle ne suit pas n'est ni
 noté ni résumé pour elle : c'est le premier filtre, et le moins cher.
 
+La clé `flux_exclus` descend d'un cran, au flux : `"flux_exclus": ["NoLimitSecu"]`. Une
+catégorie suivie mêle des flux qui se résument et d'autres qui ne le peuvent pas — un
+podcast sans transcription, un journal des versions — et les noter coûte des tokens pour
+un résultat vide. Leurs articles ne sont ni notés ni résumés, mais sont marqués lus avec
+le reste : ce qu'on a choisi de ne pas lire n'a pas à revenir le lendemain.
+
 Il est donc chargé, pas codé en dur au point d'appel : un profil explicite passé en
 argument, sinon l'environnement, sinon le profil par défaut ci-dessous. Ce défaut ne
 décrit personne : il vaut pour quelqu'un dans la tech, sans dire de quel produit ni de
@@ -58,6 +64,7 @@ from rssresume.tools.text import casefold_ascii
 
 if TYPE_CHECKING:
     from rssresume.categories import Catalogue
+    from rssresume.models import Article
 
 #: Le texte du profil seul, pour un profil court. Ne porte ni stack ni destinataire :
 #: une valeur d'environnement est une ligne, pas un document.
@@ -97,6 +104,86 @@ CLE_SECURITE = "securite"
 #: catalogue le sait : ce module n'en vérifie que la forme (`categories.Catalogue.abonnement`
 #: fait le reste).
 CLE_CATEGORIES = "categories"
+#: Les flux dont les articles ne sont ni notés ni résumés, nommés par leur titre FreshRSS.
+CLE_FLUX_EXCLUS = "flux_exclus"
+
+
+class FluxExclus:
+    """Les flux qu'une personne retire du scoring et du résumé, nommés par leur titre.
+
+    Par flux et non par catégorie : la catégorie se règle déjà par l'abonnement, et ce
+    qui ne se résume pas est un flux précis au milieu d'autres qui se résument très bien.
+
+    L'appariement est une égalité, pas une inclusion : « Go » exclurait sinon « Google
+    Cloud Blog », et un flux écarté en silence ne se remarque qu'à son absence. Casse et
+    accents retirés, comme le catalogue compare : un titre recopié à la main perd les
+    siens en route, et n'apparierait plus rien sans que rien ne le dise.
+    """
+
+    def __init__(self, titres: Iterable[str] = ()) -> None:
+        #: Les titres tels que déclarés : c'est eux que le document relit et que le
+        #: journal montre, pas leur forme repliée.
+        self.titres = tuple(titres)
+        self._replies = frozenset(casefold_ascii(titre.strip()) for titre in self.titres)
+
+    @classmethod
+    def declares(cls, valeur: object, origine: str) -> "FluxExclus":
+        """Les flux déclarés, rognés ; aucun si la clé manque. Mal formés : `ValueError`.
+
+        La liste vide est acceptée, contrairement à `categories` : n'exclure aucun flux
+        est l'état ordinaire, et une liste vidée dans le formulaire veut dire exactement
+        cela. Un doublon est refusé comme pour les catégories — il dirait deux fois la
+        même chose, et le second masquerait une faute de recopie.
+        """
+        if valeur is None:
+            return cls()
+        if not isinstance(valeur, list):
+            raise ValueError(
+                f"{origine} : « {CLE_FLUX_EXCLUS} » est une liste de titres de flux, "
+                f"pas {type(valeur).__name__}."
+            )
+        vus: dict[str, str] = {}
+        for titre in valeur:
+            if not isinstance(titre, str) or not titre.strip():
+                raise ValueError(
+                    f"{origine} : « {CLE_FLUX_EXCLUS} » ne contient que des titres de flux "
+                    f"non vides, pas « {titre} »."
+                )
+            cle = casefold_ascii(titre.strip())
+            if cle in vus:
+                raise ValueError(
+                    f"{origine} : « {CLE_FLUX_EXCLUS} » nomme deux fois le même flux "
+                    f"(« {vus[cle]} » et « {titre.strip()} »)."
+                )
+            vus[cle] = titre.strip()
+        return cls(vus.values())
+
+    def exclut(self, article: "Article") -> bool:
+        """Vrai quand l'article vient d'un flux exclu. Le titre du flux, jamais la catégorie."""
+        return casefold_ascii(article.feed_title.strip()) in self._replies
+
+    def __bool__(self) -> bool:
+        return bool(self._replies)
+
+    def __eq__(self, autre: object) -> bool:
+        """Égaux quand ils excluent les mêmes flux, quelle que soit l'écriture des titres.
+
+        Sans cela, l'identité tranchait : `AppConfig` est une dataclass qui compare ses
+        champs, et deux configurations identiques se seraient dites différentes.
+        """
+        if not isinstance(autre, FluxExclus):
+            return NotImplemented
+        return self._replies == autre._replies
+
+    def __hash__(self) -> int:
+        return hash(self._replies)
+
+    def __repr__(self) -> str:
+        return f"FluxExclus({list(self.titres)!r})"
+
+    def en_document(self) -> list[str]:
+        """La forme d'échange, celle que le document stocké relit telle quelle."""
+        return list(self.titres)
 
 
 class Securite(enum.Enum):
@@ -186,6 +273,7 @@ class Profil:
         securite: Securite = SECURITE_PAR_DEFAUT,
         axes: Axes | None = None,
         categories: Iterable[str] | None = None,
+        flux_exclus: FluxExclus | None = None,
     ):
         #: L'identifiant stable de la personne (un UUID), qui nomme son répertoire de
         #: sortie. Vide tant que le document n'en porte pas : c'est l'annuaire qui le
@@ -211,6 +299,9 @@ class Profil:
         #: tuple vide : l'absence veut dire « tout ce que le catalogue autorise », et doit
         #: rester distincte d'une liste qui ne suivrait rien.
         self.categories = None if categories is None else tuple(categories)
+        #: Les flux retirés du scoring et du résumé. Vides quand le document n'en déclare
+        #: pas : tout article d'une catégorie suivie est alors noté, comme avant la clé.
+        self.flux_exclus = flux_exclus if flux_exclus is not None else FluxExclus()
 
 
 def load_profil(override: str | None = None) -> Profil:
@@ -302,6 +393,7 @@ def profil_depuis_dict(
         Securite.depuis_document(document.get(CLE_SECURITE), origine),
         axes,
         categories,
+        FluxExclus.declares(document.get(CLE_FLUX_EXCLUS), origine),
     )
 
 

@@ -664,6 +664,7 @@ RSSRESUME_PROFILE_FILE=input/moi/profile.json
   "email": "moi@example.com",
   "prenom": "Adrien",
   "securite": "exploitant",
+  "flux_exclus": ["NoLimitSecu", "FreshRSS releases"],
   "axes": [
     {"slug": "qualite", "libelle": "Qualité", "description": "tests, fiabilité, dette technique, pratiques de qualité"},
     {"slug": "livraison", "libelle": "Livraison", "description": "CI/CD, déploiement, exploitation, productivité de l'équipe"},
@@ -681,6 +682,15 @@ lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
 versions, graduées sur la stack ; `decideur` une phrase par faille sans versions, sauf sur un
 composant de la stack ; `curieux` seulement les failles déjà exploitées ou qui font
 l'actualité. Une autre valeur fait échouer le lancement.
+`flux_exclus` liste les flux qui ne se résument pas — un podcast sans transcription, un
+journal des versions — par leur **titre exact** dans FreshRSS, casse et accents ignorés :
+`nolimitsecu` exclut « NoLimitSecu », mais « Go » n'exclut pas « Google Cloud Blog ». Le
+titre du flux, pas celui de sa catégorie. Leurs articles ne sont ni notés ni résumés, et
+sont écartés avant `--limit` ; ils restent **marqués lus** avec le reste de la journée. Les
+catégories CERT-FR (`RSSRESUME_CERTFR_CATEGORIES`) n'appellent aucun modèle et ne sont pas
+concernées. Absente ou vide, rien n'est exclu ; une entrée vide, un doublon ou autre chose
+qu'une liste de textes fait échouer le lancement. La ligne de suivi de la catégorie nomme
+les flux écartés, et le journal les liste dans `parametres.flux_exclus`.
 `id` est l'identifiant stable du profil, un UUID en minuscules (`5f0c2d8e-…`) : il nomme le
 répertoire de sortie. Absent, il est généré et écrit dans le fichier au premier passage ;
 présent mais mal formé, il fait échouer ce profil.

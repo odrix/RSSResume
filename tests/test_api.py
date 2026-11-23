@@ -214,6 +214,22 @@ class ProfilsTests(ServeurTestCase):
         self.assertEqual(200, statut)
         self.assertNotIn("categories", modifie)
 
+    def test_put_with_excluded_feeds_returns_them(self):
+        self.json("POST", "/api/v1/profils", self.BEA)
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Veille", "flux_exclus": ["NoLimitSecu", "FreshRSS releases"]
+        })
+
+        self.assertEqual(200, statut)
+        self.assertEqual(["NoLimitSecu", "FreshRSS releases"], modifie["flux_exclus"])
+        self.assertEqual(
+            ["NoLimitSecu", "FreshRSS releases"], self.json("GET", "/api/v1/profils/bea")[1]["flux_exclus"]
+        )
+        statut, corps = self.json("PUT", "/api/v1/profils/bea", {"profil": "Veille", "flux_exclus": "NoLimitSecu"})
+        self.assertEqual(422, statut)
+        self.assertIn("flux_exclus", corps["erreur"])
+
     def test_unknown_profiles_are_not_found(self):
         self.assertEqual(404, self.appel("GET", "/api/v1/profils/absent")[0])
         self.assertEqual(404, self.appel("PUT", "/api/v1/profils/absent", {"profil": "x"})[0])

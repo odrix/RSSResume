@@ -6,10 +6,12 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import certfr
+from rssresume import certfr, runlog
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.models import ORIGINE_MONTAGE, Article, CategoryDigest, Link, Montage
+from rssresume.newsletter import Lettre
+from rssresume.profil import FluxExclus
 from rssresume.summaries import SummaryGenerator
 from tests.support import (
     FakeAudioGenerator,
@@ -592,6 +594,134 @@ class LimitArticlesTests(unittest.TestCase):
                 ["item-1", "item-2", "item-3", "item-4", "item-5"],
                 [article.item_id for article in service._freshrss_client.marked_as_read],
             )
+
+
+def article_du_flux(item_id, flux, category="Tech"):
+    return dataclasses.replace(make_article(category=category, item_id=item_id), feed_title=flux)
+
+
+def noter_neuf(articles, profil=None, axes=None):
+    """Tout vaut 9 : chaque article noté est retenu et résumé."""
+    return [
+        {"id": a["id"], "score": 9, "thematique": "cyber", "angle": "", "notee": True}
+        for a in articles
+    ]
+
+
+class FluxExclusTests(unittest.TestCase):
+    """Les flux exclus du profil : ni notés ni résumés, mais marqués lus avec le reste."""
+
+    def _run(self, articles_by_category, flux_exclus=(), **config):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir), flux_exclus=FluxExclus(flux_exclus), **config
+            )
+            self.scorer = FakeScorer(side_effect=noter_neuf)
+            self.summary = mock.Mock()
+            self.summary.summarize.return_value = "Résumé"
+            self.client = FakeFreshRSSClient(articles_by_category)
+            service = DigestService(
+                config=config,
+                freshrss_client=self.client,
+                summary_generator=self.summary,
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+                scorer=self.scorer,
+            )
+            digests = service.run(DAY, send_email=False)
+            journal = pathlib.Path(tmpdir) / DAY.isoformat() / "tech.log.json"
+            self.journal = json.loads(journal.read_text(encoding="utf-8")) if journal.exists() else None
+            # Ce que `--send-only` relit : les digests reconstruits des seuls journaux.
+            self.relus = runlog.read_day(pathlib.Path(tmpdir) / DAY.isoformat())
+            return digests
+
+    def _notes(self):
+        return [a["id"] for appel in self.scorer.score_articles.call_args_list for a in appel.args[0]]
+
+    def _resumes(self):
+        return [a.item_id for appel in self.summary.summarize.call_args_list for a in appel.args[1]]
+
+    JOURNEE = {
+        "Tech": [
+            article_du_flux("podcast", "NoLimitSecu"),
+            article_du_flux("article", "Le Monde Informatique"),
+            article_du_flux("version", "FreshRSS releases"),
+        ],
+        "News": [],
+    }
+
+    def test_an_article_from_an_excluded_feed_reaches_neither_scoring_nor_summary(self):
+        self._run(self.JOURNEE, ["nolimitsecu", "FreshRSS Releases"])
+
+        self.assertEqual(["article"], self._notes())
+        self.assertEqual(["article"], self._resumes())
+
+    def test_a_category_made_only_of_excluded_feeds_calls_no_model(self):
+        digests = self._run(
+            {"Tech": [article_du_flux("podcast", "NoLimitSecu")], "News": []}, ["NoLimitSecu"]
+        )
+
+        self.scorer.score_articles.assert_not_called()
+        self.summary.summarize.assert_not_called()
+        self.assertIsNotNone(digests[0].marker_path)
+        self.assertEqual(["podcast"], [a.item_id for a in digests[0].articles])
+
+    def test_a_category_made_only_of_excluded_feeds_says_so_rather_than_empty(self):
+        """« Aucun nouvel article » mentirait : le journal, lui, en compte deux."""
+        attendu = "2 article(s) aujourd'hui dans la catégorie Tech, tous de flux exclus du résumé."
+        digests = self._run(
+            {"Tech": [article_du_flux("podcast", "NoLimitSecu"), article_du_flux("version", "FreshRSS releases")],
+             "News": []},
+            ["NoLimitSecu", "FreshRSS releases"],
+        )
+
+        self.assertEqual(attendu, digests[0].summary_text)
+        self.assertEqual(2, self.journal["resultat"]["articles"])
+        self.assertEqual(attendu, self.journal["resume"])
+        # L'email du jour et celui de `--send-only` disent la même chose.
+        self.assertIn(attendu, Lettre.compose(DAY, digests).text)
+        relu, = self.relus
+        self.assertIn(attendu, Lettre.compose(DAY, [relu]).text)
+        self.assertNotIn("Aucun nouvel article", Lettre.compose(DAY, [relu]).text)
+
+    def test_an_empty_category_still_says_there_was_no_article(self):
+        digests = self._run({"Tech": [], "News": []}, ["NoLimitSecu"])
+
+        self.assertEqual("Aucun nouvel article aujourd'hui dans la catégorie Tech.", digests[0].summary_text)
+
+    def test_an_excluded_article_is_still_marked_read(self):
+        self._run(self.JOURNEE, ["NoLimitSecu", "FreshRSS releases"])
+
+        self.assertEqual(
+            ["podcast", "article", "version"], [a.item_id for a in self.client.marked_as_read]
+        )
+
+    def test_a_category_named_like_an_excluded_feed_is_still_scored(self):
+        self._run(
+            {"NoLimitSecu": [article_du_flux("article", "Le Monde Informatique", "NoLimitSecu")]},
+            ["NoLimitSecu"],
+            categories=["NoLimitSecu"],
+        )
+
+        self.assertEqual(["article"], self._notes())
+
+    def test_without_excluded_feeds_every_article_is_scored(self):
+        self._run(self.JOURNEE)
+
+        self.assertEqual(["podcast", "article", "version"], self._notes())
+        self.assertEqual({"podcast", "article", "version"}, set(self._resumes()))
+
+    def test_the_exclusion_applies_before_the_limit(self):
+        """`--limit` borne ce qui serait traité, pas des articles écartés de toute façon."""
+        self._run(self.JOURNEE, ["NoLimitSecu"], limite_articles=1)
+
+        self.assertEqual(["article"], self._notes())
+
+    def test_the_category_log_names_the_excluded_feeds(self):
+        """Un journal qui note moins d'articles qu'il n'en reçoit doit dire pourquoi."""
+        self._run(self.JOURNEE, ["NoLimitSecu"])
+
+        self.assertEqual(["NoLimitSecu"], self.journal["parametres"]["flux_exclus"])
 
 
 if __name__ == "__main__":
