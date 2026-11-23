@@ -364,14 +364,17 @@ class ConfigPourTests(unittest.TestCase):
     def test_a_profile_without_axes_keeps_the_default_axes(self):
         """Et la même empreinte : la correction ne renote pas qui n'a rien déclaré."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            installation = make_config(tmpdir)
             bea = Lecteur("bea", profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B"}))
 
-            config = make_config(tmpdir).pour(bea)
+            config = installation.pour(bea)
 
             self.assertIsInstance(config.axes, AxesParDefaut)
             self.assertFalse(config.axes.sont_declares)
             self.assertEqual(Axes.par_defaut().en_document(), config.axes.en_document())
-            self.assertEqual(empreinte("B", Axes.par_defaut()), empreinte("B", config.axes))
+            # Avant la correction, la tournée notait avec les axes de l'installation :
+            # c'est l'empreinte déjà en cache qu'il faut retrouver.
+            self.assertEqual(empreinte("B", installation.axes), empreinte("B", config.axes))
 
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:
