@@ -68,9 +68,6 @@ describe('transports de repli', () => {
 });
 
 describe('bienvenue', () => {
-	/** Le site ne permet pas encore de changer de catégories : l'email ne doit pas le promettre. */
-	const PROMET_LES_CATEGORIES = /(chang|modifi|ajust|choisi)[^.\n]*catégorie|catégorie[^.\n]*(chang|modifi|ajust)/i;
-
 	it('la bienvenue dit quoi, quand, où ajuster et comment arrêter', async () => {
 		const courrier = new CourrierJournal('admin@example.test', false);
 		expect(
@@ -98,6 +95,7 @@ describe('bienvenue', () => {
 			'suivra celui du lundi 23 novembre',
 			// Où ajuster.
 			'https://site.test/profil',
+			'Vous y choisissez aussi vos catégories et vos rubriques.',
 			'https://site.test/resumes',
 			'régime de sécurité',
 			// Comment arrêter.
@@ -105,7 +103,6 @@ describe('bienvenue', () => {
 		]) {
 			expect(message.texte).toContain(attendu);
 		}
-		expect(message.texte).not.toMatch(PROMET_LES_CATEGORIES);
 	});
 
 	it('sans heure ni gabarit, la bienvenue reste juste', async () => {
@@ -123,6 +120,5 @@ describe('bienvenue', () => {
 		expect(message.texte).toContain('chaque matin, après le passage quotidien');
 		expect(message.texte).not.toContain('gabarit');
 		expect(message.texte).not.toMatch(/\d\d:\d\d/);
-		expect(message.texte).not.toMatch(PROMET_LES_CATEGORIES);
 	});
 });
