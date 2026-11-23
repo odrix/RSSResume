@@ -8,8 +8,8 @@ qu'il peut se tromper à rendre. Elle n'a donc aucune marche à descendre.
 
 Le **fait historique**, lui, en a trois :
 
-1. le modèle, à qui l'on demande un événement de cybersécurité survenu à cette date, et
-   à défaut un événement d'informatique — un appel par journée, pas par catégorie ;
+1. le modèle, à qui l'on demande un événement de l'histoire de l'informatique et du
+   numérique survenu à cette date — un appel par journée, pas par catégorie ;
 2. la table de `histoire`, qui couvre les dates marquantes du domaine ;
 3. le calendrier, qui ne se trompe jamais : rang du jour, semaine, jours restants.
 

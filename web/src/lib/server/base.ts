@@ -46,7 +46,15 @@ const MIGRATIONS = [
 		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
 		email TEXT NOT NULL COLLATE NOCASE,
 		PRIMARY KEY (compte_id, email)
-	);`
+	);`,
+	// Le métier choisi à l'inscription : une copie des réglages du gabarit, gardée avec le
+	// brouillon pour que le profil créé à la confirmation soit celui que la personne a vu,
+	// même si le catalogue change entre-temps. Et la première connexion, qui mène au profil
+	// plutôt qu'à une liste de résumés encore vide. Un compte déjà confirmé a reçu son
+	// profil et ses résumés sous l'ancienne règle : le renvoyer au profil le dérouterait.
+	`ALTER TABLE comptes ADD COLUMN brouillon_gabarit TEXT;
+	ALTER TABLE comptes ADD COLUMN premiere_connexion_le TEXT;
+	UPDATE comptes SET premiere_connexion_le = confirme_le WHERE confirme_le IS NOT NULL;`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */
@@ -58,11 +66,13 @@ export function ouvrirBase(chemin: string): DatabaseSync {
 	return base;
 }
 
-function migrer(base: DatabaseSync): void {
+/** `cible` ne sert qu'aux tests : arrêter une base à une version ancienne, y mettre des
+ * comptes, puis vérifier ce que la migration suivante en fait. */
+export function migrer(base: DatabaseSync, cible = MIGRATIONS.length): void {
 	const { user_version: version } = base.prepare('PRAGMA user_version').get() as {
 		user_version: number;
 	};
-	for (let i = version; i < MIGRATIONS.length; i++) {
+	for (let i = version; i < cible; i++) {
 		base.exec('BEGIN');
 		try {
 			base.exec(MIGRATIONS[i]);

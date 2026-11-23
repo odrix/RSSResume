@@ -41,12 +41,16 @@ npm run build   # build de production dans build/
 
 Les tests couvrent la validation (username, mot de passe, email), les sessions (empreinte
 en base, expiration, prolongation, refus d'un compte en attente), les comptes (droit
-d'administrer réservé aux comptes confirmés, purge à sept jours), les jetons de
+d'administrer réservé aux comptes confirmés, purge à sept jours, confirmation et première
+connexion qui ne valent qu'une fois, migration des comptes existants), les jetons de
 confirmation (empreinte, 24 h, usage unique, remplacement), l'inscription en deux temps
-(profil et alerte à la confirmation seulement, lien expiré, API indisponible, renvoi,
-fermeture sans transport d'email), les destinataires (ajout en attente, confirmation,
-retrait immédiat, plafond, fréquence), les transports d'email, le client d'API contre la
-fausse API (dont le champ `id`, jamais renvoyé), et le relais audio : contrôle
+(profil du métier choisi — texte, axes, catégories, régime — ou « Autre », métier inconnu,
+gabarits injoignables ; profil, alerte et bienvenue à la confirmation seulement et une
+seule fois, lien expiré, API indisponible, renvoi, fermeture sans transport d'email), la
+destination après connexion (le profil la première fois), les destinataires (ajout en
+attente, confirmation, retrait immédiat, plafond, fréquence, axes et catégories conservés),
+les transports d'email et le contenu de la bienvenue, le client d'API contre la fausse API
+(dont le champ `id`, jamais renvoyé, et les gabarits), et le relais audio : contrôle
 propriétaire/admin, chemins forgés, transmission du `Range` et relais des `206`/`416`.
 
 ## Arborescence
@@ -63,7 +67,7 @@ src/
     comptes.ts               comptes (en attente / confirmés), Argon2id, droit de consulter
     sessions.ts              sessions par jeton aléatoire
     jetons-email.ts          jetons des liens de confirmation
-    inscription.ts           compte en attente, puis profil + alerte à la confirmation
+    inscription.ts           compte en attente (métier choisi), puis profil + alerte + bienvenue
     destinataires.ts         adresses de réception : confirmées avant d'atteindre l'API
     courrier.ts              emails du site ; transports Resend, console, absent
     relais-audio.ts          contrôle d'accès et relais du MP3 avec Range
@@ -119,6 +123,16 @@ Ce qui n'est **pas** là, volontairement :
     pour qu'un antivirus de messagerie qui suit les liens ne la déclenche pas ;
   - le **profil n'est créé côté API qu'à la confirmation** : aucun digest ne part vers une
     adresse non prouvée. L'alerte à `ADMIN_EMAIL` part à ce moment-là aussi ;
+  - le formulaire fait choisir un **métier** parmi les gabarits de l'API (ou « Autre ») ;
+    son texte s'affiche, modifiable. Le compte en attente garde une copie des réglages du
+    gabarit (texte, stack, régime, axes, catégories) et le profil est créé avec eux : le premier
+    digest correspond déjà au métier. API injoignable à l'affichage : le formulaire revient
+    au texte général, sans liste ;
+  - à la confirmation, un **email de bienvenue** part une fois : ce que la personne va
+    recevoir, l'heure du passage, où ajuster son profil, comment ne plus rien recevoir. Un
+    échec d'envoi est journalisé, sans relance ni effet sur le compte ;
+  - la **première connexion** mène à « Mon profil » plutôt qu'à une liste de résumés vide.
+    Une connexion qui suit un lien vers une autre page (`?suite=`) y mène sans la consommer ;
   - tant que le compte est en attente, la connexion est refusée, et la session aussi. Le
     message n'apparaît qu'après un mot de passe correct. La page « Renvoyer le lien » répond
     la même chose quelle que soit l'adresse (3 demandes par adresse et 10 par IP et par heure) ;

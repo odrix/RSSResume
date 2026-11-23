@@ -1,5 +1,6 @@
 import datetime as dt
 import os
+import re
 import unittest
 from unittest import mock
 
@@ -111,6 +112,18 @@ class PromptTests(PromptCase):
         self.assertIn("prose continue", prompt)
         self.assertIn("Jamais de liste à puces", prompt)
         self.assertIn("Pas de conclusion passe-partout", prompt)
+
+    def test_the_examples_assume_no_security_audience(self):
+        """Le modèle imite ses exemples : cités cyber, ils font sonner tout digest comme une lettre de RSSI.
+
+        Seules les consignes de cadrage sont visées : celles des vulnérabilités parlent de
+        failles parce que c'est leur objet. Sans casse ni accent exigés : « SÉCURITÉ », « Cnil »
+        ou « securite » ramèneraient le même biais.
+        """
+        cyber = re.compile(r"fortinet|cnil|faille|s[eé]curit[eé]|cyber", re.IGNORECASE)
+        for nom in ("OPENING_INSTRUCTION", "CLOSING_INSTRUCTION", "SOMMAIRE_INSTRUCTION", "CONCLUSION_INSTRUCTION"):
+            with self.subTest(consigne=nom):
+                self.assertNotRegex(getattr(prompts, nom), cyber)
 
     def test_prompt_requires_merging_articles_on_the_same_event(self):
         """Trois dépêches sur le même incident font un sujet, pas trois passages."""

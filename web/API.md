@@ -56,10 +56,20 @@ Le document de la personne, au format de `rssresume/profil.py` :
 | `email`  | liste d'adresses                                | toujours une **liste** en sortie ; vide = aucun envoi |
 | `prenom` | texte                                           | `""` quand absent                          |
 | `securite` | `"exploitant"`, `"decideur"` ou `"curieux"`   | `"exploitant"` quand absent ; toute autre valeur → `422` |
+
 | `flux_exclus` | liste de titres de flux FreshRSS            | ni notés ni résumés, marqués lus quand même ; titre exact, casse et accents ignorés ; absente de la réponse quand vide ; entrée vide ou doublon → `422` |
+| `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent = les rubriques par défaut |
+| `categories` | liste de noms de catégories                 | facultatif ; absent = tout le catalogue ouvert |
+
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
-document stocké avait une adresse seule ou pas de prénom.
+document stocké avait une adresse seule ou pas de prénom. `axes` et `categories` n'y
+figurent que si le profil les déclare.
+
+Le site les recopie d'un gabarit à la confirmation du compte, et ne les édite pas encore :
+comme un `PUT` remplace tout le document, il renvoie ceux qu'il vient de lire à chaque
+enregistrement de « Mon profil » et à chaque adresse confirmée, et ne les envoie pas quand
+le profil n'en a pas.
 
 `id` figure dans toutes les réponses qui portent un profil (la liste, `GET`, `POST`, `PUT`).
 Les URL restent adressées par **username** ; le site n'envoie jamais `id` (ni `modifie_le`)
@@ -77,7 +87,8 @@ dans un corps `POST` ou `PUT`, et l'API ignore ces clés si elles y figurent.
 
 ### `POST /api/v1/profils`
 
-Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom"}`.
+Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom", "securite"}`, et
+`"axes"`, `"categories"` quand le profil part d'un gabarit.
 
 - `201` → le profil complet (forme ci-dessus)
 - `409` → username déjà pris
@@ -85,12 +96,14 @@ Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom"}`.
 
 ### `GET /api/v1/profils/{username}`
 
-- `200` → `{"id", "username", "profil", "stack", "email", "prenom", "modifie_le"}`
+- `200` → `{"id", "username", "profil", "stack", "email", "prenom", "securite", "modifie_le"}`,
+  plus `axes` et `categories` quand le profil les déclare
 - `404`
 
 ### `PUT /api/v1/profils/{username}`
 
-Corps : `{"profil", "stack", "email", "prenom"}` — remplacement complet, pas de fusion.
+Corps : `{"profil", "stack", "email", "prenom", "securite"}`, plus `axes` et `categories`
+s'il en a — remplacement complet, pas de fusion : une clé omise revient à son défaut.
 
 - `200` → le profil complet, `modifie_le` mis à jour, `id` inchangé
 - `404`, `422`
@@ -185,3 +198,9 @@ Le site relaie `Range` tel quel et recopie statut et en-têtes : sans `206`, un 
 
 Chaque gabarit est un document de départ. Il peut être affiché puis modifié librement avant
 création du profil ; l’identifiant `metier` n’est pas stocké avec le profil.
+
+Le site s'en sert deux fois : pour la liste du formulaire d'inscription (métier, libellé,
+texte, catégories), puis à l'envoi du formulaire, pour copier le texte, la stack, le régime,
+les axes et les catégories du métier choisi dans le compte en attente. Il garde la liste
+cinq minutes en mémoire (jamais une erreur). Le profil créé à la confirmation reprend cette
+copie : la personne reçoit ce qu'elle a vu, même si le catalogue a changé entre-temps.

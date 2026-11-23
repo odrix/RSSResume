@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { GABARITS_DEMO } from '../../../mock/faux-api.js';
 import { PROFIL_PAR_DEFAUT } from '#lib/profil.js';
 import { ClientApiResume } from './api-resume.js';
 import { CourrierAbsent, CourrierJournal } from './courrier.js';
 import { Inscription, ErreurInscription, type SaisieInscription } from './inscription.js';
 import { DUREE_JETON_EMAIL_MS, ErreurConfirmation } from './jetons-email.js';
-import { EMAIL_ADMIN, ORIGINE, jetonDuLien, monter } from './outils-test.js';
+import { EMAIL_ADMIN, JETON, ORIGINE, jetonDuLien, monter } from './outils-test.js';
 
 const SAISIE: SaisieInscription = {
 	email: 'Moi@Example.com',
 	username: 'moi',
 	motDePasse: 'une phrase de passe',
 	prenom: ' Adrien ',
-	profil: ''
+	profil: '',
+	metier: 'autre'
 };
+
+/** Le gabarit `decideur` de la fausse API : régime, axes et catégories qui diffèrent tous
+ * du profil d'avant. */
+const CTO = GABARITS_DEMO.find((gabarit) => gabarit.metier === 'cto')!;
+
+const SUJET_BIENVENUE = 'Bienvenue sur RSSResume';
 
 async function echec<E extends Error>(promesse: Promise<unknown>, type: new (...a: never[]) => E): Promise<E> {
 	try {
@@ -44,7 +52,7 @@ describe('Inscription', () => {
 		await inscription.inscrire(SAISIE, ORIGINE);
 		const jeton = jetonDuLien(courrier.envoyes[0].texte);
 
-		const confirme = await inscription.confirmer(jeton);
+		const confirme = await inscription.confirmer(jeton, ORIGINE);
 		expect(confirme.confirme).toBe(true);
 		expect(fausseApi.profils.get('moi')).toMatchObject({
 			profil: PROFIL_PAR_DEFAUT,
@@ -52,20 +60,165 @@ describe('Inscription', () => {
 			email: ['moi@example.com'],
 			prenom: 'Adrien'
 		});
-		expect(comptes.brouillon(confirme.id)).toEqual({ profil: '', prenom: '' });
-		const alerte = courrier.envoyes.at(-1)!;
-		expect(alerte.destinataire).toBe(EMAIL_ADMIN);
-		expect(alerte.sujet).toContain('moi');
+		expect(comptes.brouillon(confirme.id)).toEqual({ profil: '', prenom: '', gabarit: null });
+		const alertes = courrier.envoyes.filter((m) => m.destinataire === EMAIL_ADMIN);
+		expect(alertes).toHaveLength(1);
+		expect(alertes[0].sujet).toContain('moi');
 
 		// Usage unique.
-		await echec(inscription.confirmer(jeton), ErreurConfirmation);
+		await echec(inscription.confirmer(jeton, ORIGINE), ErreurConfirmation);
 	});
 
 	it('garde le texte de profil saisi jusqu’à la confirmation', async () => {
 		const { inscription, courrier, fausseApi } = monter();
 		await inscription.inscrire({ ...SAISIE, profil: 'RSSI' }, ORIGINE);
-		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte));
+		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
 		expect(fausseApi.profils.get('moi')?.profil).toBe('RSSI');
+	});
+
+	it('à la confirmation, crée le profil du gabarit choisi : texte, axes, catégories, régime, stack', async () => {
+		const { inscription, courrier, fausseApi } = monter();
+		// Les gabarits livrés n'ont pas encore de stack ; l'API l'expose pourtant.
+		const stack = ['Traefik', { nom: 'Keycloak', alias: ['RH-SSO'] }];
+		fausseApi.gabarits = GABARITS_DEMO.map((gabarit) => (gabarit.metier === 'cto' ? { ...gabarit, stack } : gabarit));
+		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
+		// Rien côté API avant la confirmation, sinon la lecture des gabarits.
+		expect(fausseApi.requetes.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
+			'GET /api/v1/gabarits'
+		]);
+		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+
+		expect(fausseApi.profils.get('moi')).toMatchObject({
+			profil: CTO.profil,
+			stack,
+			securite: 'decideur',
+			axes: CTO.axes,
+			categories: CTO.categories,
+			email: ['moi@example.com'],
+			prenom: 'Adrien'
+		});
+		const creation = fausseApi.requetes.find((r) => r.method === 'POST')!;
+		// Le métier choisi n'est pas une propriété du profil : il ne part pas à l'API.
+		expect(await creation.json()).not.toHaveProperty('metier');
+	});
+
+	it('garde le texte retouché, avec les réglages du gabarit', async () => {
+		const { inscription, courrier, fausseApi } = monter();
+		await inscription.inscrire({ ...SAISIE, metier: 'cto', profil: ' CTO, surtout la donnée. ' }, ORIGINE);
+		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+		expect(fausseApi.profils.get('moi')).toMatchObject({
+			profil: 'CTO, surtout la donnée.',
+			securite: 'decideur',
+			axes: CTO.axes,
+			categories: CTO.categories
+		});
+	});
+
+	it('« Autre » crée le profil d’avant : texte par défaut, sans axes ni catégories', async () => {
+		const { inscription, courrier, fausseApi } = monter();
+		await inscription.inscrire(SAISIE, ORIGINE);
+		// « Autre » n'a rien à vérifier : l'API n'est pas appelée.
+		expect(fausseApi.requetes).toHaveLength(0);
+		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+
+		const profil = fausseApi.profils.get('moi')!;
+		expect(profil).toMatchObject({ profil: PROFIL_PAR_DEFAUT, securite: 'exploitant' });
+		expect(profil).not.toHaveProperty('axes');
+		expect(profil).not.toHaveProperty('categories');
+		const corps = await fausseApi.requetes.find((r) => r.method === 'POST')!.json();
+		expect(corps).not.toHaveProperty('axes');
+		expect(corps).not.toHaveProperty('categories');
+	});
+
+	it.each([
+		['astronaute', 'inconnu'],
+		['', 'vide']
+	])('refuse un métier inconnu, sans rien créer (%s, %s)', async (metier) => {
+		const { inscription, comptes, courrier } = monter();
+		const erreur = await echec(inscription.inscrire({ ...SAISIE, metier }, ORIGINE), ErreurInscription);
+		expect(erreur.champ).toBe('metier');
+		expect(comptes.lister()).toHaveLength(0);
+		expect(courrier.envoyes).toHaveLength(0);
+	});
+
+	it('refuse l’inscription quand les gabarits sont injoignables', async () => {
+		const { comptes, jetons, courrier } = monter();
+		const enPanne = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: 'x',
+			fetch: () => Promise.reject(new TypeError('fetch failed'))
+		});
+		const inscription = new Inscription(comptes, jetons, enPanne, courrier);
+		const erreur = await echec(inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE), ErreurInscription);
+		expect(erreur.champ).toBe('general');
+		expect(erreur.message).toMatch(/indisponible/);
+		expect(comptes.lister()).toHaveLength(0);
+		expect(courrier.envoyes).toHaveLength(0);
+	});
+
+	it('envoie la bienvenue une seule fois, à la confirmation', async () => {
+		const { inscription, comptes, jetons, courrier } = monter();
+		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
+		const bienvenues = () => courrier.envoyes.filter((m) => m.sujet === SUJET_BIENVENUE);
+		expect(bienvenues()).toHaveLength(0);
+
+		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const confirme = await inscription.confirmer(jeton, ORIGINE);
+		expect(bienvenues()).toHaveLength(1);
+		const [bienvenue] = bienvenues();
+		expect(bienvenue.destinataire).toBe('moi@example.com');
+		expect(bienvenue.texte).toContain(`${ORIGINE}/profil`);
+		expect(bienvenue.texte).toContain('04:00');
+		expect(bienvenue.texte).toContain(CTO.libelle);
+
+		// Le même lien ne sert plus ; un nouveau lien sur un compte déjà confirmé n'écrit rien.
+		const avant = courrier.envoyes.length;
+		await echec(inscription.confirmer(jeton, ORIGINE), ErreurConfirmation);
+		const reemis = jetons.emettre(confirme.id, 'moi@example.com', 'inscription');
+		expect((await inscription.confirmer(reemis, ORIGINE)).confirme).toBe(true);
+		expect(courrier.envoyes).toHaveLength(avant);
+		expect(comptes.parId(confirme.id)?.confirme).toBe(true);
+	});
+
+	it('la bienvenue part sans heure quand le passage est injoignable', async () => {
+		const { comptes, jetons, courrier, fausseApi } = monter();
+		const sansPassage = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: (entree, init) =>
+				String(entree).endsWith('/api/v1/passage')
+					? Promise.reject(new TypeError('fetch failed'))
+					: fausseApi.traiter(entree, init)
+		});
+		const inscription = new Inscription(comptes, jetons, sansPassage, courrier);
+		await inscription.inscrire(SAISIE, ORIGINE);
+		await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+
+		const bienvenue = courrier.envoyes.find((m) => m.sujet === SUJET_BIENVENUE)!;
+		expect(bienvenue.texte).toContain('après le passage quotidien');
+		expect(bienvenue.texte).not.toContain('04:00');
+		expect(fausseApi.profils.has('moi')).toBe(true);
+	});
+
+	it('la bienvenue part sans heure quand le passage renvoie un corps illisible', async () => {
+		const { comptes, jetons, courrier, fausseApi } = monter();
+		const passageIllisible = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: async (entree, init) =>
+				String(entree).endsWith('/api/v1/passage')
+					? new Response('<html>passerelle</html>', { status: 200 })
+					: fausseApi.traiter(entree, init)
+		});
+		const inscription = new Inscription(comptes, jetons, passageIllisible, courrier);
+		await inscription.inscrire(SAISIE, ORIGINE);
+		// Le compte est confirmé et le jeton consommé avant la lecture de l'heure : une erreur
+		// ici serait une 500 sans bienvenue, jamais rattrapée.
+		const confirme = await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+
+		expect(confirme.confirme).toBe(true);
+		const bienvenue = courrier.envoyes.find((m) => m.sujet === SUJET_BIENVENUE)!;
+		expect(bienvenue.texte).toContain('après le passage quotidien');
 	});
 
 	it('refuse un lien expiré au bout de 24 heures', async () => {
@@ -73,16 +226,16 @@ describe('Inscription', () => {
 		const { inscription, courrier, fausseApi } = monter(() => h.t);
 		await inscription.inscrire(SAISIE, ORIGINE);
 		h.t += DUREE_JETON_EMAIL_MS;
-		await echec(inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte)), ErreurConfirmation);
+		await echec(inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE), ErreurConfirmation);
 		expect(fausseApi.profils.size).toBe(0);
 	});
 
 	it('refuse un jeton inconnu, ou celui d’un destinataire', async () => {
 		const { inscription, jetons, creerConfirme } = monter();
-		await echec(inscription.confirmer('inconnu'), ErreurConfirmation);
+		await echec(inscription.confirmer('inconnu', ORIGINE), ErreurConfirmation);
 		const moi = await creerConfirme('moi@example.com', 'moi');
 		const autreObjet = jetons.emettre(moi.id, 'moi@example.com', 'destinataire');
-		await echec(inscription.confirmer(autreObjet), ErreurConfirmation);
+		await echec(inscription.confirmer(autreObjet, ORIGINE), ErreurConfirmation);
 	});
 
 	it('garde le lien utilisable quand l’API est indisponible', async () => {
@@ -94,10 +247,10 @@ describe('Inscription', () => {
 			jeton: 'x',
 			fetch: () => Promise.reject(new TypeError('fetch failed'))
 		});
-		await echec(new Inscription(comptes, jetons, enPanne, courrier).confirmer(jeton), ErreurConfirmation);
+		await echec(new Inscription(comptes, jetons, enPanne, courrier).confirmer(jeton, ORIGINE), ErreurConfirmation);
 		expect(comptes.lister()[0].confirme).toBe(false);
 
-		await inscription.confirmer(jeton);
+		await inscription.confirmer(jeton, ORIGINE);
 		expect(fausseApi.profils.has('moi')).toBe(true);
 	});
 
@@ -106,7 +259,7 @@ describe('Inscription', () => {
 		await api.creerProfil('moi', { profil: 'déjà là', stack: [], email: [], prenom: '', securite: 'exploitant' });
 		await inscription.inscrire(SAISIE, ORIGINE);
 		const erreur = await echec(
-			inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte)),
+			inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE),
 			ErreurConfirmation
 		);
 		expect(erreur.message).toMatch(/déjà utilisé/);
@@ -177,8 +330,8 @@ describe('Inscription', () => {
 		const second = jetonDuLien(courrier.envoyes[1].texte);
 
 		// Seul le dernier lien fonctionne.
-		await echec(inscription.confirmer(premier), ErreurConfirmation);
-		await inscription.confirmer(second);
+		await echec(inscription.confirmer(premier, ORIGINE), ErreurConfirmation);
+		await inscription.confirmer(second, ORIGINE);
 
 		await creerConfirme('autre@example.com', 'autre');
 		const avant = courrier.envoyes.length;

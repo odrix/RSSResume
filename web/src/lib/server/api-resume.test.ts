@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mp3Silencieux } from '../../../mock/faux-api.js';
+import { GABARITS_DEMO, mp3Silencieux } from '../../../mock/faux-api.js';
 import { ClientApiResume, ErreurApi } from './api-resume.js';
 import { JETON, monter } from './outils-test.js';
 
@@ -82,6 +82,71 @@ describe('ClientApiResume', () => {
 		}
 		expect(corps[1]).toEqual({ ...SAISIE, profil: 'RSSI' });
 		expect(corps[2].username).toBe('autre');
+	});
+
+	it('lit les gabarits', async () => {
+		const { api, fausseApi } = monter();
+		expect(await api.listerGabarits()).toEqual(GABARITS_DEMO);
+		const [lecture] = fausseApi.requetes;
+		expect(lecture.method).toBe('GET');
+		expect(lecture.url).toBe('http://api.test/api/v1/gabarits');
+		expect(lecture.headers.get('authorization')).toBe(`Bearer ${JETON}`);
+	});
+
+	it('garde les gabarits en mémoire quelques minutes, sans mémoriser une erreur', async () => {
+		const { fausseApi } = monter();
+		const h = { t: 1_800_000_000_000 };
+		let enPanne = true;
+		const api = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			dureeGabaritsMs: 5 * 60 * 1000,
+			maintenant: () => h.t,
+			fetch: (entree, init) =>
+				enPanne ? Promise.reject(new TypeError('fetch failed')) : fausseApi.traiter(entree, init)
+		});
+		const lectures = () => fausseApi.requetes.filter((r) => r.url.endsWith('/api/v1/gabarits')).length;
+
+		// Une erreur n'est pas gardée : l'appel suivant réessaie.
+		expect((await erreurDe(api.listerGabarits())).statut).toBe(0);
+		enPanne = false;
+		expect(await api.listerGabarits()).toEqual(GABARITS_DEMO);
+		expect(lectures()).toBe(1);
+
+		h.t += 5 * 60 * 1000 - 1;
+		expect(await api.listerGabarits()).toEqual(GABARITS_DEMO);
+		expect(lectures()).toBe(1);
+
+		h.t += 1;
+		await api.listerGabarits();
+		expect(lectures()).toBe(2);
+	});
+
+	it('rend une ErreurApi quand un 200 porte un corps illisible', async () => {
+		const api = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: async () => new Response('<html>passerelle</html>', { status: 200 })
+		});
+		const erreur = await erreurDe(api.lirePassage());
+		expect(erreur.statut).toBe(0);
+		expect(erreur.message).toMatch(/illisible/);
+	});
+
+	it('transmet axes et catégories, et les omet quand absents', async () => {
+		const { api, fausseApi } = monter();
+		const axes = [{ slug: 'cyber', libelle: 'Cybersécurité', description: 'failles et incidents' }];
+		const cree = await api.creerProfil('moi', { ...SAISIE, axes, categories: ['Cybersécurité'] });
+		expect(cree).toMatchObject({ axes, categories: ['Cybersécurité'] });
+		await api.modifierProfil('moi', SAISIE);
+
+		const [creation, modification] = await Promise.all(
+			fausseApi.requetes.filter((r) => r.method !== 'GET').map((r) => r.json())
+		);
+		expect(creation).toEqual({ username: 'moi', ...SAISIE, axes, categories: ['Cybersécurité'] });
+		// Une clé absente vaut « réglage par défaut » côté API : aucune n'est inventée.
+		expect(modification).not.toHaveProperty('axes');
+		expect(modification).not.toHaveProperty('categories');
 	});
 
 	it("rend le message de l'API avec son statut : 409, 422, 404", async () => {

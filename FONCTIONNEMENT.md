@@ -263,8 +263,8 @@ Le texte est écrit pour être **écouté**, pas lu, ce qui dicte six contrainte
   creuse — et une phrase courte en fin, qui découle des sujets du jour : ce qu'il reste à faire,
   ce qui est à suivre demain, ou qu'il n'y a rien à faire. Les deux s'adressent à **une seule
   personne**, celle du profil. Aucun gabarit ne convient : ces deux phrases sont un jugement sur
-  la sélection du jour, elles changent tous les jours. La conclusion passe-partout sur
-  l'importance de la sécurité reste explicitement interdite, « bonne journée » seul aussi ;
+  la sélection du jour, elles changent tous les jours. La conclusion passe-partout — « c'est un
+  enjeu majeur », l'appel à la vigilance — reste explicitement interdite, « bonne journée » seul aussi ;
 - **longueur proportionnée au volume**, sans quoi le même texte servirait pour 3 comme pour 30
   articles :
 
