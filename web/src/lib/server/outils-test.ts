@@ -13,6 +13,7 @@ import { Destinataires } from './destinataires.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
 import { LimiteurTentatives } from './limiteur.js';
+import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
 
 export const JETON = 'jeton-de-test';
@@ -59,6 +60,7 @@ export function monter(maintenant: () => number = Date.now) {
 		new LimiteurTentatives(10, 60 * 60 * 1000, maintenant)
 	);
 	const desabonnement = new Desabonnement(api);
+	const retours = new Retours(api);
 
 	/** Un compte confirmé, sans passer par l'API : pour les tests qui ne portent pas sur
 	 * l'inscription. */
@@ -79,6 +81,7 @@ export function monter(maintenant: () => number = Date.now) {
 		inscription,
 		destinataires,
 		desabonnement,
+		retours,
 		creerConfirme
 	};
 }

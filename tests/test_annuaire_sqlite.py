@@ -9,9 +9,11 @@ Ce que ces tests protègent :
 - l'import se rejoue sans rien réécrire, et garde les identifiants des fichiers.
 """
 
+import datetime
 import json
 import os
 import pathlib
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -32,6 +34,7 @@ from rssresume.profil import (
     id_valide,
     nouvel_id,
 )
+from rssresume.retours import Avis, Retour
 from rssresume.summaries import SummaryGenerator
 from rssresume.tournee import Tournee
 from tests import test_multiprofil
@@ -232,6 +235,80 @@ class DesabonnerTests(Base):
         self.assertEqual(("a@x.fr",), tuple(emails))
         self.assertIsNotNone(fiche)
         self.assertNotIn("email", self.annuaire.fiche("bea").document)
+
+
+class RetoursTests(Base):
+    """Un vote par profil et par journée : le second remplace le premier."""
+
+    JOUR = datetime.date(2026, 11, 22)
+
+    def setUp(self):
+        super().setUp()
+        self.fiche = self.annuaire.creer("bea", {"profil": "B"})
+
+    def _retour(self, avis=Avis.UTILE, commentaire="", jour=None, profil_id=None):
+        return Retour(profil_id or self.fiche.id, jour or self.JOUR, avis, commentaire)
+
+    def _lignes(self):
+        with self.annuaire._connexion() as connexion:
+            return connexion.execute("SELECT profil_id, jour, avis, commentaire FROM retours").fetchall()
+
+    def test_a_second_vote_on_the_same_day_replaces_the_first(self):
+        self.annuaire.enregistrer_retour(self._retour(Avis.UTILE, "Bien."))
+        self.annuaire.enregistrer_retour(self._retour(Avis.PAS_UTILE, "Finalement non."))
+
+        self.assertEqual([(self.fiche.id, "2026-11-22", "pas_utile", "Finalement non.")], self._lignes())
+        relu = self.annuaire.retour(self.fiche.id, self.JOUR)
+        self.assertEqual((Avis.PAS_UTILE, "Finalement non.", "bea"), (relu.avis, relu.commentaire, relu.username))
+
+    def test_another_day_is_another_vote(self):
+        self.annuaire.enregistrer_retour(self._retour())
+        self.annuaire.enregistrer_retour(self._retour(jour=self.JOUR - datetime.timedelta(days=1)))
+
+        self.assertEqual(2, len(self._lignes()))
+
+    def test_the_database_dates_the_vote(self):
+        enregistre = self.annuaire.enregistrer_retour(self._retour())
+
+        self.assertIsNotNone(enregistre.vote_le)
+        self.assertEqual(enregistre.vote_le, self.annuaire.retour(self.fiche.id, self.JOUR).vote_le)
+        self.assertIsNone(self.annuaire.retour(self.fiche.id, self.JOUR - datetime.timedelta(days=1)))
+
+    def test_the_list_is_most_recent_first_bounded_and_survives_a_deleted_profile(self):
+        autre = self.annuaire.creer("cle", {"profil": "C"})
+        for rang, (profil_id, horodatage) in enumerate(
+            ((self.fiche.id, "2026-11-20T07:00:00+00:00"), (autre.id, "2026-11-22T07:00:00+00:00"),
+             (self.fiche.id, "2026-11-21T07:00:00+00:00"))
+        ):
+            jour = self.JOUR - datetime.timedelta(days=rang)
+            with mock.patch("rssresume.annuaire_sqlite._maintenant", return_value=horodatage):
+                self.annuaire.enregistrer_retour(self._retour(jour=jour, profil_id=profil_id))
+        self.annuaire.supprimer("cle")
+
+        retours = self.annuaire.retours(10)
+
+        self.assertEqual(
+            ["2026-11-22T07:00:00+00:00", "2026-11-21T07:00:00+00:00", "2026-11-20T07:00:00+00:00"],
+            [retour.vote_le for retour in retours],
+        )
+        # Le profil a disparu, son retour reste, sans nom.
+        self.assertEqual([None, "bea", "bea"], [retour.username for retour in retours])
+        self.assertEqual(2, len(self.annuaire.retours(2)))
+
+    def test_the_table_is_created_on_an_existing_database(self):
+        """Pas de migrations : une base d'avant les retours gagne sa table à la première ouverture."""
+        chemin = self.tmpdir / "ancienne.sqlite3"
+        with sqlite3.connect(chemin) as connexion:
+            connexion.execute(
+                "CREATE TABLE profils (id TEXT PRIMARY KEY NOT NULL, username TEXT NOT NULL UNIQUE, "
+                "document TEXT NOT NULL, cree_le TEXT NOT NULL, modifie_le TEXT NOT NULL)"
+            )
+        connexion.close()
+
+        annuaire = AnnuaireSqlite(chemin)
+        annuaire.enregistrer_retour(self._retour())
+
+        self.assertEqual(Avis.UTILE, annuaire.retour(self.fiche.id, self.JOUR).avis)
 
 
 class DepuisEnvTests(Base):

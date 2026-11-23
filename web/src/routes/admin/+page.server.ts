@@ -1,5 +1,5 @@
 import type { ResumeProfil } from '#lib/profil.js';
-import { ErreurApi } from '#lib/server/api-resume.js';
+import { ErreurApi, type Retour } from '#lib/server/api-resume.js';
 import { contexte } from '#lib/server/contexte.js';
 import { exigerAdmin } from '#lib/server/garde.js';
 import type { PageServerLoad } from './$types';
@@ -63,8 +63,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		lignes.set(compte.username, ligne);
 	}
 
+	// Après `exigerAdmin`, et jamais avant : la liste ne part de l'API que pour qui a le droit
+	// de la voir. Une erreur à part de celle des profils : l'une n'empêche pas l'autre.
+	let retours: Retour[] = [];
+	let erreurRetours: string | null = null;
+	try {
+		retours = await ctx.retours.lister();
+	} catch (cause) {
+		if (!(cause instanceof ErreurApi)) throw cause;
+		erreurRetours = cause.message;
+	}
+
 	return {
 		lignes: [...lignes.values()].sort((a, b) => a.username.localeCompare(b.username)),
-		erreur
+		erreur,
+		retours,
+		erreurRetours
 	};
 };

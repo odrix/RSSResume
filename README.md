@@ -395,9 +395,16 @@ de test `onboarding@resend.dev` fait exception, mais n'écrit qu'au propriétair
   l'adresse la reçoit, et porte trois liens : « Mes résumés », « Modifier mon profil », « Se
   désabonner ». Sans elle, la lettre part sans liens ; sans schéma, le lancement échoue.
 
+Au-dessus de ces trois liens, la question « Cette journée vous a-t-elle été utile ? » et deux
+liens, « Utile » et « Pas utile », signés pour le profil et la journée racontée. Ils mènent à
+une page du site, sans connexion, qui propose un commentaire facultatif ; le vote n'est compté
+qu'une fois ce formulaire envoyé, et un second vote sur la même journée remplace le premier.
+La page des résumés porte le même formulaire pour qui est connecté, et `/admin` liste les
+retours, les plus récents d'abord.
+
 Le lien de désabonnement est signé avec `RSSRESUME_API_TOKEN`, le jeton de l'[API](#api-http),
 qui doit donc être aussi dans l'environnement du travailleur : sans lui, les deux autres liens
-restent et le désabonnement disparaît. Avec lui, le message porte aussi les en-têtes
+restent et le désabonnement disparaît, avec les liens de vote, signés de la même façon. Avec lui, le message porte aussi les en-têtes
 `List-Unsubscribe` et `List-Unsubscribe-Post` — le désabonnement en un clic que Gmail et Yahoo
 exigent des expéditeurs en volume. Le lien ne demande aucune connexion, vide les destinataires
 du profil, et ne sert qu'une fois (voir [FONCTIONNEMENT.md](FONCTIONNEMENT.md#7-email)).
@@ -905,6 +912,11 @@ document la nomme en plus : `{"erreur": "…", "champ": "securite"}`.
 | `GET /api/v1/profils/{username}/categories` | `{"ouvert", "categories": [{"libelle","description","privee"}]}` : les catégories que ce nom peut suivre — publiques et privées dont il est propriétaire —, jamais les propriétaires ; vide quand le catalogue est ouvert ; le profil n'a pas à exister ; 404 nom invalide |
 | `POST /api/v1/desabonnements/lecture` | corps `{"jeton"}` → `{"username","destinataires"}` sans rien modifier ; 404 lien invalide ou déjà utilisé |
 | `POST /api/v1/desabonnements` | corps `{"jeton"}` → `{"username"}`, les destinataires du profil vidés ; 404 lien invalide ou déjà utilisé |
+| `POST /api/v1/retours/lecture` | corps `{"jeton"}` → `{"username","jour","retour"}`, le vote déjà donné ou `null`, sans rien écrire ; 404 lien de vote invalide |
+| `POST /api/v1/retours` | corps `{"jeton","avis","commentaire"}` → `{"username","jour","retour"}`, le vote du profil et de la journée du jeton, qui remplace le précédent ; 404 ; 422 avec `champ` (`avis` inconnu, `commentaire` de plus de 2 000 caractères) |
+| `GET /api/v1/retours` | `[{"username","jour","avis","commentaire","vote_le"}]`, les 200 plus récents d'abord ; `username` à `null` pour un profil supprimé |
+| `GET /api/v1/profils/{username}/journees/{date}/retour` | le vote déjà donné sur la journée ; 404 profil inconnu, date invalide ou aucun vote |
+| `PUT /api/v1/profils/{username}/journees/{date}/retour` | corps `{"avis","commentaire"}` → 200 le vote enregistré, qui remplace le précédent ; 404 ; 422 avec `champ` |
 
 Un document est validé par `profil_depuis_dict`, la fonction même que le passage appelle : l'API
 refuse exactement ce que la tournée refuserait, avec le même message. Le corps d'une écriture

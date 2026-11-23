@@ -18,6 +18,7 @@ lecture, parce qu'une base se modifie aussi à la main.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import datetime as dt
 import json
 import pathlib
@@ -43,6 +44,7 @@ from rssresume.profil import (
     profil_depuis_dict,
     valider_username,
 )
+from rssresume.retours import Avis, Retour
 
 if TYPE_CHECKING:
     from rssresume.desabonnement import Demande
@@ -70,6 +72,27 @@ CREATE TABLE IF NOT EXISTS categories (
     libelle  TEXT PRIMARY KEY NOT NULL,
     document TEXT NOT NULL
 )
+"""
+
+#: Les retours sur les journées, un par profil et par journée : la clé primaire est ce qui
+#: fait qu'un second vote remplace le premier. Sans clé étrangère vers `profils` : le
+#: retour d'un profil supprimé a été donné, il reste lisible dans `/admin`.
+_SCHEMA_RETOURS = """
+CREATE TABLE IF NOT EXISTS retours (
+    profil_id   TEXT NOT NULL,
+    jour        TEXT NOT NULL,
+    avis        TEXT NOT NULL CHECK (avis IN ('utile', 'pas_utile')),
+    commentaire TEXT NOT NULL DEFAULT '',
+    vote_le     TEXT NOT NULL,
+    PRIMARY KEY (profil_id, jour)
+)
+"""
+
+#: La lecture des retours, avec le nom du profil quand il existe encore.
+_SELECT_RETOURS = """
+SELECT retours.profil_id, retours.jour, retours.avis, retours.commentaire, retours.vote_le,
+       profils.username
+FROM retours LEFT JOIN profils ON profils.id = retours.profil_id
 """
 
 
@@ -241,6 +264,7 @@ class AnnuaireSqlite(Annuaire):
             connexion.execute("PRAGMA journal_mode = WAL")
             connexion.execute(_SCHEMA)
             connexion.execute(_SCHEMA_CATEGORIES)
+            connexion.execute(_SCHEMA_RETOURS)
             yield connexion
         finally:
             connexion.close()
@@ -401,6 +425,49 @@ class AnnuaireSqlite(Annuaire):
         if not supprimees:
             raise ProfilInconnu(f"Profil inconnu : « {username} ».")
 
+    # --- Les retours sur les journées ------------------------------------------------
+
+    def enregistrer_retour(self, retour: Retour) -> Retour:
+        """Écrit le vote de `retour.profil_id` sur `retour.jour`, en remplaçant le précédent.
+
+        Un `INSERT … ON CONFLICT` et non une lecture suivie d'une écriture : deux votes
+        simultanés sur la même journée laissent une ligne, celle du dernier.
+        """
+        horodatage = _maintenant()
+        with self._ecriture() as connexion:
+            connexion.execute(
+                "INSERT INTO retours (profil_id, jour, avis, commentaire, vote_le) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (profil_id, jour) DO UPDATE SET avis = excluded.avis, "
+                "commentaire = excluded.commentaire, vote_le = excluded.vote_le",
+                (
+                    retour.profil_id,
+                    retour.jour.isoformat(),
+                    retour.avis.value,
+                    retour.commentaire,
+                    horodatage,
+                ),
+            )
+        return dataclasses.replace(retour, vote_le=horodatage)
+
+    def retour(self, profil_id: str, jour: dt.date) -> Retour | None:
+        """Le vote du profil sur cette journée, ou `None` s'il n'y en a pas."""
+        with self._connexion() as connexion:
+            ligne = connexion.execute(
+                _SELECT_RETOURS + "WHERE retours.profil_id = ? AND retours.jour = ?",
+                (profil_id, jour.isoformat()),
+            ).fetchone()
+        return None if ligne is None else _retour(ligne)
+
+    def retours(self, limite: int) -> list[Retour]:
+        """Les `limite` votes les plus récents, du plus récent au plus ancien."""
+        with self._connexion() as connexion:
+            lignes = connexion.execute(
+                _SELECT_RETOURS + "ORDER BY retours.vote_le DESC, retours.rowid DESC LIMIT ?",
+                (limite,),
+            ).fetchall()
+        return [_retour(ligne) for ligne in lignes]
+
     # --- Le catalogue des catégories -------------------------------------------------
 
     def catalogue(self) -> Catalogue:
@@ -479,3 +546,15 @@ def _categories_suivies(stocke: str) -> list[str]:
 
 def _json(document: dict) -> str:
     return json.dumps(document, ensure_ascii=False, sort_keys=True)
+
+
+def _retour(ligne: tuple) -> Retour:
+    profil_id, jour, avis, commentaire, vote_le, username = ligne
+    return Retour(
+        profil_id=profil_id,
+        jour=dt.date.fromisoformat(jour),
+        avis=Avis(avis),
+        commentaire=commentaire,
+        vote_le=vote_le,
+        username=username,
+    )

@@ -38,6 +38,14 @@ export const CATALOGUE_DEMO = [
 
 /** Le refus de `rssresume/api/routes.py`, le même quelle qu'en soit la raison. */
 const LIEN_DESABONNEMENT_INVALIDE = 'Lien de désabonnement invalide ou déjà utilisé.';
+const LIEN_RETOUR_INVALIDE = 'Lien de vote invalide.';
+/** Les bornes de `rssresume/retours.py`. */
+const LONGUEUR_MAX_COMMENTAIRE = 2000;
+const LIMITE_LISTE_RETOURS = 200;
+
+/**
+ * @typedef {{ username: string | null, jour: string, avis: 'utile' | 'pas_utile', commentaire: string, vote_le: string }} RetourStocke
+ */
 
 /** Le passage annoncé par la fausse API : celui du déploiement par défaut. */
 const HEURE_PASSAGE = '04:00';
@@ -137,6 +145,11 @@ export class FausseApi {
 	catalogue = CATALOGUE_DEMO;
 	/** Les jetons de désabonnement déclarés, et le profil que chacun vise. @type {Map<string, string>} */
 	desabonnements = new Map();
+	/** Les jetons de vote déclarés, et la journée que chacun vise. @type {Map<string, { username: string, jour: string }>} */
+	liensRetour = new Map();
+	/** Les votes, un par profil et par journée (clé `username|jour`). @type {Map<string, RetourStocke & { rang: number }>} */
+	retours = new Map();
+	#rangRetour = 0;
 
 	/** @param {string} jeton */
 	constructor(jeton) {
@@ -171,6 +184,21 @@ export class FausseApi {
 			if (requete.method !== 'POST') return erreur(405, 'méthode non prise en charge');
 			return this.#desabonner(await lireJson(requete), lecture);
 		}
+		if (morceaux[0] === 'api' && morceaux[1] === 'v1' && morceaux[2] === 'retours') {
+			const lecture = morceaux[3] === 'lecture' && morceaux.length === 4;
+			if (!lecture && morceaux.length !== 3) return erreur(404, 'route inconnue');
+			if (!lecture && requete.method === 'GET') {
+				return json(
+					200,
+					[...this.retours.values()]
+						.sort((a, b) => b.vote_le.localeCompare(a.vote_le) || b.rang - a.rang)
+						.slice(0, LIMITE_LISTE_RETOURS)
+						.map(sansRang)
+				);
+			}
+			if (requete.method !== 'POST') return erreur(405, 'méthode non prise en charge');
+			return this.#voterParLien(await lireJson(requete), lecture);
+		}
 		if (morceaux[0] !== 'api' || morceaux[1] !== 'v1' || morceaux[2] !== 'profils') {
 			return erreur(404, 'route inconnue');
 		}
@@ -202,6 +230,17 @@ export class FausseApi {
 					privee: proprietaires.length > 0
 				}))
 			});
+		} else if (sous === 'journees' && date !== undefined && quoi === 'retour' && nom === undefined) {
+			// Comme l'API : la journée n'a pas à exister sur le disque, seule la date doit être valide.
+			if (!this.profils.has(username) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+				return erreur(404, 'Journée introuvable.');
+			}
+			if (methode === 'GET') {
+				const retour = this.retours.get(`${username}|${date}`);
+				return retour ? json(200, sansRang(retour)) : erreur(404, 'Aucun retour pour cette journée.');
+			}
+			if (methode === 'PUT') return this.#enregistrerRetour(username, date, await lireJson(requete));
+			return erreur(405, 'méthode non prise en charge');
 		} else if (sous === 'journees' && methode === 'GET') {
 			if (!this.profils.has(username)) return erreur(404, `profil inconnu : ${username}`);
 			const journees = this.journees.get(username) ?? [];
@@ -258,6 +297,50 @@ export class FausseApi {
 	 */
 	ajouterDesabonnement(jeton, username) {
 		this.desabonnements.set(jeton, username);
+	}
+
+	/**
+	 * Un jeton de vote valable pour la journée `jour` de `username`. L'API le vérifie par sa
+	 * signature ; ici, il suffit qu'il ait été déclaré. Il vaut tant que le profil existe.
+	 * @param {string} jeton
+	 * @param {string} username
+	 * @param {string} jour
+	 */
+	ajouterLienRetour(jeton, username, jour) {
+		this.liensRetour.set(jeton, { username, jour });
+	}
+
+	/** @param {any} corps @param {boolean} lecture */
+	#voterParLien(corps, lecture) {
+		const jeton = corps && typeof corps.jeton === 'string' ? corps.jeton : null;
+		const vise = jeton === null ? undefined : this.liensRetour.get(jeton);
+		if (!vise || !this.profils.has(vise.username)) return erreur(404, LIEN_RETOUR_INVALIDE);
+		if (lecture) {
+			const retour = this.retours.get(`${vise.username}|${vise.jour}`);
+			return json(200, { username: vise.username, jour: vise.jour, retour: retour ? sansRang(retour) : null });
+		}
+		const reponse = this.#enregistrerRetour(vise.username, vise.jour, corps);
+		if (!reponse.ok) return reponse;
+		const retour = /** @type {RetourStocke & { rang: number }} */ (this.retours.get(`${vise.username}|${vise.jour}`));
+		return json(200, { username: vise.username, jour: vise.jour, retour: sansRang(retour) });
+	}
+
+	/** Les règles de `Retour.saisi`, puis le remplacement du vote de la journée.
+	 * @param {string} username @param {string} jour @param {any} corps */
+	#enregistrerRetour(username, jour, corps) {
+		const avis = corps?.avis;
+		if (avis !== 'utile' && avis !== 'pas_utile') {
+			return erreur(422, 'avis : « utile » ou « pas_utile » est attendu.', 'avis');
+		}
+		const brut = corps.commentaire ?? '';
+		if (typeof brut !== 'string') return erreur(422, 'commentaire : un texte est attendu.', 'commentaire');
+		const commentaire = brut.replace(/\r\n?/g, '\n').trim();
+		if ([...commentaire].length > LONGUEUR_MAX_COMMENTAIRE) {
+			return erreur(422, `commentaire : ${LONGUEUR_MAX_COMMENTAIRE} caractères au plus.`, 'commentaire');
+		}
+		const retour = { username, jour, avis, commentaire, vote_le: new Date().toISOString(), rang: ++this.#rangRetour };
+		this.retours.set(`${username}|${jour}`, retour);
+		return json(200, sansRang(retour));
 	}
 
 	/** @param {any} corps @param {boolean} lecture */
@@ -486,6 +569,12 @@ const CONTENU_DEMO_JOURNEE = {
 		}
 	]
 };
+
+/** Le retour tel que l'API le rend, sans le rang qui ne sert qu'à départager deux votes de
+ * la même milliseconde. @param {RetourStocke & { rang: number }} retour @returns {RetourStocke} */
+function sansRang({ rang, ...retour }) {
+	return retour;
+}
 
 /** @param {ProfilStocke} p */
 function resume(p) {

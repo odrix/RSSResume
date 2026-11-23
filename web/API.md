@@ -251,6 +251,73 @@ session ni cookie. C'est la seule route du site qui accepte un `POST` d'une autr
 désabonnement en un clic (`List-Unsubscribe-Post`) que Gmail et Yahoo envoient depuis le
 client mail (`web/src/lib/server/csrf.ts`).
 
+### Les retours « utile / pas utile »
+
+Un vote par profil et par journée : le second remplace le premier, qu'il vienne du lien de la
+lettre ou de la page des résumés. Un retour a cette forme :
+
+```json
+{"username": "bea", "jour": "2026-11-22", "avis": "pas_utile", "commentaire": "Trop long.", "vote_le": "2026-11-23T07:12:03+00:00"}
+```
+
+- `avis` : `utile` ou `pas_utile`.
+- `commentaire` : texte brut, rogné, fins de ligne ramenées à `\n`, **2 000 caractères** au
+  plus (comptés en points de code : un emoji vaut un). Au-delà, refusé — jamais tronqué. Le
+  site l'échappe au rendu.
+- `vote_le` : posé par l'API, en UTC.
+- `username` : `null` quand le profil a été supprimé depuis ; le retour reste.
+
+Un refus de saisie est un `422` qui nomme son champ : `{"erreur": "…", "champ": "avis"}` ou
+`"champ": "commentaire"`.
+
+#### `POST /api/v1/retours/lecture`
+
+Corps `{"jeton": "…"}`, le dernier segment du lien de vote de la lettre
+(`/retour/{jeton}?avis=utile`), sans le paramètre. → `200`, la journée que le lien désigne et
+le vote déjà donné, **sans rien écrire** :
+
+```json
+{"username": "bea", "jour": "2026-11-22", "retour": null}
+```
+
+- `404` → `{"erreur": "Lien de vote invalide."}`, quelle qu'en soit la raison : jeton illisible,
+  signature fausse — un jeton de désabonnement compris —, date impossible ou profil supprimé.
+
+Le jeton est `v1.<profil_id>.<AAAA-MM-JJ>.<signature>`, signé avec `RSSRESUME_API_TOKEN` sous
+une clé propre au vote. La date est celle de la journée **racontée** (le titre de la lettre),
+pas celle de l'envoi. Il n'expire pas. L'avis n'est pas signé : il passe en paramètre de l'URL
+du site, et ne sert qu'à pré-cocher le formulaire.
+
+#### `POST /api/v1/retours`
+
+Corps `{"jeton": "…", "avis": "utile", "commentaire": "…"}` (`commentaire` facultatif). →
+`200 {"username", "jour", "retour"}`, le vote enregistré. Le profil et la journée viennent du
+seul jeton : un `profil_id`, `jour` ou `username` glissé dans le corps est ignoré.
+
+- `404` → même message que la lecture.
+- `422` → avis inconnu ou commentaire trop long, avec `champ`.
+
+#### `GET /api/v1/retours`
+
+→ `200`, les 200 retours les plus récents, du plus récent au plus ancien. Sans autre garde
+que le jeton de l'API : c'est le site qui la réserve à l'administration (`/admin`).
+
+#### `GET /api/v1/profils/{username}/journees/{date}/retour`
+
+→ `200`, le vote déjà donné sur la journée. `404` → profil inconnu, date mal formée, ou aucun
+vote.
+
+#### `PUT /api/v1/profils/{username}/journees/{date}/retour`
+
+Corps `{"avis": "…", "commentaire": "…"}`. → `200`, le retour enregistré ; `422` avec `champ`.
+L'API ne vérifie pas que la journée existe sur le disque : le site ne propose de voter que sur
+une journée qu'il vient d'afficher, à son propriétaire seulement — un administrateur qui
+consulte la journée d'un autre ne vote pas.
+
+Ouvrir le lien de la lettre n'enregistre rien : la page `/retour/{jeton}` montre le
+formulaire, et seul son envoi vote. Contrairement au désabonnement, elle garde la protection
+CSRF du site : le vote ne vient que de son propre formulaire.
+
 ### `GET /api/v1/gabarits`
 
 → `200`, les gabarits métier disponibles, triés par identifiant :

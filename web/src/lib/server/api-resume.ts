@@ -9,6 +9,7 @@
 
 import type { ContenuJournee, Passage } from '#lib/journee.js';
 import type { CategoriesProposees, Gabarit, Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
+import type { Avis } from '#lib/retour.js';
 
 export interface AudioJournee {
 	nom: string;
@@ -24,6 +25,23 @@ export interface Journee {
 export interface DemandeDesabonnement {
 	username: string;
 	destinataires: number;
+}
+
+/** Un vote sur une journée, tel que l'API le garde. `username` est `null` quand le profil a
+ * été supprimé depuis : le retour reste. */
+export interface Retour {
+	username: string | null;
+	jour: string;
+	avis: Avis;
+	commentaire: string;
+	vote_le: string | null;
+}
+
+/** Ce qu'un lien de vote désigne, et le vote déjà donné sur cette journée. */
+export interface LectureRetour {
+	username: string;
+	jour: string;
+	retour: Retour | null;
 }
 
 /** Une réponse d'erreur de l'API, ou son absence.
@@ -149,6 +167,32 @@ export class ClientApiResume {
 		return this.#json('POST', '/api/v1/desabonnements', { jeton });
 	}
 
+	/** Ce que le lien de vote désigne, et le vote déjà donné, sans rien écrire. Le jeton
+	 * part dans le corps, comme celui du désabonnement. */
+	lireRetourParLien(jeton: string): Promise<LectureRetour> {
+		return this.#json('POST', '/api/v1/retours/lecture', { jeton });
+	}
+
+	/** Le vote du lien de la lettre : le profil et la journée viennent du jeton seul. */
+	voterParLien(jeton: string, avis: Avis, commentaire: string): Promise<LectureRetour> {
+		return this.#json('POST', '/api/v1/retours', { jeton, avis, commentaire });
+	}
+
+	/** Le vote déjà donné sur la journée ; 404 s'il n'y en a pas. */
+	lireRetour(username: string, date: string): Promise<Retour> {
+		return this.#json('GET', this.#retour(username, date));
+	}
+
+	/** Le vote de la personne connectée, qui remplace le précédent. */
+	voter(username: string, date: string, avis: Avis, commentaire: string): Promise<Retour> {
+		return this.#json('PUT', this.#retour(username, date), { avis, commentaire });
+	}
+
+	/** Les votes les plus récents d'abord, bornés par l'API. */
+	listerRetours(): Promise<Retour[]> {
+		return this.#json('GET', '/api/v1/retours');
+	}
+
 	/** Gardés en mémoire quelques minutes : chaque visite anonyme de l'inscription les
 	 * demande, deux fois sur une erreur de formulaire, alors que le catalogue ne bouge
 	 * presque jamais. Une erreur n'est pas gardée : l'appel suivant réessaie. */
@@ -184,6 +228,10 @@ export class ClientApiResume {
 
 	#profil(username: string): string {
 		return `/api/v1/profils/${encodeURIComponent(username)}`;
+	}
+
+	#retour(username: string, date: string): string {
+		return `${this.#profil(username)}/journees/${encodeURIComponent(date)}/retour`;
 	}
 
 	async #json<T>(methode: string, chemin: string, corps?: unknown): Promise<T> {

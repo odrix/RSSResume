@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 from rssresume import ancres
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
+from rssresume.retours import OBJET_RETOUR, Avis, LienRetour
 from rssresume.tools import duration
 
 if TYPE_CHECKING:
@@ -71,6 +72,9 @@ TITRE = "Veille"
 #: L'étiquette qui annonce le fichier audio d'une catégorie. Le même mot que celui du
 #: client mail : c'est sous ce nom que le lecteur va le chercher en bas du message.
 PIECE_JOINTE = "Pièce jointe :"
+
+#: La question qui précède les deux liens de vote, au pied.
+QUESTION_AVIS = "Cette journée vous a-t-elle été utile ?"
 
 
 def quantieme(day: dt.date) -> str:
@@ -193,6 +197,21 @@ class Abonnement:
     username: str
     #: `None` quand il manque de quoi le signer : la lettre garde ses autres liens.
     lien_desabonnement: str | None = None
+    #: L'identifiant du profil, que signent les liens de vote.
+    profil_id: str = ""
+    #: `None` quand il manque la clé ou l'identifiant : la lettre part sans demander d'avis.
+    retour: LienRetour | None = None
+
+    def liens_avis(self, day: dt.date) -> list[LienPied]:
+        """« Utile » et « Pas utile » pour la journée `day`, ou rien sans de quoi les signer.
+
+        Une méthode et non un champ : le pied de la personne ne dépend pas de la journée,
+        ses liens de vote si. L'abonnement se construit une fois, la lettre lui donne sa date.
+        """
+        if self.retour is None or not self.profil_id:
+            return []
+        jeton = self.retour.jeton(self.profil_id, day)
+        return [LienPied(avis.libelle, LienRetour.lien(self.site_url, jeton, avis)) for avis in Avis]
 
     @property
     def lien_resumes(self) -> str:
@@ -220,6 +239,8 @@ class Abonnement:
         et sans `username` : la configuration de l'installation n'est encore celle de
         personne. Le lien de désabonnement exige en plus la clé, l'identifiant et des
         destinataires ; s'il en manque un, la lettre part sans lui plutôt que sans pied.
+        Les liens de vote n'exigent que la clé et l'identifiant : ils ne portent pas les
+        adresses.
         """
         if not config.site_url or not config.username:
             return None
@@ -229,12 +250,17 @@ class Abonnement:
             lien = desabonnement.lien(
                 config.site_url, desabonnement.jeton(config.profil_id, config.smtp_to)
             )
+        retour = None
+        if config.cle_signature and config.profil_id:
+            retour = LienRetour(Signataire(config.cle_signature, OBJET_RETOUR))
         nom, _ = email.utils.parseaddr(config.smtp_from or "")
         return cls(
             expediteur=nom.strip() or NOM_SERVICE,
             site_url=config.site_url.rstrip("/"),
             username=config.username,
             lien_desabonnement=lien,
+            profil_id=config.profil_id or "",
+            retour=retour,
         )
 
 
@@ -474,12 +500,23 @@ class Lettre:
         return self.abonnement.liens if self.abonnement else []
 
     @property
+    def _liens_avis(self) -> list[LienPied]:
+        """« Utile » et « Pas utile » pour la journée racontée — `day`, pas `sent_on` : c'est
+        la journée du titre qu'on juge, et c'est elle que `/resumes` affiche."""
+        return self.abonnement.liens_avis(self.day) if self.abonnement else []
+
+    @property
     def _pied_texte(self) -> str:
-        """Le pied en texte seul : ses lignes, puis une URL par ligne.
+        """Le pied en texte seul : ses lignes, la question et ses deux liens, puis une URL par ligne.
 
         Une URL par ligne et en entier : c'est ce qu'un client texte rend cliquable.
         """
-        lignes = [*self._pied, *(f"{lien.libelle} : {lien.url}" for lien in self._liens_pied)]
+        avis = self._liens_avis
+        lignes = [
+            *self._pied,
+            *([QUESTION_AVIS] if avis else []),
+            *(f"{lien.libelle} : {lien.url}" for lien in [*avis, *self._liens_pied]),
+        ]
         # Un bloc et non des blocs : ses lignes se suivent, là où les sections respirent.
         # Trois lignes espacées auraient l'air de trois sections.
         return "-" * 60 + "\n" + "\n".join(lignes)
@@ -487,12 +524,13 @@ class Lettre:
     @property
     def _pied_html(self) -> str:
         lignes = "<br>".join(_e(ligne) for ligne in self._pied)
-        liens = " · ".join(
-            f'<a href="{_e(lien.url)}" style="color:#6b7280;text-decoration:underline;">'
-            f"{_e(lien.libelle)}</a>"
-            for lien in self._liens_pied
+        avis = " · ".join(_lien_pied_html(lien) for lien in self._liens_avis)
+        liens = " · ".join(_lien_pied_html(lien) for lien in self._liens_pied)
+        return (
+            lignes
+            + (f"<br>{_e(QUESTION_AVIS)} {avis}" if avis else "")
+            + (f"<br>{liens}" if liens else "")
         )
-        return lignes + (f"<br>{liens}" if liens else "")
 
     # -- rendu texte ---------------------------------------------------------
 
@@ -674,6 +712,13 @@ class Lettre:
 def _e(value: str) -> str:
     """Échappement HTML. Titres et sources viennent des flux : ils sont hostiles par défaut."""
     return html.escape(value or "", quote=True)
+
+
+def _lien_pied_html(lien: LienPied) -> str:
+    return (
+        f'<a href="{_e(lien.url)}" style="color:#6b7280;text-decoration:underline;">'
+        f"{_e(lien.libelle)}</a>"
+    )
 
 
 def _resume_html(texte: str, liens: list[Link] | None = None) -> str:

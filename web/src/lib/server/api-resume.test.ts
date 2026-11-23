@@ -276,4 +276,35 @@ describe('ClientApiResume', () => {
 			expect(await requete.json()).toEqual({ jeton: 'v1.abc.def' });
 		}
 	});
+
+	it('envoie le jeton de vote dans un corps JSON, et le vote du site au chemin de la journée', async () => {
+		const { api, fausseApi } = monter();
+		await api.creerProfil('moi', SAISIE);
+		fausseApi.ajouterLienRetour('v1.id.2026-11-22.sig', 'moi', '2026-11-22');
+		fausseApi.requetes.length = 0;
+
+		expect(await api.lireRetourParLien('v1.id.2026-11-22.sig')).toEqual({
+			username: 'moi',
+			jour: '2026-11-22',
+			retour: null
+		});
+		const parLien = await api.voterParLien('v1.id.2026-11-22.sig', 'utile', 'Bien.');
+		expect(parLien.retour).toMatchObject({ username: 'moi', jour: '2026-11-22', avis: 'utile', commentaire: 'Bien.' });
+		expect(await api.lireRetour('moi', '2026-11-22')).toMatchObject({ avis: 'utile' });
+		expect(await api.voter('moi', '2026-11-22', 'pas_utile', '')).toMatchObject({ avis: 'pas_utile', commentaire: '' });
+		expect(await api.listerRetours()).toHaveLength(1);
+		expect((await erreurDe(api.lireRetourParLien('v1.autre.2026-11-22.sig'))).introuvable).toBe(true);
+
+		const [lecture, vote, lu, voteSite, liste] = fausseApi.requetes;
+		expect([lecture.method, lecture.url]).toEqual(['POST', 'http://api.test/api/v1/retours/lecture']);
+		expect([vote.method, vote.url]).toEqual(['POST', 'http://api.test/api/v1/retours']);
+		expect([lu.method, lu.url]).toEqual(['GET', 'http://api.test/api/v1/profils/moi/journees/2026-11-22/retour']);
+		expect([voteSite.method, voteSite.url]).toEqual(['PUT', 'http://api.test/api/v1/profils/moi/journees/2026-11-22/retour']);
+		expect([liste.method, liste.url]).toEqual(['GET', 'http://api.test/api/v1/retours']);
+		// Le jeton ne passe jamais par un chemin : l'API journalise les chemins, pas les corps.
+		expect(await lecture.json()).toEqual({ jeton: 'v1.id.2026-11-22.sig' });
+		expect(await vote.json()).toEqual({ jeton: 'v1.id.2026-11-22.sig', avis: 'utile', commentaire: 'Bien.' });
+		expect(await voteSite.json()).toEqual({ avis: 'pas_utile', commentaire: '' });
+		for (const requete of fausseApi.requetes) expect(requete.url).not.toContain('sig');
+	});
 });
