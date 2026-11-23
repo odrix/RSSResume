@@ -143,7 +143,13 @@ h3 {
 .deconnexion {
 	margin-top: auto;
 	display: grid;
-	gap: 0.4rem;
+	gap: 0.35rem;
+	border-bottom: 2px solid rgba(255, 255, 255, 0.35);
+	padding-bottom: 0.75rem;
+}
+
+.entete nav > a.administration {
+	margin-top: 0;
 }
 
 .qui {
@@ -155,9 +161,9 @@ h3 {
 	background: var(--surface);
 	border: 3px solid var(--bord);
 	border-radius: var(--rayon);
-	box-shadow: var(--ombre);
-	padding: 1.25rem;
-	margin-bottom: 1.5rem;
+	box-shadow: 4px 4px 0 var(--bord);
+	padding: 1rem;
+	margin-bottom: 1rem;
 }
 
 .formulaire {

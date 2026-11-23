@@ -15,13 +15,13 @@
 		{#if data.utilisateur}
 			<a href="/resumes">Mes résumés</a>
 			<a href="/profil">Mon profil</a>
-			{#if data.utilisateur.admin}
-				<a href="/admin">Administration</a>
-			{/if}
 			<form method="POST" action="/deconnexion" class="deconnexion">
 				<span class="qui">{data.utilisateur.username}</span>
 				<button type="submit" class="lien">Se déconnecter</button>
 			</form>
+			{#if data.utilisateur.admin}
+				<a class="administration" href="/admin">Administration</a>
+			{/if}
 		{:else}
 			<a href="/connexion">Se connecter</a>
 			<a href="/inscription">Créer un compte</a>
