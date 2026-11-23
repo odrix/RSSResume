@@ -32,6 +32,24 @@ class EmailSenderTests(unittest.TestCase):
             self.assertRegex(message["Message-ID"], r"^<.+@.+>$")
             self.assertTrue(message["Message-ID"].endswith(config.smtp_from.split("@")[-1] + ">"))
 
+    def test_the_unsubscribe_link_sets_the_one_click_headers(self):
+        """Exigés par Gmail et Yahoo des expéditeurs en volume (RFC 8058)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            url = "https://veille.example.com/desabonnement/v1.abc.def"
+            message = EmailSender(make_config(tmpdir))._build_message(
+                "Sujet", "Corps", [], "<p>Corps</p>", desabonnement=url
+            )
+
+            self.assertEqual(f"<{url}>", message["List-Unsubscribe"])
+            self.assertEqual("List-Unsubscribe=One-Click", message["List-Unsubscribe-Post"])
+
+    def test_without_a_link_there_is_no_unsubscribe_header(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            message = EmailSender(make_config(tmpdir))._build_message("Sujet", "Corps", [])
+
+            self.assertIsNone(message["List-Unsubscribe"])
+            self.assertIsNone(message["List-Unsubscribe-Post"])
+
     def test_connection_is_bounded_by_a_timeout(self):
         """Sans délai, un port sortant filtré ne se voit qu'après deux minutes muettes."""
         with tempfile.TemporaryDirectory() as tmpdir:

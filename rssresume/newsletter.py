@@ -33,12 +33,19 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import email.utils
 import html
 import pathlib
+from typing import TYPE_CHECKING
 
 from rssresume import ancres
+from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
 from rssresume.tools import duration
+
+if TYPE_CHECKING:
+    from rssresume.config import AppConfig
+    from rssresume.protocols import EmailSenderProtocol
 
 #: Les jours et les mois en toutes lettres. Écrits ici plutôt que demandés à `locale` :
 #: la locale française n'est installée ni dans l'image Docker ni sur un poste Windows,
@@ -54,11 +61,9 @@ MOIS = (
 #: arrondir vingt secondes à une minute serait faux dans l'autre sens.
 SECONDES_MIN = 45
 
-#: Le pied de page ne porte encore rien de particulier — il dit ce que la lettre
-#: contient et quand elle a été produite. Ce qui viendra s'ajouter (un lien de
-#: désabonnement, une mention de l'installation, un rappel de la configuration) se met
-#: ici : c'est la seule chaîne que la mise en page traite comme du texte libre.
-NOTE_PIED = ""
+#: Le nom qui signe la lettre quand `SMTP_FROM` n'a pas de nom d'affichage : une lettre
+#: d'un inconnu doit au moins dire de quel service elle vient.
+NOM_SERVICE = "RSSResume"
 
 #: Nom affiché en titre de la lettre, avant la date.
 TITRE = "Veille"
@@ -162,6 +167,78 @@ class Section:
 
 
 @dataclasses.dataclass(frozen=True)
+class LienPied:
+    """Un lien du pied de page : ce qu'on lit, et où il mène."""
+
+    libelle: str
+    url: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Abonnement:
+    """Ce que le pied dit à un lecteur qui ne connaît pas le service : qui écrit, pourquoi
+    à lui, et comment régler ou arrêter.
+
+    Un objet à part de la `Lettre` parce qu'il ne dépend pas de la journée mais de la
+    personne servie et de l'installation : le passage du jour et `--send-only` le
+    construisent de la même configuration, par le même `depuis_config`, et rendent donc
+    le même pied.
+    """
+
+    #: Le nom qui signe la lettre.
+    expediteur: str
+    #: L'adresse du site, sans `/` final.
+    site_url: str
+    #: Le profil dont les destinataires reçoivent la lettre.
+    username: str
+    #: `None` quand il manque de quoi le signer : la lettre garde ses autres liens.
+    lien_desabonnement: str | None = None
+
+    @property
+    def lien_resumes(self) -> str:
+        return f"{self.site_url}/resumes"
+
+    @property
+    def lien_profil(self) -> str:
+        return f"{self.site_url}/profil"
+
+    @property
+    def liens(self) -> list[LienPied]:
+        liens = [
+            LienPied("Mes résumés", self.lien_resumes),
+            LienPied("Modifier mon profil", self.lien_profil),
+        ]
+        if self.lien_desabonnement:
+            liens.append(LienPied("Se désabonner", self.lien_desabonnement))
+        return liens
+
+    @classmethod
+    def depuis_config(cls, config: "AppConfig") -> "Abonnement | None":
+        """L'abonnement de la personne servie, ou `None` quand il n'y a pas de site à citer.
+
+        `None` sans `site_url` — une installation sans site n'a nulle part où renvoyer —
+        et sans `username` : la configuration de l'installation n'est encore celle de
+        personne. Le lien de désabonnement exige en plus la clé, l'identifiant et des
+        destinataires ; s'il en manque un, la lettre part sans lui plutôt que sans pied.
+        """
+        if not config.site_url or not config.username:
+            return None
+        lien = None
+        if config.cle_signature and config.profil_id and config.smtp_to:
+            desabonnement = Desabonnement(Signataire(config.cle_signature, OBJET_DESABONNEMENT))
+            lien = desabonnement.lien(
+                config.site_url, desabonnement.jeton(config.profil_id, config.smtp_to)
+            )
+        nom, _ = email.utils.parseaddr(config.smtp_from or "")
+        return cls(
+            expediteur=nom.strip() or NOM_SERVICE,
+            site_url=config.site_url.rstrip("/"),
+            username=config.username,
+            lien_desabonnement=lien,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class Lettre:
     """L'email d'une journée, prêt à partir sous ses deux formes."""
 
@@ -180,6 +257,9 @@ class Lettre:
     montage: Montage | None = None
     #: Durée mesurée de cet audio, `None` si le fichier manque ou n'est pas lisible.
     montage_secondes: float | None = None
+    #: Qui écrit et comment régler ou arrêter, au pied. `None` : un pied sans liens, celui
+    #: que montre le site, qui n'a pas à se renvoyer à lui-même.
+    abonnement: Abonnement | None = None
 
     @classmethod
     def compose(
@@ -189,6 +269,7 @@ class Lettre:
         ephemeride: Ephemeride | None = None,
         generated_at: dt.datetime | None = None,
         montage: Montage | None = None,
+        abonnement: Abonnement | None = None,
     ) -> "Lettre":
         """Compose la lettre. `day` est la journée racontée, pas celle de l'envoi.
 
@@ -212,6 +293,22 @@ class Lettre:
             # instant où le fichier est certainement écrit, après une exécution comme
             # au renvoi d'une journée passée.
             montage_secondes=duration.seconds(montage.audio_path if montage else None),
+            abonnement=abonnement,
+        )
+
+    def envoyer(self, sender: "EmailSenderProtocol") -> None:
+        """Confie la lettre à l'expéditeur, sous ses deux formes et avec son désabonnement.
+
+        Ici et non dans chacun des deux chemins d'envoi : l'URL des en-têtes
+        `List-Unsubscribe` doit être celle du pied, et un seul appel garantit qu'elles ne
+        divergent pas.
+        """
+        sender.send(
+            subject=self.subject,
+            body=self.text,
+            attachments=self.attachments,
+            html=self.html,
+            desabonnement=self.abonnement.lien_desabonnement if self.abonnement else None,
         )
 
     # -- l'audio de la journée, quand il n'y en a qu'un ----------------------
@@ -360,9 +457,42 @@ class Lettre:
             )
         if self.generated_at:
             lignes.append(f"Composée le {self.generated_at.strftime('%d/%m/%Y à %H:%M')}.")
-        if NOTE_PIED:
-            lignes.append(NOTE_PIED)
+        if self.abonnement:
+            # Qui écrit, et pourquoi à cette adresse : ce qu'un lecteur qui n'a rien
+            # demandé lui-même — un destinataire ajouté par un autre — cherche d'abord,
+            # avant de décider si c'est un indésirable.
+            lignes.append(f"Envoyée par {self.abonnement.expediteur} — {self.abonnement.site_url}.")
+            lignes.append(
+                "Vous la recevez parce que cette adresse est destinataire du profil "
+                f"« {self.abonnement.username} »."
+            )
         return lignes
+
+    @property
+    def _liens_pied(self) -> list[LienPied]:
+        """Les liens du pied, à part des lignes : le HTML en fait des ancres, le texte des URL."""
+        return self.abonnement.liens if self.abonnement else []
+
+    @property
+    def _pied_texte(self) -> str:
+        """Le pied en texte seul : ses lignes, puis une URL par ligne.
+
+        Une URL par ligne et en entier : c'est ce qu'un client texte rend cliquable.
+        """
+        lignes = [*self._pied, *(f"{lien.libelle} : {lien.url}" for lien in self._liens_pied)]
+        # Un bloc et non des blocs : ses lignes se suivent, là où les sections respirent.
+        # Trois lignes espacées auraient l'air de trois sections.
+        return "-" * 60 + "\n" + "\n".join(lignes)
+
+    @property
+    def _pied_html(self) -> str:
+        lignes = "<br>".join(_e(ligne) for ligne in self._pied)
+        liens = " · ".join(
+            f'<a href="{_e(lien.url)}" style="color:#6b7280;text-decoration:underline;">'
+            f"{_e(lien.libelle)}</a>"
+            for lien in self._liens_pied
+        )
+        return lignes + (f"<br>{liens}" if liens else "")
 
     # -- rendu texte ---------------------------------------------------------
 
@@ -378,9 +508,12 @@ class Lettre:
         # celle du HTML, et un client texte n'a pas de largeur connue non plus.
         introduction = "\n".join(self._introduction)
         if not self.sections:
+            # Le pied aussi : une journée vide part chez les mêmes lecteurs, qui doivent
+            # pouvoir l'arrêter tout autant. La date en toutes lettres, comme le titre.
             return (
                 f"{TITRE.upper()} DU {date_courte(self.day).upper()}\n\n"
-                f"{introduction}\n\nAucun article trouvé pour le {self.day.isoformat()}.\n"
+                f"{introduction}\n\nAucun article trouvé pour le {date_longue(self.day)}.\n\n"
+                f"{self._pied_texte}\n"
             )
         blocs = [
             f"{TITRE.upper()} DU {date_courte(self.day).upper()}",
@@ -393,9 +526,7 @@ class Lettre:
         if self._annonce_audio:
             blocs.append(self._annonce_audio)
         blocs.extend(self._section_texte(section) for section in self.sections)
-        # Le pied est un bloc et non des blocs : ses lignes se suivent, là où les
-        # sections respirent. Trois lignes espacées auraient l'air de trois sections.
-        blocs.append("-" * 60 + "\n" + "\n".join(self._pied))
+        blocs.append(self._pied_texte)
         return "\n\n".join(blocs).rstrip() + "\n"
 
     @staticmethod
@@ -436,7 +567,7 @@ class Lettre:
             entete=self._entete_html(),
             introduction=self._introduction_html(),
             sections=corps,
-            pied="<br>".join(_e(ligne) for ligne in self._pied),
+            pied=self._pied_html,
         )
 
     def _entete_html(self) -> str:
@@ -613,7 +744,7 @@ def _segment_html(segment: ancres.Segment) -> str:
 def _vide(day: dt.date) -> str:
     return (
         f'<p style="margin:0;padding:28px 0;text-align:center;color:#6b7280;font-size:15px;">'
-        f"Aucun article trouvé pour le {_e(day.isoformat())}.</p>"
+        f"Aucun article trouvé pour le {_e(date_longue(day))}.</p>"
     )
 
 

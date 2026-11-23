@@ -21,7 +21,8 @@ from rssresume.annuaire_sqlite import (
     ProfilInconnu,
 )
 from rssresume.api.sorties import Sorties
-from rssresume.profil import ChampInvalide, username_valide, valider_username
+from rssresume.desabonnement import Demande, Desabonnement, JetonInvalide
+from rssresume.profil import CLE_EMAIL, ChampInvalide, username_valide, valider_username
 from rssresume.scheduler import DailySchedule
 from rssresume.tools import console
 
@@ -82,11 +83,19 @@ class Route:
     motif: re.Pattern
     methodes: tuple[str, ...] = ()
 
-    def __init__(self, annuaire: AnnuaireSqlite, sorties: Sorties, passage: DailySchedule, gabarits=None):
+    def __init__(
+        self,
+        annuaire: AnnuaireSqlite,
+        sorties: Sorties,
+        passage: DailySchedule,
+        gabarits=None,
+        desabonnement: Desabonnement | None = None,
+    ):
         self.annuaire = annuaire
         self.sorties = sorties
         self.passage = passage
         self.gabarits = gabarits
+        self.desabonnement = desabonnement
 
     def parametres(self, chemin: str) -> list[str] | None:
         """Les segments variables décodés, si `chemin` est de cette forme ; sinon `None`."""
@@ -128,6 +137,69 @@ class Route:
             raise ErreurApi(404, str(exc)) from exc
         except ValueError as exc:
             raise ErreurApi(422, str(exc)) from exc
+
+
+#: La seule réponse d'un lien de désabonnement refusé, quelle qu'en soit la raison : qui
+#: tient un jeton n'a pas à apprendre si le profil existe, ni si la signature était bonne.
+LIEN_DESABONNEMENT_INVALIDE = "Lien de désabonnement invalide ou déjà utilisé."
+
+
+class _RouteDesabonnement(Route):
+    """Ce que les deux routes du désabonnement partagent : relire le jeton du corps.
+
+    Le jeton voyage dans un corps JSON et non dans l'URL : les journaux d'accès notent
+    les chemins, et un lien encore valable n'a rien à y faire.
+    """
+
+    methodes = ("POST",)
+
+    def demande(self, requete: "GestionnaireApi") -> Demande:
+        corps = requete.corps_json()
+        jeton = corps.get("jeton") if isinstance(corps, dict) else None
+        if not isinstance(jeton, str) or self.desabonnement is None:
+            raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE)
+        try:
+            return self.desabonnement.lire(jeton)
+        except JetonInvalide as exc:
+            raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE) from exc
+
+
+class RouteDesabonnementLecture(_RouteDesabonnement):
+    """`/api/v1/desabonnements/lecture` : ce que le lien désabonnerait, sans rien changer.
+
+    Un POST qui ne modifie rien, pour garder le jeton hors de l'URL. La page du site
+    l'appelle à l'affichage : un antivirus de messagerie qui ouvre le lien ne doit pas
+    désabonner à la place de la personne.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/desabonnements/lecture")
+
+    def post(self, requete, *parametres):
+        demande = self.demande(requete)
+        try:
+            fiche = self.annuaire.fiche_par_id(demande.profil_id)
+        except ValueError:
+            fiche = None
+        emails = list(fiche.document.get(CLE_EMAIL, [])) if fiche else []
+        if fiche is None or not demande.concerne(emails):
+            raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE)
+        requete.repondre_json(200, {"username": fiche.username, "destinataires": len(emails)})
+
+
+class RouteDesabonnements(_RouteDesabonnement):
+    """`/api/v1/desabonnements` : vide les destinataires du profil que le lien désigne.
+
+    Tout le profil et non une adresse : la lettre part en un seul envoi, à tous les
+    destinataires ensemble, et rien ne dit lequel a cliqué.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/desabonnements")
+
+    def post(self, requete, *parametres):
+        fiche = self.annuaire.desabonner(self.demande(requete))
+        if fiche is None:
+            raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE)
+        requete.repondre_json(200, {"username": fiche.username})
 
 
 class RouteProfils(Route):
@@ -297,6 +369,8 @@ class RouteCategoriesProposees(Route):
 
 #: Les routes servies, dans l'ordre où elles sont essayées.
 ROUTES = (
+    RouteDesabonnementLecture,
+    RouteDesabonnements,
     RouteProfils,
     RouteProfil,
     RouteJournees,

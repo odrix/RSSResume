@@ -22,7 +22,7 @@ import datetime as dt
 import json
 import pathlib
 import sqlite3
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 from rssresume.axes import CLE_AXES
 from rssresume.categories import Catalogue, CatalogueOuvert
@@ -43,6 +43,9 @@ from rssresume.profil import (
     profil_depuis_dict,
     valider_username,
 )
+
+if TYPE_CHECKING:
+    from rssresume.desabonnement import Demande
 
 #: Attente maximale d'un verrou d'écriture, en millisecondes. Une écriture de l'API dure
 #: quelques millisecondes ; cinq secondes couvrent une rafale sans laisser une requête
@@ -349,6 +352,41 @@ class AnnuaireSqlite(Annuaire):
                 (_json(document), horodatage, id),
             )
         return Fiche(id, username, document, cree_le, horodatage)
+
+    def desabonner(self, demande: "Demande") -> Fiche | None:
+        """Retire les destinataires du profil que vise `demande`, s'ils sont ceux du lien.
+
+        `None` quand le profil n'existe plus ou que ses destinataires ne sont plus ceux pour
+        lesquels le lien a été émis — en particulier quand ils viennent d'être retirés :
+        c'est ce qui fait qu'un lien ne sert qu'une fois.
+
+        La vérification et l'écriture tiennent dans la même transaction, verrou pris
+        d'emblée : deux clics simultanés ne peuvent pas passer tous les deux, ni un
+        enregistrement du site se glisser entre la lecture et l'écriture.
+
+        Seule la clé `email` part : le document reste celui que `document_normalise`
+        écrirait sans destinataire, qui omet la clé plutôt que d'écrire une liste vide.
+        """
+        with self._ecriture() as connexion:
+            ligne = connexion.execute(
+                "SELECT id, username, document, cree_le, modifie_le FROM profils WHERE id = ?",
+                (demande.profil_id,),
+            ).fetchone()
+            if ligne is None:
+                return None
+            try:
+                fiche = self._fiche(ligne)
+            except ValueError:
+                return None
+            if not demande.concerne(list(fiche.document.get(CLE_EMAIL, []))):
+                return None
+            document = {cle: valeur for cle, valeur in fiche.document.items() if cle != CLE_EMAIL}
+            horodatage = _maintenant()
+            connexion.execute(
+                "UPDATE profils SET document = ?, modifie_le = ? WHERE id = ?",
+                (_json(document), horodatage, fiche.id),
+            )
+        return Fiche(fiche.id, fiche.username, document, fiche.cree_le, horodatage)
 
     def supprimer(self, username: str) -> None:
         """Retire le profil de la base — et de la tournée. Ses sorties restent sur le disque."""

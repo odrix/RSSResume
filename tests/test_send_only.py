@@ -4,18 +4,21 @@ Ce que ces tests protègent tient en une phrase : une journée coûte cher, et l
 peut échouer longtemps après qu'elle est payée.
 """
 
+import dataclasses
 import datetime as dt
 import json
 import os
 import pathlib
+import re
 import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import cli, runlog
+from rssresume import cli, ephemeride, runlog
 from rssresume.config import AppConfig
+from rssresume.digest import DigestService
 from rssresume.profil import ENV_PROFIL_FILE
-from tests.support import make_config
+from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, make_config
 
 JOUR = dt.date(2026, 8, 29)
 
@@ -28,13 +31,14 @@ class FakeSender:
     def is_configured(self):
         return self._configured
 
-    def send(self, subject, body, attachments, html=None):
+    def send(self, subject, body, attachments, html=None, desabonnement=None):
         self.envois.append(
             {
                 "subject": subject,
                 "body": body,
                 "attachments": list(attachments),
                 "html": html,
+                "desabonnement": desabonnement,
             }
         )
 
@@ -308,6 +312,54 @@ class MontageRelurTests(unittest.TestCase):
             ecrire_journee(tmpdir)
 
             self.assertIsNone(runlog.read_montage(pathlib.Path(tmpdir) / JOUR.isoformat()))
+
+
+class MemeLettreTests(unittest.TestCase):
+    """Le renvoi rend la lettre du passage du jour : même pied, même lien de désabonnement.
+
+    Les deux chemins composent chacun la lettre ; c'est ce test qui garantit qu'ils ne
+    divergent pas, en comparant tout sauf l'heure de composition, seule à changer
+    légitimement d'un envoi à l'autre."""
+
+    PROFIL_ID = "0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71"
+
+    @staticmethod
+    def _sans_heure(texte):
+        return re.sub(r"Composée le [^<\n]*", "", texte)
+
+    def test_send_only_renders_the_letter_of_the_daily_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            day_dir = ecrire_journee(tmpdir)
+            config = dataclasses.replace(
+                make_config(tmpdir),
+                output_dir=pathlib.Path(tmpdir),
+                site_url="https://veille.example.com",
+                cle_signature="k" * 48,
+                username="bea",
+                profil_id=self.PROFIL_ID,
+            )
+            renvoi = FakeSender()
+            with mock.patch.object(cli.mail, "sender", return_value=renvoi):
+                self.assertEqual(0, cli.send_only(config, JOUR))
+
+            # Le passage du jour, sur la même journée et la même éphéméride : celle que le
+            # renvoi recalcule, faute de `journee.json`.
+            du_jour = FakeEmailSender()
+            service = DigestService(config, FakeFreshRSSClient({}), mock.Mock(), FakeAudioGenerator(), du_jour)
+            envoi = dt.datetime.now(config.timezone).date()
+            service._send_email(
+                JOUR, runlog.read_day(day_dir), ephemeride.pour_envoi(None, envoi)
+            )
+
+            rejoue, = renvoi.envois
+            (sujet, corps, pieces, html), = du_jour.messages
+            self.assertTrue(rejoue["desabonnement"].startswith("https://veille.example.com/desabonnement/"))
+            self.assertEqual(rejoue["desabonnement"], du_jour.desabonnements[0])
+            self.assertEqual(sujet, rejoue["subject"])
+            self.assertEqual(pieces, rejoue["attachments"])
+            self.assertEqual(self._sans_heure(corps), self._sans_heure(rejoue["body"]))
+            self.assertEqual(self._sans_heure(html), self._sans_heure(rejoue["html"]))
+            self.assertIn(f"Se désabonner : {rejoue['desabonnement']}", rejoue["body"])
 
 
 class SendOnlyArgumentsTests(unittest.TestCase):

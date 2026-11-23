@@ -90,12 +90,16 @@ class FakeEmailSender:
 
     def __init__(self):
         self.messages = []
+        #: L'URL de désabonnement de chaque envoi, à part pour ne pas changer la forme
+        #: des messages que les tests existants relisent.
+        self.desabonnements = []
 
     def is_configured(self):
         return True
 
-    def send(self, subject, body, attachments, html=None):
+    def send(self, subject, body, attachments, html=None, desabonnement=None):
         self.messages.append((subject, body, list(attachments), html))
+        self.desabonnements.append(desabonnement)
 
 
 def make_config(output_dir):

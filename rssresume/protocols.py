@@ -111,11 +111,16 @@ class EmailSenderProtocol(Protocol):
         body: str,
         attachments: Iterable[pathlib.Path],
         html: str | None = None,
+        desabonnement: str | None = None,
     ) -> None:
         """Envoie le message. `body` est le texte, `html` la version mise en page.
 
         Les deux, et pas l'un ou l'autre : le HTML porte la mise en page, le texte reste
         la seule version qu'un client en texte seul saura afficher. Un `html` à `None`
         envoie un message de texte pur, comme avant.
+
+        `desabonnement` est l'URL du lien de désabonnement, et non des en-têtes tout
+        faits : leur forme est une affaire de transport — le SMTP les écrit dans le
+        message, Resend les reçoit dans son JSON. `None` : aucun en-tête.
         """
         ...

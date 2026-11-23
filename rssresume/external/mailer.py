@@ -10,6 +10,7 @@ import smtplib
 from typing import Iterable
 
 from rssresume.config import AppConfig
+from rssresume.desabonnement import LIST_UNSUBSCRIBE_POST
 from rssresume.tools import console
 
 DEFAULT_MIME_TYPE = "application/octet-stream"
@@ -35,6 +36,7 @@ class EmailSender:
         body: str,
         attachments: Iterable[pathlib.Path],
         html: str | None = None,
+        desabonnement: str | None = None,
     ) -> None:
         if not self.is_configured():
             raise RuntimeError("SMTP configuration is incomplete.")
@@ -45,7 +47,7 @@ class EmailSender:
             f"Email : envoi à {recipients} via {self._config.smtp_host}:{self._config.smtp_port} "
             f"({len(attachments)} pièce(s) jointe(s))"
         )
-        message = self._build_message(subject, body, attachments, html)
+        message = self._build_message(subject, body, attachments, html, desabonnement)
         with self._connect() as smtp:
             if self._config.smtp_use_tls and not self._config.smtp_use_ssl:
                 smtp.starttls()
@@ -60,6 +62,7 @@ class EmailSender:
         body: str,
         attachments: Iterable[pathlib.Path],
         html: str | None = None,
+        desabonnement: str | None = None,
     ) -> email.message.EmailMessage:
         message = email.message.EmailMessage()
         message["Subject"] = subject
@@ -72,6 +75,11 @@ class EmailSender:
         # posés ici valent mieux qu'un digest silencieusement classé.
         message["Date"] = email.utils.formatdate(localtime=True)
         message["Message-ID"] = email.utils.make_msgid(domain=self._domaine_expediteur())
+        if desabonnement:
+            # Le désabonnement en un clic (RFC 8058), exigé par Gmail et Yahoo des
+            # expéditeurs en volume : le client mail poste sur l'URL sans rien afficher.
+            message["List-Unsubscribe"] = f"<{desabonnement}>"
+            message["List-Unsubscribe-Post"] = LIST_UNSUBSCRIBE_POST
         message.set_content(body)
         if html:
             # Le texte d'abord, le HTML ensuite : `add_alternative` construit un

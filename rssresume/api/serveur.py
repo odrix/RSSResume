@@ -22,13 +22,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rssresume.annuaire_sqlite import AnnuaireSqlite
 from rssresume.api.routes import ROUTES, ErreurApi, Route
 from rssresume.api.sorties import Audio, Sorties
-from rssresume.config import ENV_TIMEZONE, load_timezone
+from rssresume.config import ENV_API_TOKEN, ENV_TIMEZONE, load_timezone
+from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.profil import ENV_PROFILES_DB, Annuaire
 from rssresume.scheduler import DailySchedule, parse_schedule
 from rssresume.tools import console
 from rssresume.gabarits import CHEMIN_BUILTIN, Gabarits
 
-ENV_API_TOKEN = "RSSRESUME_API_TOKEN"
 ENV_API_HOST = "RSSRESUME_API_HOST"
 ENV_API_PORT = "RSSRESUME_API_PORT"
 DEFAULT_API_HOST = "0.0.0.0"
@@ -112,13 +112,19 @@ class ApplicationApi:
         sorties: Sorties,
         passage: DailySchedule | None = None,
     ):
-        self._jeton = valider_jeton(jeton).encode("utf-8")
+        jeton = valider_jeton(jeton)
+        self._jeton = jeton.encode("utf-8")
         # Sans planning donné, celui qu'aurait le travailleur sans aucune variable : l'API
         # n'annonce jamais une heure que le passage ne tiendrait pas.
         passage = passage or DailySchedule(parse_schedule(None), load_timezone(None))
         catalogue = annuaire.catalogue()
         gabarits = Gabarits.depuis_fichier(CHEMIN_BUILTIN, None if catalogue.ouvert else catalogue)
-        self.routes: list[Route] = [route(annuaire, sorties, passage, gabarits) for route in ROUTES]
+        # Le même secret que celui du travailleur, qui signe les liens de la lettre : c'est
+        # le jeton de l'API, que les deux lisent dans le même environnement.
+        desabonnement = Desabonnement(Signataire(jeton, OBJET_DESABONNEMENT))
+        self.routes: list[Route] = [
+            route(annuaire, sorties, passage, gabarits, desabonnement) for route in ROUTES
+        ]
 
     @classmethod
     def from_env(cls) -> "ApplicationApi":

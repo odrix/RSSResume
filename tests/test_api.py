@@ -5,6 +5,7 @@ jeton exigé partout et le refus de démarrer sans lui, et les barrières entre 
 fabriquée et le système de fichiers.
 """
 
+import dataclasses
 import datetime
 import http.client
 import json
@@ -23,7 +24,7 @@ from unittest import mock
 from rssresume import newsletter, runlog
 from rssresume.annuaire_sqlite import AnnuaireSqlite
 from rssresume.api import __main__ as api_main
-from rssresume.api.routes import RoutePassage
+from rssresume.api.routes import LIEN_DESABONNEMENT_INVALIDE, RoutePassage
 from rssresume.api.serveur import (
     ENV_API_TOKEN,
     TAILLE_MAX_CORPS,
@@ -33,9 +34,11 @@ from rssresume.api.serveur import (
 )
 from rssresume.api.sorties import Sorties, lien_sur
 from rssresume.categories import Catalogue, CategorieCatalogue
+from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.newsletter import Lettre
 from rssresume.profil import ENV_PROFILES_DB
 from rssresume.scheduler import DailySchedule
+from tests.support import make_config
 
 JETON = "j" * 48
 AUDIO = bytes(range(256)) * 40  # 10 240 octets, chacun reconnaissable à sa position
@@ -739,6 +742,65 @@ class PassageTests(ServeurTestCase):
         for env in ({"RSSRESUME_SCHEDULE": "25:99"}, {"RSSRESUME_TIMEZONE": "Nulle/Part"}):
             with self.subTest(env=env), self.assertRaises(ValueError):
                 passage_de(env)
+
+
+class DesabonnementApiTests(ServeurTestCase):
+    """`POST /api/v1/desabonnements[/lecture]` : le lien de la lettre, relayé par le site.
+
+    Ce que ces tests protègent : un jeton signé par le travailleur avec le même
+    `RSSRESUME_API_TOKEN` est accepté ici, un jeton forgé ou déjà servi ne l'est pas, et
+    la lecture ne change rien."""
+
+    def setUp(self):
+        super().setUp()
+        self.fiche = self.annuaire.creer("bea", {"profil": "B", "email": ["b@example.com", "c@example.com"]})
+        # Signé « côté travailleur » : par l'abonnement de la lettre, sur la configuration
+        # qu'aurait le passage du jour, avec le même secret que celui de l'API.
+        config = dataclasses.replace(
+            make_config(self.tmpdir),
+            site_url="https://veille.example.com",
+            cle_signature=JETON,
+            username="bea",
+            profil_id=self.fiche.id,
+            smtp_to=["b@example.com", "c@example.com"],
+        )
+        self.lien = newsletter.Abonnement.depuis_config(config).lien_desabonnement
+        self.jeton = self.lien.rsplit("/", 1)[1]
+
+    def test_reading_then_unsubscribing_then_the_link_is_spent(self):
+        lecture = "/api/v1/desabonnements/lecture"
+        self.assertEqual(
+            (200, {"username": "bea", "destinataires": 2}), self.json("POST", lecture, {"jeton": self.jeton})
+        )
+        # La lecture n'a rien changé.
+        self.assertEqual(["b@example.com", "c@example.com"], self.annuaire.fiche("bea").document["email"])
+
+        self.assertEqual((200, {"username": "bea"}), self.json("POST", "/api/v1/desabonnements", {"jeton": self.jeton}))
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
+
+        refus = (404, {"erreur": LIEN_DESABONNEMENT_INVALIDE})
+        self.assertEqual(refus, self.json("POST", "/api/v1/desabonnements", {"jeton": self.jeton}))
+        self.assertEqual(refus, self.json("POST", lecture, {"jeton": self.jeton}))
+
+    def test_a_forged_or_malformed_token_is_not_found(self):
+        forge = Desabonnement(Signataire("x" * 48, OBJET_DESABONNEMENT)).jeton(
+            self.fiche.id, ["b@example.com", "c@example.com"]
+        )
+        for corps in ({"jeton": forge}, {"jeton": self.jeton + "x"}, {"jeton": 3}, {}, ["jeton"]):
+            for chemin in ("/api/v1/desabonnements", "/api/v1/desabonnements/lecture"):
+                with self.subTest(corps=corps, chemin=chemin):
+                    self.assertEqual(404, self.json("POST", chemin, corps)[0])
+        self.assertEqual(["b@example.com", "c@example.com"], self.annuaire.fiche("bea").document["email"])
+
+    def test_the_bearer_is_still_required(self):
+        for chemin in ("/api/v1/desabonnements", "/api/v1/desabonnements/lecture"):
+            self.assertEqual(401, self.appel("POST", chemin, {"jeton": self.jeton}, jeton=None)[0])
+        self.assertIn("email", self.annuaire.fiche("bea").document)
+
+    def test_only_post_is_served(self):
+        statut, entetes, _ = self.appel("GET", "/api/v1/desabonnements")
+        self.assertEqual(405, statut)
+        self.assertEqual("POST", entetes["Allow"])
 
 
 class GabaritsApiTests(ServeurTestCase):

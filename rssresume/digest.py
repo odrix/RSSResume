@@ -33,7 +33,7 @@ from rssresume.models import (
     note_de,
 )
 from rssresume.montage import MontageService
-from rssresume.newsletter import Lettre
+from rssresume.newsletter import Abonnement, Lettre
 from rssresume.protocols import (
     AudioGeneratorProtocol,
     CertfrServiceProtocol,
@@ -693,10 +693,10 @@ class DigestService:
         le seul endroit où retrouver l'article derrière un sujet entendu, et c'est
         `newsletter.Lettre` qui décide comment il les présente.
         """
-        lettre = Lettre.compose(day, digests, ephemeride, montage=montage)
-        self._email_sender.send(
-            subject=lettre.subject,
-            body=lettre.text,
-            attachments=lettre.attachments,
-            html=lettre.html,
-        )
+        Lettre.compose(
+            day,
+            digests,
+            ephemeride,
+            montage=montage,
+            abonnement=Abonnement.depuis_config(self._config),
+        ).envoyer(self._email_sender)

@@ -387,6 +387,21 @@ Resend n'accepte d'expéditeur que sur un domaine vérifié chez lui, vérificat
 par des enregistrements DNS : un domaine qui ne résout pas ne peut pas l'être. Le compte
 de test `onboarding@resend.dev` fait exception, mais n'écrit qu'au propriétaire du compte.
 
+#### Le pied de la lettre et le désabonnement
+
+- `RSSRESUME_SITE_URL` — l'adresse publique du site, schéma compris
+  (`https://veille.example.com`), égale à l'`ORIGIN` du site. Le pied de la lettre dit alors
+  qui l'envoie (le nom d'affichage de `SMTP_FROM`, « RSSResume » à défaut), pourquoi
+  l'adresse la reçoit, et porte trois liens : « Mes résumés », « Modifier mon profil », « Se
+  désabonner ». Sans elle, la lettre part sans liens ; sans schéma, le lancement échoue.
+
+Le lien de désabonnement est signé avec `RSSRESUME_API_TOKEN`, le jeton de l'[API](#api-http),
+qui doit donc être aussi dans l'environnement du travailleur : sans lui, les deux autres liens
+restent et le désabonnement disparaît. Avec lui, le message porte aussi les en-têtes
+`List-Unsubscribe` et `List-Unsubscribe-Post` — le désabonnement en un clic que Gmail et Yahoo
+exigent des expéditeurs en volume. Le lien ne demande aucune connexion, vide les destinataires
+du profil, et ne sert qu'une fois (voir [FONCTIONNEMENT.md](FONCTIONNEMENT.md#7-email)).
+
 ## Dépendances
 
 RSSResume tourne sur la bibliothèque standard, à une exception près :
@@ -888,6 +903,8 @@ document la nomme en plus : `{"erreur": "…", "champ": "securite"}`.
 | `GET /api/v1/profils/{username}/journees/{date}` | le contenu de la journée relu de ses journaux, comme `--send-only` : résumés, articles « à lire » et « à surveiller » (`url` à `null` hors http(s)), audios, `raison` d'une journée sans article ; 404 |
 | `GET /api/v1/passage` | `{"heure","fuseau","prochain"}`, lus de `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` comme le travailleur |
 | `GET /api/v1/profils/{username}/categories` | `{"ouvert", "categories": [{"libelle","description","privee"}]}` : les catégories que ce nom peut suivre — publiques et privées dont il est propriétaire —, jamais les propriétaires ; vide quand le catalogue est ouvert ; le profil n'a pas à exister ; 404 nom invalide |
+| `POST /api/v1/desabonnements/lecture` | corps `{"jeton"}` → `{"username","destinataires"}` sans rien modifier ; 404 lien invalide ou déjà utilisé |
+| `POST /api/v1/desabonnements` | corps `{"jeton"}` → `{"username"}`, les destinataires du profil vidés ; 404 lien invalide ou déjà utilisé |
 
 Un document est validé par `profil_depuis_dict`, la fonction même que le passage appelle : l'API
 refuse exactement ce que la tournée refuserait, avec le même message. Le corps d'une écriture
