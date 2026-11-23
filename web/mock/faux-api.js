@@ -10,7 +10,9 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
 
 /**
  * @typedef {string | { nom: string, alias?: string[] }} ComposantStack
- * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, securite: 'exploitant' | 'decideur' | 'curieux', modifie_le: string }} ProfilStocke
+ * @typedef {{ slug: string, libelle: string, description: string }} AxeStocke
+ * @typedef {{ id: string, username: string, profil: string, stack: ComposantStack[], email: string[], prenom: string, securite: 'exploitant' | 'decideur' | 'curieux', axes?: AxeStocke[], categories?: string[], modifie_le: string }} ProfilStocke
+ * @typedef {{ metier: string, libelle: string, profil: string, stack: ComposantStack[], securite: 'exploitant' | 'decideur' | 'curieux', axes: AxeStocke[], categories: string[] }} GabaritStocke
  * @typedef {{ titre: string, source: string, url: string | null }} LienStocke
  * @typedef {{ categorie: string, racontee: boolean, resume: string, audio: string | null, ecoute: string | null, articles: LienStocke[], a_surveiller: LienStocke[] }} CategorieStockee
  * @typedef {{ ecoute?: string | null, racontees?: number, montage?: { audio: string | null, ecoute: string | null } | null, raison?: string | null, en_cours?: boolean, categories?: CategorieStockee[] }} ContenuStocke
@@ -20,6 +22,53 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
 /** Le passage annoncé par la fausse API : celui du déploiement par défaut. */
 const HEURE_PASSAGE = '04:00';
 const FUSEAU_PASSAGE = 'Europe/Paris';
+
+/**
+ * Quelques gabarits, plus courts que ceux de `rssresume/gabarits.json` mais de même forme :
+ * de quoi essayer le choix du métier, et un `decideur` pour voir le régime suivre.
+ * @type {GabaritStocke[]}
+ */
+export const GABARITS_DEMO = [
+	{
+		metier: 'cto',
+		libelle: 'CTO, direction technique',
+		profil:
+			"CTO d'un éditeur de logiciel. Veille sur ce qui engage l'architecture, la sécurité et l'équipe.\n\nAxes de veille pertinents :\n- architecture : plates-formes, cloud, décisions structurantes.\n- cyber : failles majeures et incidents qui touchent un éditeur.",
+		stack: [],
+		securite: 'decideur',
+		axes: [
+			{ slug: 'architecture', libelle: 'Architecture', description: 'plates-formes, cloud et décisions structurantes' },
+			{ slug: 'cyber', libelle: 'Cybersécurité', description: 'failles majeures et incidents' }
+		],
+		categories: ['Tech generaliste', 'Cybersécurité']
+	},
+	{
+		metier: 'developpeur',
+		libelle: 'Développeur',
+		profil:
+			"Développeur. Veille sur les langages, les outils et les pratiques du quotidien.\n\nAxes de veille pertinents :\n- langages : versions, nouveautés, fins de support.\n- qualite : tests, revue, outillage.",
+		stack: [],
+		securite: 'exploitant',
+		axes: [
+			{ slug: 'langages', libelle: 'Langages', description: 'versions, nouveautés et fins de support' },
+			{ slug: 'qualite', libelle: 'Qualité', description: 'tests, revue et outillage' }
+		],
+		categories: ['Tech generaliste', '11 - Qualite logicielle et tests']
+	},
+	{
+		metier: 'rssi',
+		libelle: 'RSSI',
+		profil:
+			"RSSI. Veille sur les menaces, les vulnérabilités exploitées et la conformité.\n\nAxes de veille pertinents :\n- menaces : campagnes actives, incidents.\n- conformite : ce que la loi impose à la sécurité.",
+		stack: [],
+		securite: 'exploitant',
+		axes: [
+			{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives et incidents' },
+			{ slug: 'conformite', libelle: 'Conformité', description: 'obligations légales de sécurité' }
+		],
+		categories: ['1 - Alertes et avis CERT-FR ANSSI', 'Cybersécurité', 'Réglementaire']
+	}
+];
 
 /**
  * Un MP3 silencieux et valide : des trames MPEG-1 Layer III à 128 kbit/s, 44,1 kHz, dont
@@ -61,6 +110,8 @@ export class FausseApi {
 	requetes = [];
 	/** Ajoute deux journées d'audio à chaque profil créé : utile en développement. */
 	journeesDeDemo = false;
+	/** Ce que `GET /api/v1/gabarits` rend ; un test peut le remplacer. @type {GabaritStocke[]} */
+	gabarits = GABARITS_DEMO;
 
 	/** @param {string} jeton */
 	constructor(jeton) {
@@ -84,6 +135,10 @@ export class FausseApi {
 		if (morceaux[0] === 'api' && morceaux[1] === 'v1' && morceaux[2] === 'passage' && morceaux.length === 3) {
 			if (requete.method !== 'GET') return erreur(405, 'méthode non prise en charge');
 			return json(200, { heure: HEURE_PASSAGE, fuseau: FUSEAU_PASSAGE, prochain: prochainPassage(new Date()) });
+		}
+		if (morceaux[0] === 'api' && morceaux[1] === 'v1' && morceaux[2] === 'gabarits' && morceaux.length === 3) {
+			if (requete.method !== 'GET') return erreur(405, 'méthode non prise en charge');
+			return json(200, this.gabarits);
 		}
 		if (morceaux[0] !== 'api' || morceaux[1] !== 'v1' || morceaux[2] !== 'profils') {
 			return erreur(404, 'route inconnue');
@@ -181,6 +236,7 @@ export class FausseApi {
 			email: corps.email ?? [],
 			prenom: corps.prenom ?? '',
 			securite: corps.securite ?? 'exploitant',
+			...reglages(corps),
 			modifie_le: new Date().toISOString()
 		};
 		this.profils.set(profil.username, profil);
@@ -202,16 +258,35 @@ export class FausseApi {
 	#modifier(profil, corps) {
 		const invalide = valider(corps);
 		if (invalide) return erreur(422, invalide);
+		// Remplacement complet, comme l'API : des axes ou catégories absents du corps
+		// disparaissent du profil.
+		delete profil.axes;
+		delete profil.categories;
 		Object.assign(profil, {
 			profil: corps.profil,
 			stack: corps.stack ?? [],
 			email: corps.email ?? [],
 			prenom: corps.prenom ?? '',
 			securite: corps.securite ?? 'exploitant',
+			...reglages(corps),
 			modifie_le: new Date().toISOString()
 		});
 		return json(200, profil);
 	}
+}
+
+/**
+ * Les axes et catégories déclarés par un corps. Une liste vide vaut une clé absente, comme
+ * dans l'API : le profil revient alors aux réglages par défaut.
+ * @param {any} corps
+ * @returns {{ axes?: AxeStocke[], categories?: string[] }}
+ */
+function reglages(corps) {
+	/** @type {{ axes?: AxeStocke[], categories?: string[] }} */
+	const declares = {};
+	if (Array.isArray(corps.axes) && corps.axes.length) declares.axes = corps.axes;
+	if (Array.isArray(corps.categories) && corps.categories.length) declares.categories = corps.categories;
+	return declares;
 }
 
 /**

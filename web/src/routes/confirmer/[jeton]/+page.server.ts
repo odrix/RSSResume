@@ -11,7 +11,7 @@ export const load: PageServerLoad = ({ params }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ params }) => {
+	default: async ({ params, url }) => {
 		const ctx = contexte();
 		const lu = ctx.jetons.lire(params.jeton);
 		try {
@@ -19,7 +19,7 @@ export const actions: Actions = {
 				const { email } = await ctx.destinataires.confirmer(params.jeton);
 				return { confirme: `${email} recevra désormais le résumé quotidien.` };
 			}
-			await ctx.inscription.confirmer(params.jeton);
+			await ctx.inscription.confirmer(params.jeton, url.origin);
 		} catch (erreur) {
 			if (erreur instanceof ErreurConfirmation) return fail(400, { message: erreur.message });
 			throw erreur;

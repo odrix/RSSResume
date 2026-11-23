@@ -1,5 +1,5 @@
 /**
- * Les emails du site : confirmer une adresse, prévenir l'administrateur.
+ * Les emails du site : confirmer une adresse, prévenir l'administrateur, accueillir.
  *
  * Le modèle est celui de `rssresume/llm/base.py` : la classe de base porte les messages,
  * c'est-à-dire ce que le site a à dire ; les sous-classes ne disent que comment ça part.
@@ -13,9 +13,24 @@
  *   inscription dont le lien de confirmation ne peut pas partir est refusée d'emblée.
  */
 
+import type { Passage } from '#lib/journee.js';
+
 export interface Inscrit {
 	username: string;
 	email: string;
+}
+
+/** Ce que l'email de bienvenue dit de la personne et du service. */
+export interface Bienvenue {
+	prenom: string;
+	/** Le libellé du gabarit choisi ; `null` pour « Autre ». */
+	libelleMetier: string | null;
+	/** Les catégories suivies ; `null` quand le profil n'en déclare pas, c'est-à-dire toutes. */
+	categories: string[] | null;
+	/** `null` quand l'API n'a pas dit l'heure : le message reste vrai sans elle. */
+	passage: Passage | null;
+	/** L'adresse publique du site, qui préfixe les liens. */
+	origine: string;
 }
 
 export abstract class Courrier {
@@ -68,6 +83,66 @@ export abstract class Courrier {
 				`Adresse : ${inscrit.email}\n` +
 				`Date : ${new Date().toISOString()}\n`
 		);
+	}
+
+	/** Part à la confirmation : sans lui, rien ne dit à la personne ce qui l'attend avant
+	 * que le premier digest arrive, ni que le profil se réécrit avant qu'il parte.
+	 *
+	 * Rien sur le changement de catégories : le site ne permet pas encore de les modifier,
+	 * et promettre un réglage introuvable est pire que le taire. */
+	souhaiterBienvenue(inscrit: Inscrit, bienvenue: Bienvenue): Promise<boolean> {
+		const salutation = bienvenue.prenom ? `Bonjour ${bienvenue.prenom},` : 'Bonjour,';
+		const depart = bienvenue.libelleMetier
+			? `Votre profil est parti du gabarit « ${bienvenue.libelleMetier} ».`
+			: 'Votre profil est celui que vous avez décrit.';
+		const categories =
+			bienvenue.categories && bienvenue.categories.length
+				? `Catégories suivies : ${bienvenue.categories.join(', ')}.`
+				: 'Vous suivez toutes les catégories ouvertes.';
+		return this.transmettre(
+			inscrit.email,
+			'Bienvenue sur RSSResume',
+			`${salutation}\n\n` +
+				`Votre compte « ${inscrit.username} » est actif.\n\n` +
+				`Ce que vous recevrez\n` +
+				`Chaque matin, un email avec les articles de la veille retenus pour vous, résumés par ` +
+				`catégorie, et un épisode audio à écouter.\n` +
+				`${depart} ${categories}\n\n` +
+				`Quand\n` +
+				`${quand(bienvenue.passage)}\n\n` +
+				`Ajuster votre veille\n` +
+				`Le texte de votre profil décide des articles retenus : réécrivez-le dans Mon profil, ` +
+				`${bienvenue.origine}/profil\n` +
+				`Vous y changez aussi le régime de sécurité, la stack surveillée et les adresses de réception.\n` +
+				`Vos résumés, à lire et à écouter : ${bienvenue.origine}/resumes\n\n` +
+				`Se désabonner\n` +
+				`Pour ne plus rien recevoir, videz « Adresses de réception » dans Mon profil : c'est immédiat.\n`
+		);
+	}
+}
+
+/** L'heure du passage, dans son fuseau et non celui du serveur : c'est l'heure où le
+ * travailleur passe. Le début du passage, pas l'arrivée du résumé, que la durée de la
+ * tournée repousse d'autant — d'où « suivra ». */
+function quand(passage: Passage | null): string {
+	const sansHeure = 'Votre résumé arrive chaque matin, après le passage quotidien.';
+	if (!passage) return sansHeure;
+	const moment = new Date(passage.prochain);
+	if (Number.isNaN(moment.getTime())) return sansHeure;
+	try {
+		const jour = new Intl.DateTimeFormat('fr-FR', {
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long',
+			timeZone: passage.fuseau
+		}).format(moment);
+		return (
+			`Le passage quotidien a lieu à ${passage.heure} (${passage.fuseau}) : ` +
+			`votre premier résumé suivra celui du ${jour}.`
+		);
+	} catch {
+		// Un fuseau que l'environnement ne connaît pas : la phrase sans heure reste juste.
+		return sansHeure;
 	}
 }
 

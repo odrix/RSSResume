@@ -15,6 +15,25 @@ export type Securite = 'exploitant' | 'decideur' | 'curieux';
 
 export const REGIMES_SECURITE: Securite[] = ['exploitant', 'decideur', 'curieux'];
 
+/** Une rubrique du scoring, propre à un métier : ce que l'appli range sous `axes`. */
+export interface Axe {
+	slug: string;
+	libelle: string;
+	description: string;
+}
+
+/** Un profil de départ proposé à l'inscription, tel que `GET /api/v1/gabarits` le rend.
+ * `metier` n'identifie que le gabarit : il n'est jamais envoyé avec un profil. */
+export interface Gabarit {
+	metier: string;
+	libelle: string;
+	profil: string;
+	stack: ComposantStack[];
+	securite: Securite;
+	axes: Axe[];
+	categories: string[];
+}
+
 /** Ce que l'API rend d'un profil, intégralement. */
 export interface Profil {
 	/** UUID attribué par l'API à la création, immuable. Le site adresse pourtant les
@@ -26,6 +45,10 @@ export interface Profil {
 	email: string[];
 	prenom: string;
 	securite: Securite;
+	/** Absents quand le profil n'en déclare pas : l'appli prend alors ses axes par défaut
+	 * et tout le catalogue des catégories. */
+	axes?: Axe[];
+	categories?: string[];
 	modifie_le: string;
 }
 
@@ -45,6 +68,9 @@ export interface ProfilSaisi {
 	email: string[];
 	prenom: string;
 	securite: Securite;
+	/** Repris d'un gabarit ; le formulaire « Mon profil » ne les édite pas encore. */
+	axes?: Axe[];
+	categories?: string[];
 }
 
 /** Une ligne de l'éditeur de stack : deux champs texte, quel que soit le composant. */

@@ -66,3 +66,63 @@ describe('transports de repli', () => {
 		expect(courrier.envoyes).toHaveLength(0);
 	});
 });
+
+describe('bienvenue', () => {
+	/** Le site ne permet pas encore de changer de catégories : l'email ne doit pas le promettre. */
+	const PROMET_LES_CATEGORIES = /(chang|modifi|ajust|choisi)[^.\n]*catégorie|catégorie[^.\n]*(chang|modifi|ajust)/i;
+
+	it('la bienvenue dit quoi, quand, où ajuster et comment arrêter', async () => {
+		const courrier = new CourrierJournal('admin@example.test', false);
+		expect(
+			await courrier.souhaiterBienvenue(INSCRIT, {
+				prenom: 'Adrien',
+				libelleMetier: 'CTO, direction technique',
+				categories: ['Tech generaliste', 'Cybersécurité'],
+				passage: { heure: '04:00', fuseau: 'Europe/Paris', prochain: '2026-11-23T04:00:00+01:00' },
+				origine: 'https://site.test'
+			})
+		).toBe(true);
+		const [message] = courrier.envoyes;
+		expect(message.destinataire).toBe('moi@example.com');
+		expect(message.sujet).toBe('Bienvenue sur RSSResume');
+		for (const attendu of [
+			'Bonjour Adrien,',
+			'Votre compte « moi » est actif.',
+			// Quoi.
+			'Chaque matin, un email avec les articles de la veille retenus pour vous',
+			'épisode audio',
+			'gabarit « CTO, direction technique »',
+			'Catégories suivies : Tech generaliste, Cybersécurité.',
+			// Quand.
+			'Le passage quotidien a lieu à 04:00 (Europe/Paris)',
+			'suivra celui du lundi 23 novembre',
+			// Où ajuster.
+			'https://site.test/profil',
+			'https://site.test/resumes',
+			'régime de sécurité',
+			// Comment arrêter.
+			'videz « Adresses de réception » dans Mon profil'
+		]) {
+			expect(message.texte).toContain(attendu);
+		}
+		expect(message.texte).not.toMatch(PROMET_LES_CATEGORIES);
+	});
+
+	it('sans heure ni gabarit, la bienvenue reste juste', async () => {
+		const courrier = new CourrierJournal('admin@example.test', false);
+		await courrier.souhaiterBienvenue(INSCRIT, {
+			prenom: '',
+			libelleMetier: null,
+			categories: null,
+			passage: null,
+			origine: 'https://site.test'
+		});
+		const [message] = courrier.envoyes;
+		expect(message.texte.startsWith('Bonjour,\n')).toBe(true);
+		expect(message.texte).toContain('toutes les catégories ouvertes');
+		expect(message.texte).toContain('chaque matin, après le passage quotidien');
+		expect(message.texte).not.toContain('gabarit');
+		expect(message.texte).not.toMatch(/\d\d:\d\d/);
+		expect(message.texte).not.toMatch(PROMET_LES_CATEGORIES);
+	});
+});

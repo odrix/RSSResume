@@ -92,7 +92,9 @@ export class Destinataires {
 			throw new ErreurDestinataire("Trop d'adresses ajoutées récemment. Réessayez dans une heure.");
 		}
 
-		const corps = { ...saisie, email: directes };
+		// Le formulaire n'édite ni les axes ni les catégories ; le PUT remplaçant tout le
+		// document, les omettre effacerait ceux du gabarit au premier enregistrement.
+		const corps = { ...saisie, axes: actuel?.axes, categories: actuel?.categories, email: directes };
 		const profil = actuel
 			? await this.api.modifierProfil(utilisateur.username, corps)
 			: await this.api.creerProfil(utilisateur.username, corps);

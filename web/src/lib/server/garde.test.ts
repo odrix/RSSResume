@@ -1,6 +1,6 @@
 import { isRedirect, isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import { destinationSure, exigerAdmin, exigerConnexion } from './garde.js';
+import { destinationApresConnexion, destinationSure, exigerAdmin, exigerConnexion } from './garde.js';
 import { EMAIL_ADMIN, monter } from './outils-test.js';
 
 function leve(fonction: () => unknown): unknown {
@@ -38,5 +38,30 @@ describe('gardes', () => {
 		['javascript:alert(1)', '/resumes']
 	])('ne suit que les destinations locales (%s)', (suite, attendu) => {
 		expect(destinationSure(suite)).toBe(attendu);
+	});
+
+	it('la première connexion mène au profil, les suivantes aux résumés, une suite explicite l’emporte', async () => {
+		const { creerConfirme, comptes } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		// Ce que fait la page de connexion : la première connexion n'est notée qu'au besoin.
+		const apres = (suite: string | null) =>
+			destinationApresConnexion(suite, () => comptes.noterPremiereConnexion(moi.id));
+
+		// Le lien des résumés de la bienvenue passe par `?suite=/resumes` : il y mène, sans
+		// consommer la première connexion.
+		expect(apres('/resumes')).toBe('/resumes');
+		expect(apres('/resumes/moi/2026-11-21')).toBe('/resumes/moi/2026-11-21');
+		// Une suite forgée ne compte pas : c'est bien la première connexion, vers le profil.
+		expect(apres('//ailleurs.example')).toBe('/profil');
+		expect(apres(null)).toBe('/resumes');
+	});
+
+	it('une suite vers le profil consomme la première connexion', async () => {
+		const { creerConfirme, comptes } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		const apres = (suite: string | null) =>
+			destinationApresConnexion(suite, () => comptes.noterPremiereConnexion(moi.id));
+		expect(apres('/profil?x=1')).toBe('/profil?x=1');
+		expect(apres(null)).toBe('/resumes');
 	});
 });
