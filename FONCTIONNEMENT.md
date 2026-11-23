@@ -456,15 +456,22 @@ pied. Sans la variable, aucun lien ; le site, qui montre la même lettre, compos
 et ne se renvoie pas à lui-même. La lettre « aucun article » porte le pied elle aussi, et sa
 date en toutes lettres.
 
-**Le lien de désabonnement est signé, pas stocké** (`desabonnement.py`). Le jeton porte
-l'identifiant du profil et une empreinte à clé de ses destinataires (adresses en minuscules,
-triées), signés en HMAC-SHA256 avec une clé dérivée de `RSSRESUME_API_TOKEN` — le secret que le
-travailleur et l'API ont déjà en commun ; le site relaie le jeton sans connaître la clé. Il se
-recalcule à l'identique, ce qui garde `--send-only` fidèle sans rien écrire. Il ne sert qu'une
-fois sans table de jetons : désabonner vide les destinataires, l'empreinte ne correspond alors
-plus à rien, et un second clic est refusé ; une liste changée depuis l'envoi le rend caduc de la
-même façon. L'empreinte est à clé parce qu'elle voyage en clair : un simple hachage laisserait
-vérifier hors ligne qu'une adresse devinée en fait partie. Sans le jeton dans l'environnement du
+**Le lien de désabonnement est signé, pas stocké** (`desabonnement.py`). Le jeton,
+`v1.<id du profil>.<empreintes>.<signature>`, porte l'identifiant du profil et une empreinte à
+clé **par adresse** à qui la lettre est partie — huit caractères base64url (6 octets d'HMAC de
+l'adresse en minuscules), triées et mises bout à bout —, signés en HMAC-SHA256 avec une clé
+dérivée de `RSSRESUME_API_TOKEN`, le secret que le travailleur et l'API ont déjà en commun ; le
+site relaie le jeton sans connaître la clé. Il se recalcule à l'identique, ce qui garde
+`--send-only` fidèle sans rien écrire. Il vaut tant qu'**au moins une** des adresses de la
+lettre reçoit encore le résumé : la liste vit après l'envoi — une invitation confirmée, une
+adresse retirée —, et une empreinte de la liste entière rendait caducs les liens de toutes les
+lettres déjà parties, au risque qu'un destinataire lisant « déjà utilisé » signale la lettre
+comme indésirable. Il ne sert qu'une fois sans table de jetons : désabonner vide les
+destinataires, aucune empreinte ne correspond plus, et un second clic est refusé. Les
+empreintes sont à clé parce qu'elles voyagent en clair : un simple hachage laisserait vérifier
+hors ligne qu'une adresse devinée en fait partie ; courtes parce qu'il y en a une par
+destinataire, et qu'à clé, huit caractères suffisent à ne pas confondre par hasard une adresse
+ajoutée avec l'une de la lettre (une chance sur 2⁴⁸ par paire). Sans le jeton dans l'environnement du
 travailleur, la lettre garde ses deux autres liens et part sans désabonnement.
 
 **Les en-têtes `List-Unsubscribe` et `List-Unsubscribe-Post`** (RFC 8058) accompagnent ce lien :
@@ -1267,7 +1274,8 @@ est décrit dans le [README](README.md#api-http).
   dans le corps JSON et non dans l'URL — les logs d'accès portent les chemins —, et le Bearer
   reste exigé : le site relaie le lien, il ne le vérifie pas. L'API le vérifie avec la clé
   dérivée de son propre jeton, puis `AnnuaireSqlite.desabonner` relit le profil par son `id`,
-  compare l'empreinte aux destinataires et retire la clé `email`, le tout dans une seule
+  lit ses destinataires par le même parseur que le travailleur (une adresse écrite en chaîne
+  reste une adresse), cherche parmi eux une adresse de la lettre et retire la clé `email`, le tout dans une seule
   transaction `BEGIN IMMEDIATE` : deux clics simultanés ne passent pas tous les deux. Tout
   refus — jeton faux, profil supprimé, lien déjà servi — est le même 404. Côté site, la page
   `/desabonnement/{jeton}` n'applique rien à l'affichage (un antivirus ouvre les liens) ; son

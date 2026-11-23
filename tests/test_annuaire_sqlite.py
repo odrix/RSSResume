@@ -204,13 +204,34 @@ class DesabonnerTests(Base):
         self.assertIsNotNone(self.annuaire.desabonner(demande))
         self.assertIsNone(self.annuaire.desabonner(demande))
 
-    def test_a_link_for_other_recipients_changes_nothing(self):
-        """Des destinataires changés depuis l'envoi : le lien ne désigne plus personne."""
-        self.assertIsNone(self.annuaire.desabonner(self._demande(emails=["b@example.com"])))
+    def test_a_link_of_a_letter_sent_to_a_smaller_list_still_works(self):
+        """La liste a grandi depuis l'envoi : le lien des lettres déjà parties vaut encore."""
+        self.assertIsNotNone(self.annuaire.desabonner(self._demande(emails=["B@example.com"])))
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
+
+    def test_a_link_for_none_of_the_current_recipients_changes_nothing(self):
+        """Aucune adresse de la lettre ne reçoit plus le résumé : le lien ne désigne plus personne."""
+        self.assertIsNone(self.annuaire.desabonner(self._demande(emails=["z@example.com"])))
         self.assertEqual(["b@example.com", "c@example.com"], self.annuaire.fiche("bea").document["email"])
 
     def test_an_unknown_profile_changes_nothing(self):
         self.assertIsNone(self.annuaire.desabonner(self._demande(id=nouvel_id())))
+
+    def test_a_single_address_stored_as_a_string_is_read_like_the_worker_does(self):
+        """Une base se modifie aussi à la main : `"email": "a@x.fr"` reste une adresse."""
+        document = {**self.fiche.document, "email": "a@x.fr"}
+        with self.annuaire._connexion() as connexion:
+            connexion.execute(
+                "UPDATE profils SET document = ? WHERE id = ?", (json.dumps(document), self.fiche.id)
+            )
+        # Le lien tel que le travailleur le signe : sur les adresses que le profil lu donne.
+        emails = self.annuaire.profil("bea").emails
+
+        fiche = self.annuaire.desabonner(self._demande(emails=emails))
+
+        self.assertEqual(("a@x.fr",), tuple(emails))
+        self.assertIsNotNone(fiche)
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
 
 
 class DepuisEnvTests(Base):

@@ -8,6 +8,7 @@ valoir dès que les destinataires qu'il désigne ont changé.
 import unittest
 
 from rssresume.desabonnement import (
+    LONGUEUR_EMPREINTE_ADRESSE,
     OBJET_DESABONNEMENT,
     Desabonnement,
     JetonInvalide,
@@ -76,23 +77,44 @@ class DesabonnementTests(unittest.TestCase):
             desabonnement().jeton(PROFIL_ID, EMAILS), desabonnement().jeton(PROFIL_ID, EMAILS)
         )
 
-    def test_the_fingerprint_ignores_case_and_order(self):
+    def test_the_fingerprints_ignore_case_and_order(self):
         service = desabonnement()
         demande = service.lire(service.jeton(PROFIL_ID, EMAILS))
 
-        self.assertTrue(demande.concerne(["B@Example.com", "a@example.com"]))
+        self.assertTrue(demande.concerne(["B@Example.com"]))
         self.assertEqual(
-            service.jeton(PROFIL_ID, EMAILS), service.jeton(PROFIL_ID, ["B@EXAMPLE.COM", "a@example.com"])
+            service.jeton(PROFIL_ID, EMAILS), service.jeton(PROFIL_ID, ["B@EXAMPLE.COM", " a@example.com"])
         )
 
-    def test_other_recipients_or_none_are_not_concerned(self):
-        """Vidés, les destinataires ne correspondent plus : le lien ne sert qu'une fois."""
+    def test_the_token_carries_one_short_fingerprint_per_address(self):
+        _, _, empreintes, _ = desabonnement().jeton(PROFIL_ID, [*EMAILS, "A@example.com"]).split(".")
+
+        self.assertEqual(2 * LONGUEUR_EMPREINTE_ADRESSE, len(empreintes))
+
+    def test_a_list_grown_after_sending_keeps_the_link(self):
+        """La liste vit après l'envoi : une invitation confirmée ne tue pas le lien des lettres parties."""
+        service = desabonnement()
+        demande = service.lire(service.jeton(PROFIL_ID, EMAILS))
+
+        self.assertTrue(demande.concerne([*EMAILS, "c@example.com"]))
+
+    def test_one_address_of_the_letter_still_there_is_enough(self):
+        service = desabonnement()
+        demande = service.lire(service.jeton(PROFIL_ID, EMAILS))
+
+        self.assertTrue(demande.concerne(["a@example.com", "c@example.com"]))
+
+    def test_without_any_address_of_the_letter_the_link_is_refused(self):
+        """Vidés, ou remplacés, les destinataires ne correspondent plus : le lien ne sert qu'une fois."""
         service = desabonnement()
         demande = service.lire(service.jeton(PROFIL_ID, EMAILS))
 
         self.assertFalse(demande.concerne([]))
-        self.assertFalse(demande.concerne(["a@example.com"]))
-        self.assertFalse(demande.concerne([*EMAILS, "c@example.com"]))
+        self.assertFalse(demande.concerne(["c@example.com", "d@example.com"]))
+
+    def test_a_token_without_recipient_cannot_be_made(self):
+        with self.assertRaises(ValueError):
+            desabonnement().jeton(PROFIL_ID, [])
 
     def test_the_recipients_do_not_appear_in_the_token(self):
         jeton = desabonnement().jeton(PROFIL_ID, EMAILS)

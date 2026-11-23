@@ -22,7 +22,7 @@ from rssresume.annuaire_sqlite import (
 )
 from rssresume.api.sorties import Sorties
 from rssresume.desabonnement import Demande, Desabonnement, JetonInvalide
-from rssresume.profil import CLE_EMAIL, ChampInvalide, username_valide, valider_username
+from rssresume.profil import ChampInvalide, username_valide, valider_username
 from rssresume.scheduler import DailySchedule
 from rssresume.tools import console
 
@@ -178,9 +178,11 @@ class RouteDesabonnementLecture(_RouteDesabonnement):
         demande = self.demande(requete)
         try:
             fiche = self.annuaire.fiche_par_id(demande.profil_id)
+            # Le parseur du travailleur, qui a signé le lien : une adresse écrite en chaîne
+            # reste une adresse.
+            emails = fiche.profil.emails if fiche else ()
         except ValueError:
-            fiche = None
-        emails = list(fiche.document.get(CLE_EMAIL, [])) if fiche else []
+            fiche, emails = None, ()
         if fiche is None or not demande.concerne(emails):
             raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE)
         requete.repondre_json(200, {"username": fiche.username, "destinataires": len(emails)})

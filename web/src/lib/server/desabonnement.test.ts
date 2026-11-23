@@ -39,11 +39,20 @@ describe('Desabonnement', () => {
 		const { desabonnement, fausseApi } = await avecProfil();
 		const avant = fausseApi.requetes.length;
 
-		for (const jeton of ['', 'sansPoint', 'a.b/c', 'a..b', `a.${'x'.repeat(600)}`]) {
+		for (const jeton of ['', 'sansPoint', 'a.b/c', 'a..b', `a.${'x'.repeat(5000)}`]) {
 			expect(await desabonnement.lire(jeton)).toBeNull();
 			await expect(desabonnement.appliquer(jeton)).rejects.toBeInstanceOf(ErreurDesabonnement);
 		}
 		expect(fausseApi.requetes.length).toBe(avant);
+	});
+
+	it("laisse passer le jeton d'une lettre à de nombreux destinataires", async () => {
+		const { desabonnement, fausseApi } = await avecProfil();
+		// Huit caractères d'empreinte par adresse : cinquante destinataires font 400 caractères.
+		const long = `v1.0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71.${'AbCd-_12'.repeat(50)}.${'s'.repeat(43)}`;
+		fausseApi.ajouterDesabonnement(long, 'bea');
+
+		expect(await desabonnement.lire(long)).toEqual({ username: 'bea', destinataires: 2 });
 	});
 
 	it("rend le message de l'API quand elle ne répond pas", async () => {

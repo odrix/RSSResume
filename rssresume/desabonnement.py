@@ -9,8 +9,8 @@ relaie le jeton.
 
 Signé plutôt que stocké : le jeton se recalcule à l'identique à chaque composition, et
 `--send-only` rend donc la même lettre que le passage du jour sans rien écrire nulle part.
-Il ne « sert qu'une fois » sans table de jetons : il est lié à l'état des destinataires,
-et une fois ceux-ci vidés, l'empreinte qu'il porte ne correspond plus à rien.
+Il ne « sert qu'une fois » sans table de jetons : il porte les empreintes des adresses à
+qui la lettre est partie, et une fois les destinataires vidés, aucune ne correspond plus.
 """
 
 from __future__ import annotations
@@ -32,9 +32,17 @@ OBJET_DESABONNEMENT = "desabonnement"
 #: erreur un ancien jeton comme un nouveau.
 VERSION = "v1"
 
-#: Octets gardés de l'empreinte des destinataires. Seize suffisent à ce qu'aucune autre
-#: liste ne la reproduise par hasard, et gardent le lien court.
+#: Octets gardés d'une empreinte, par défaut.
 LONGUEUR_EMPREINTE = 16
+
+#: Octets gardés de l'empreinte d'UNE adresse : six, soit huit caractères base64url, sans
+#: remplissage. L'empreinte n'a pas à résister à une recherche — elle est à clé, et qui ne
+#: tient pas la clé ne peut en calculer aucune —, seulement à ne pas confondre par hasard
+#: une adresse ajoutée après l'envoi avec l'une de celles de la lettre : une chance sur
+#: 2^48 par paire, quand une liste en compte quelques-unes. Courte parce qu'il y en a une
+#: par destinataire, et que le lien doit rester un lien.
+OCTETS_EMPREINTE_ADRESSE = 6
+LONGUEUR_EMPREINTE_ADRESSE = 8
 
 #: Ce qu'un champ signé peut contenir : de quoi se poser dans un chemin d'URL tel quel,
 #: sans échappement, et sans jamais contenir le point qui sépare les champs.
@@ -110,52 +118,71 @@ class Signataire:
 
 
 class Demande:
-    """Un jeton vérifié : le profil qu'il vise, et les destinataires qu'il désigne.
+    """Un jeton vérifié : le profil qu'il vise, et les adresses auxquelles la lettre est partie.
 
     Elle ne dit pas d'elle-même si elle s'applique encore : seul l'état des destinataires
     au moment de l'écriture le dit, d'où `concerne`, appelé sous le verrou d'écriture.
     """
 
-    def __init__(self, profil_id: str, empreinte: str, desabonnement: "Desabonnement"):
+    def __init__(self, profil_id: str, empreintes: frozenset[str], desabonnement: "Desabonnement"):
         self.profil_id = profil_id
-        self._empreinte = empreinte
+        self._empreintes = empreintes
         self._desabonnement = desabonnement
 
-    def concerne(self, emails: list[str] | tuple[str, ...]) -> bool:
-        """Vrai si `emails` sont les destinataires pour lesquels le lien a été émis.
+    def concerne(self, emails) -> bool:
+        """Vrai si l'une des adresses actuelles est l'une de celles à qui la lettre est partie.
 
-        Faux pour une liste vide : c'est ce qui fait qu'un lien ne sert qu'une fois — une
-        fois les destinataires retirés, il n'y a plus rien à désabonner.
+        Une seule suffit, et non la liste entière : la liste vit après l'envoi — une
+        invitation confirmée, une adresse retirée —, et exiger qu'elle soit restée
+        identique rendait caducs les liens de toutes les lettres déjà parties. Le
+        destinataire qui cliquait alors « Se désabonner » lisait « déjà utilisé », et
+        finissait par signaler la lettre comme indésirable.
+
+        Faux pour une liste vide ou sans aucune adresse de la lettre : c'est ce qui fait
+        qu'un lien ne sert qu'une fois — les destinataires retirés, il n'y a plus rien à
+        désabonner.
         """
-        if not emails:
-            return False
-        return hmac.compare_digest(self._empreinte, self._desabonnement.empreinte(emails))
+        actuelles = {self._desabonnement.empreinte(adresse) for adresse in emails}
+        return any(
+            hmac.compare_digest(actuelle, empreinte)
+            for actuelle in actuelles
+            for empreinte in self._empreintes
+        )
 
 
 class Desabonnement:
     """Le jeton de désabonnement d'un profil, son lien, et sa relecture.
 
     Le jeton porte l'identifiant du profil — stable, contrairement au nom qu'on pourrait
-    un jour changer — et une empreinte de ses destinataires. Sans état côté serveur, c'est
-    cette empreinte qui lie le lien à une liste précise : vidée ou changée, la liste ne
-    correspond plus, et le lien est refusé.
+    un jour changer — et une empreinte courte de chaque adresse à qui la lettre est partie,
+    triées et mises bout à bout. Sans état côté serveur, ce sont elles qui lient le lien à
+    ses destinataires : tant que l'une d'elles reçoit encore la lettre, il vaut ; quand il
+    n'en reste aucune, il est refusé.
     """
 
     def __init__(self, signataire: Signataire):
         self._signataire = signataire
 
-    def empreinte(self, emails) -> str:
-        """L'empreinte des destinataires, insensible à la casse et à l'ordre.
+    def empreinte(self, adresse: str) -> str:
+        """L'empreinte d'une adresse, insensible à la casse et aux blancs de bord.
 
-        Le document normalise déjà les adresses, mais une liste réordonnée par le site ou
-        une majuscule tapée autrement ne change pas qui reçoit la lettre : le lien doit
+        Une majuscule tapée autrement ne change pas qui reçoit la lettre : le lien doit
         rester valable.
         """
-        adresses = sorted({adresse.strip().lower() for adresse in emails})
-        return self._signataire.empreinte("\n".join(adresses))
+        return self._signataire.empreinte(adresse.strip().lower(), OCTETS_EMPREINTE_ADRESSE)
 
     def jeton(self, profil_id: str, emails) -> str:
-        return self._signataire.signer(VERSION, profil_id, self.empreinte(emails))
+        """Le jeton du profil pour ces destinataires. Déterministe : même profil, mêmes
+        adresses, même jeton — c'est ce qui garde `--send-only` fidèle.
+
+        Les empreintes sont triées, dédoublonnées et concaténées : de longueur fixe, elles
+        se redécoupent sans séparateur, et l'alphabet d'URL n'en a pas de libre — `-` et `_`
+        appartiennent au base64url, le point sépare les champs signés.
+        """
+        empreintes = "".join(sorted({self.empreinte(adresse) for adresse in emails}))
+        if not empreintes:
+            raise ValueError("Désabonnement : un jeton exige au moins un destinataire.")
+        return self._signataire.signer(VERSION, profil_id, empreintes)
 
     @staticmethod
     def lien(site_url: str, jeton: str) -> str:
@@ -165,7 +192,11 @@ class Desabonnement:
         """La demande que porte un jeton. Altéré, d'une autre clé ou d'un autre format :
         `JetonInvalide`."""
         champs = self._signataire.verifier(jeton)
-        if len(champs) != 3 or champs[0] != VERSION:
+        if len(champs) != 3 or champs[0] != VERSION or len(champs[2]) % LONGUEUR_EMPREINTE_ADRESSE:
             raise JetonInvalide("Format de jeton inconnu.")
-        _, profil_id, empreinte = champs
-        return Demande(profil_id, empreinte, self)
+        _, profil_id, bout_a_bout = champs
+        empreintes = frozenset(
+            bout_a_bout[debut : debut + LONGUEUR_EMPREINTE_ADRESSE]
+            for debut in range(0, len(bout_a_bout), LONGUEUR_EMPREINTE_ADRESSE)
+        )
+        return Demande(profil_id, empreintes, self)

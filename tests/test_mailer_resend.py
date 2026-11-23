@@ -88,7 +88,8 @@ class ResendEmailSenderTests(unittest.TestCase):
             self.assertNotIn("headers", envoye)
 
     def test_the_unsubscribe_link_travels_as_headers(self):
-        url = "https://veille.example.com/desabonnement/v1.abc.def"
+        # Longue exprès : en JSON, rien ne la plie ni ne l'encode, contrairement au SMTP.
+        url = "https://veille.example.com/desabonnement/v1.0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71." + "A" * 120
         with tempfile.TemporaryDirectory() as tmpdir:
             with mock.patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
                 ResendEmailSender(config_resend(tmpdir)).send(

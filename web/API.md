@@ -227,8 +227,9 @@ Corps `{"jeton": "…"}`, le dernier segment du lien de désabonnement de la let
 ```
 
 - `404` → `{"erreur": "Lien de désabonnement invalide ou déjà utilisé."}`, quelle qu'en soit la
-  raison : jeton illisible, signature fausse, profil supprimé, destinataires déjà retirés ou
-  changés depuis l'envoi.
+  raison : jeton illisible, signature fausse, profil supprimé, ou plus aucune des adresses de
+  la lettre parmi les destinataires. Une liste qui a changé depuis l'envoi garde le lien
+  valable tant qu'il y reste au moins une adresse de la lettre.
 
 Un `POST` et non un `GET` : le jeton voyage dans le corps, hors des chemins que l'API
 journalise. Le site l'appelle pour afficher la page du lien ; un antivirus de messagerie qui
@@ -239,8 +240,11 @@ ouvre le lien ne désabonne donc personne.
 Corps `{"jeton": "…"}`. → `200 {"username": "bea"}` : les destinataires du profil sont vidés
 (la clé `email` du document est retirée).
 
-- `404` → même message que la lecture. Un lien ne sert qu'une fois : signé sur les
-  destinataires du moment, il ne désigne plus rien une fois ceux-ci retirés.
+- `404` → même message que la lecture. Un lien ne sert qu'une fois : il porte une empreinte
+  de chaque adresse de la lettre, et aucune ne correspond plus une fois les destinataires retirés.
+
+Le jeton compte huit caractères par destinataire de la lettre, en plus d'environ 85 : le site
+en borne la longueur à 4 096.
 
 Le site ne vérifie pas le jeton, il ne connaît pas la clé : il le relaie tel quel, sans
 session ni cookie. C'est la seule route du site qui accepte un `POST` d'une autre origine — le

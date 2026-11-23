@@ -354,11 +354,11 @@ class AnnuaireSqlite(Annuaire):
         return Fiche(id, username, document, cree_le, horodatage)
 
     def desabonner(self, demande: "Demande") -> Fiche | None:
-        """Retire les destinataires du profil que vise `demande`, s'ils sont ceux du lien.
+        """Retire les destinataires du profil que vise `demande`, si l'un d'eux a reçu la lettre.
 
-        `None` quand le profil n'existe plus ou que ses destinataires ne sont plus ceux pour
-        lesquels le lien a été émis — en particulier quand ils viennent d'être retirés :
-        c'est ce qui fait qu'un lien ne sert qu'une fois.
+        `None` quand le profil n'existe plus ou qu'aucune des adresses de la lettre n'en est
+        encore destinataire — en particulier quand elles viennent d'être retirées : c'est ce
+        qui fait qu'un lien ne sert qu'une fois.
 
         La vérification et l'écriture tiennent dans la même transaction, verrou pris
         d'emblée : deux clics simultanés ne peuvent pas passer tous les deux, ni un
@@ -376,9 +376,13 @@ class AnnuaireSqlite(Annuaire):
                 return None
             try:
                 fiche = self._fiche(ligne)
+                # Lues par le même parseur que le travailleur, qui a signé le lien : une
+                # adresse seule, écrite en chaîne à la main, reste une adresse et ne se
+                # découpe pas en caractères.
+                emails = fiche.profil.emails
             except ValueError:
                 return None
-            if not demande.concerne(list(fiche.document.get(CLE_EMAIL, []))):
+            if not demande.concerne(emails):
                 return None
             document = {cle: valeur for cle, valeur in fiche.document.items() if cle != CLE_EMAIL}
             horodatage = _maintenant()

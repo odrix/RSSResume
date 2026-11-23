@@ -797,6 +797,33 @@ class DesabonnementApiTests(ServeurTestCase):
             self.assertEqual(401, self.appel("POST", chemin, {"jeton": self.jeton}, jeton=None)[0])
         self.assertIn("email", self.annuaire.fiche("bea").document)
 
+    def test_a_link_survives_a_recipient_added_after_sending(self):
+        """La liste vit après l'envoi : une adresse ajoutée ne rend pas caduc le lien des lettres parties."""
+        self.annuaire.modifier(
+            "bea", {"profil": "B", "email": ["b@example.com", "c@example.com", "d@example.com"]}
+        )
+
+        self.assertEqual(
+            (200, {"username": "bea", "destinataires": 3}),
+            self.json("POST", "/api/v1/desabonnements/lecture", {"jeton": self.jeton}),
+        )
+        self.assertEqual((200, {"username": "bea"}), self.json("POST", "/api/v1/desabonnements", {"jeton": self.jeton}))
+
+    def test_a_single_address_stored_as_a_string_is_read_like_the_worker_does(self):
+        document = {**self.fiche.document, "email": "a@x.fr"}
+        with self.annuaire._connexion() as connexion:
+            connexion.execute("UPDATE profils SET document = ? WHERE id = ?", (json.dumps(document), self.fiche.id))
+        jeton = Desabonnement(Signataire(JETON, OBJET_DESABONNEMENT)).jeton(
+            self.fiche.id, self.annuaire.profil("bea").emails
+        )
+
+        self.assertEqual(
+            (200, {"username": "bea", "destinataires": 1}),
+            self.json("POST", "/api/v1/desabonnements/lecture", {"jeton": jeton}),
+        )
+        self.assertEqual((200, {"username": "bea"}), self.json("POST", "/api/v1/desabonnements", {"jeton": jeton}))
+        self.assertNotIn("email", self.annuaire.fiche("bea").document)
+
     def test_only_post_is_served(self):
         statut, entetes, _ = self.appel("GET", "/api/v1/desabonnements")
         self.assertEqual(405, statut)
