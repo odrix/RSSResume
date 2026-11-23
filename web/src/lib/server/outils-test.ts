@@ -8,6 +8,7 @@ import { ClientApiResume } from './api-resume.js';
 import { ouvrirBase } from './base.js';
 import { Comptes, HacheurMotDePasse, type Utilisateur } from './comptes.js';
 import { CourrierJournal } from './courrier.js';
+import { Desabonnement } from './desabonnement.js';
 import { Destinataires } from './destinataires.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
@@ -57,6 +58,7 @@ export function monter(maintenant: () => number = Date.now) {
 		courrier,
 		new LimiteurTentatives(10, 60 * 60 * 1000, maintenant)
 	);
+	const desabonnement = new Desabonnement(api);
 
 	/** Un compte confirmé, sans passer par l'API : pour les tests qui ne portent pas sur
 	 * l'inscription. */
@@ -76,6 +78,7 @@ export function monter(maintenant: () => number = Date.now) {
 		api,
 		inscription,
 		destinataires,
+		desabonnement,
 		creerConfirme
 	};
 }

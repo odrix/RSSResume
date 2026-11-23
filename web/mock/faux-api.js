@@ -36,6 +36,9 @@ export const CATALOGUE_DEMO = [
 	{ libelle: 'Veille interne', description: "La veille d'une autre équipe.", proprietaires: ['bea'] }
 ];
 
+/** Le refus de `rssresume/api/routes.py`, le même quelle qu'en soit la raison. */
+const LIEN_DESABONNEMENT_INVALIDE = 'Lien de désabonnement invalide ou déjà utilisé.';
+
 /** Le passage annoncé par la fausse API : celui du déploiement par défaut. */
 const HEURE_PASSAGE = '04:00';
 const FUSEAU_PASSAGE = 'Europe/Paris';
@@ -132,6 +135,8 @@ export class FausseApi {
 	/** Le catalogue des catégories ; `null`, il est ouvert : tout est suivi, rien n'est
 	 * proposé ni vérifié. @type {CategorieStockeeCatalogue[] | null} */
 	catalogue = CATALOGUE_DEMO;
+	/** Les jetons de désabonnement déclarés, et le profil que chacun vise. @type {Map<string, string>} */
+	desabonnements = new Map();
 
 	/** @param {string} jeton */
 	constructor(jeton) {
@@ -159,6 +164,12 @@ export class FausseApi {
 		if (morceaux[0] === 'api' && morceaux[1] === 'v1' && morceaux[2] === 'gabarits' && morceaux.length === 3) {
 			if (requete.method !== 'GET') return erreur(405, 'méthode non prise en charge');
 			return json(200, this.gabarits);
+		}
+		if (morceaux[0] === 'api' && morceaux[1] === 'v1' && morceaux[2] === 'desabonnements') {
+			const lecture = morceaux[3] === 'lecture' && morceaux.length === 4;
+			if (!lecture && morceaux.length !== 3) return erreur(404, 'route inconnue');
+			if (requete.method !== 'POST') return erreur(405, 'méthode non prise en charge');
+			return this.#desabonner(await lireJson(requete), lecture);
 		}
 		if (morceaux[0] !== 'api' || morceaux[1] !== 'v1' || morceaux[2] !== 'profils') {
 			return erreur(404, 'route inconnue');
@@ -236,6 +247,30 @@ export class FausseApi {
 	 */
 	ajouterContenu(username, date, contenu) {
 		this.#journee(username, date).contenu = contenu;
+	}
+
+	/**
+	 * Un jeton de désabonnement valable pour `username`. L'API le vérifie par sa signature ;
+	 * ici, il suffit qu'il ait été déclaré, et il cesse de valoir une fois servi — ou dès que
+	 * le profil n'a plus de destinataire, comme le jeton lié aux adresses de l'API.
+	 * @param {string} jeton
+	 * @param {string} username
+	 */
+	ajouterDesabonnement(jeton, username) {
+		this.desabonnements.set(jeton, username);
+	}
+
+	/** @param {any} corps @param {boolean} lecture */
+	#desabonner(corps, lecture) {
+		const jeton = corps && typeof corps.jeton === 'string' ? corps.jeton : null;
+		const username = jeton === null ? undefined : this.desabonnements.get(jeton);
+		const profil = username === undefined ? undefined : this.profils.get(username);
+		if (!profil || !profil.email.length) return erreur(404, LIEN_DESABONNEMENT_INVALIDE);
+		if (lecture) return json(200, { username: profil.username, destinataires: profil.email.length });
+		profil.email = [];
+		profil.modifie_le = new Date().toISOString();
+		this.desabonnements.delete(/** @type {string} */ (jeton));
+		return json(200, { username: profil.username });
 	}
 
 	/** @param {string} username @param {string} date */

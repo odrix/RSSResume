@@ -10,6 +10,12 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 			adapter: adapter(),
+			// La protection CSRF de SvelteKit est levée ici et réécrite dans `hooks.server.ts`
+			// (`src/lib/server/csrf.ts`), à l'identique sauf pour une route : le désabonnement
+			// en un clic, que Gmail et Yahoo postent depuis le client mail, sans `Origin`.
+			// Retirer cette ligne sans retirer l'exception casserait ce désabonnement ; la
+			// garder sans le hook ouvrirait tous les formulaires aux autres sites.
+			csrf: { trustedOrigins: ['*'] },
 			// Le site ne charge rien d'ailleurs : ni police, ni script, ni image tierce. Les
 			// scripts de SvelteKit reçoivent un nonce ; les styles gardent 'unsafe-inline' parce
 			// que Vite les injecte en développement et que le risque d'un style injecté est
