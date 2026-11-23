@@ -889,5 +889,48 @@ class CategoriesApiTests(ServeurTestCase):
         self.assertEqual((405, "GET"), (statut, entetes["Allow"]))
 
 
+class CoutsApiTests(ServeurTestCase):
+    """Les coûts lus des journaux, sans appel au fournisseur ni recalcul tarifaire."""
+
+    def setUp(self):
+        super().setUp()
+        self.fiche = self.annuaire.creer("bea", {"profil": "B"})
+
+    def test_couts_sept_et_trente_jours_additionnent_les_journaux(self):
+        dossier = self.sortie / self.fiche.id
+        today = datetime.date.today()
+        for jour, cout in ((today, 0.001), (today - datetime.timedelta(days=6), 0.002),
+                           (today - datetime.timedelta(days=20), 0.003)):
+            cible = dossier / jour.isoformat()
+            cible.mkdir(parents=True)
+            (cible / f"tech{runlog.LOG_SUFFIX}").write_text(json.dumps({
+                "categorie": "Tech", "couts": {"appels": [{
+                    "type_appel": "resume", "modele": "gpt-4o-mini",
+                    "tokens_entree": 100, "tokens_sortie": 50, "cout": cout,
+                }]}
+            }), encoding="utf-8")
+
+        statut, corps = self.json("GET", "/api/v1/profils/bea/couts")
+        self.assertEqual(200, statut)
+        self.assertAlmostEqual(0.003, corps["couts_7j"]["total"])
+        self.assertAlmostEqual(0.006, corps["couts_30j"]["total"])
+        self.assertTrue(corps["couts_7j"]["tarification_complete"])
+
+    def test_modele_non_tarife_est_signale(self):
+        dossier = self.sortie / self.fiche.id / datetime.date.today().isoformat()
+        dossier.mkdir(parents=True)
+        (dossier / f"tech{runlog.LOG_SUFFIX}").write_text(json.dumps({
+            "categorie": "Tech", "couts": {"appels": [{
+                "type_appel": "resume", "modele": "modele-maison",
+                "cout": None,
+            }]}
+        }), encoding="utf-8")
+
+        statut, corps = self.json("GET", "/api/v1/profils/bea/couts")
+        self.assertEqual(200, statut)
+        self.assertIsNone(corps["couts_7j"]["total"])
+        self.assertIn("modele-maison", corps["couts_7j"]["modeles_sans_tarif"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	// Un seul 404 pour l'absence et le refus : la page ne dit pas ce qui existe chez les autres.
 	const contenu = await contexte().consultation.journee(utilisateur, params.username, params.date);
 	if (!contenu) error(404, 'Journée introuvable');
+	contexte().consultation.noter(utilisateur, params.date);
 	return {
 		username: params.username,
 		proprietaire: params.username === utilisateur.username,
