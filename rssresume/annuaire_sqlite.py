@@ -30,6 +30,7 @@ from rssresume.certfr.stack import CLE_STACK
 from rssresume.profil import (
     CLE_CATEGORIES,
     CLE_EMAIL,
+    CLE_FLUX_EXCLUS,
     CLE_ID,
     CLE_PRENOM,
     CLE_PROFIL,
@@ -135,6 +136,8 @@ class Fiche:
             corps[CLE_AXES] = list(self.document[CLE_AXES])
         if CLE_CATEGORIES in self.document:
             corps[CLE_CATEGORIES] = list(self.document[CLE_CATEGORIES])
+        if CLE_FLUX_EXCLUS in self.document:
+            corps[CLE_FLUX_EXCLUS] = list(self.document[CLE_FLUX_EXCLUS])
         return corps
 
 
@@ -155,7 +158,10 @@ def document_normalise(
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
     brut = {
         cle: saisie[cle]
-        for cle in (CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES, CLE_CATEGORIES)
+        for cle in (
+            CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES, CLE_CATEGORIES,
+            CLE_FLUX_EXCLUS,
+        )
         if cle in saisie
     }
     # Un formulaire vidé envoie une liste vide là où un fichier omettait la clé : c'est
@@ -168,6 +174,9 @@ def document_normalise(
         del brut[CLE_AXES]
     if brut.get(CLE_CATEGORIES) == []:
         del brut[CLE_CATEGORIES]
+    # N'exclure aucun flux est l'état ordinaire : le document l'écrit en omettant la clé.
+    if brut.get(CLE_FLUX_EXCLUS) == []:
+        del brut[CLE_FLUX_EXCLUS]
     brut[CLE_ID] = id
     profil = profil_depuis_dict(brut, origine, catalogue, origine)
     if not id_valide(profil.id):
@@ -181,6 +190,8 @@ def document_normalise(
         document[CLE_AXES] = profil.axes.en_document()
     if profil.categories is not None:
         document[CLE_CATEGORIES] = list(profil.categories)
+    if profil.flux_exclus:
+        document[CLE_FLUX_EXCLUS] = profil.flux_exclus.en_document()
     return document
 
 

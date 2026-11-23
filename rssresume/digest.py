@@ -289,6 +289,9 @@ class DigestService:
             # L'empreinte du prompt de scoring : deux journaux dont elle diffère n'ont
             # pas noté leurs articles contre le même profil, et ne se comparent pas.
             "empreinte_scoring": self._scoring_fingerprint(),
+            # Les flux écartés avant le scoring : un journal qui lit moins d'articles
+            # notés que d'articles reçus s'explique ici, et non par une panne du modèle.
+            "flux_exclus": list(self._config.flux_exclus.titres),
         }
 
     def _parametres_certfr(self) -> dict:
@@ -363,18 +366,17 @@ class DigestService:
         regle: SelectionRule,
     ) -> CategoryDigest:
         articles = self._freshrss_client.fetch_daily_articles(category, day)
-        articles_a_traiter = articles
+        console.category(category, f"{len(articles)} article(s)")
+        # `articles` garde toute la journée, pour le marquage lu ; seul ce qui reste ici
+        # est noté et résumé. Les flux exclus d'abord : `--limit` borne ce qui serait
+        # vraiment traité, pas des articles qu'on aurait de toute façon écartés.
+        articles_a_traiter = self._hors_flux_exclus(articles)
         if self._config.limite_articles is not None:
-            articles_a_traiter = articles[:self._config.limite_articles]
-            console.category(
-                category,
-                f"{len(articles)} article(s), {len(articles_a_traiter)} traité(s) (limite --limit)",
-            )
-        else:
-            console.category(category, f"{len(articles)} article(s)")
+            articles_a_traiter = articles_a_traiter[:self._config.limite_articles]
+            console.detail(f"{len(articles_a_traiter)} article(s) traité(s) (limite --limit)")
 
-        if not articles:
-            # Aucun article : marqueur vide, ni résumé IA ni synthèse vocale.
+        if not articles_a_traiter:
+            # Aucun article à traiter : marqueur vide, ni résumé IA ni synthèse vocale.
             marker_path = self._write_marker(day_dir, slug)
             console.detail(f"aucun article : {marker_path.name} (ni IA ni synthèse vocale)")
             return CategoryDigest(
@@ -451,6 +453,26 @@ class DigestService:
             watchlist=self._watchlist(articles, selected, notes),
             notes=notes,
         )
+
+    def _hors_flux_exclus(self, articles: list[Article]) -> list[Article]:
+        """Les articles que la personne veut voir notés : ceux des flux qu'elle n'exclut pas.
+
+        Écartés avant le scoring et non après : un podcast sans transcription ou un
+        journal des versions ne peut rien donner au modèle, et c'est la note elle-même
+        qu'on cherche à ne pas payer. La ligne de suivi nomme les flux réellement
+        écartés, pour qu'un titre mal recopié se voie à ce qu'il n'y figure jamais.
+        """
+        exclus = self._config.flux_exclus
+        if not exclus:
+            return articles
+        gardes = [article for article in articles if not exclus.exclut(article)]
+        ecartes = len(articles) - len(gardes)
+        if ecartes:
+            flux = sorted({article.feed_title for article in articles if exclus.exclut(article)})
+            console.detail(
+                f"{ecartes} article(s) de flux exclus ({', '.join(flux)}), ni notés ni résumés"
+            )
+        return gardes
 
     @classmethod
     def _watchlist(

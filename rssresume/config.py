@@ -24,6 +24,7 @@ from rssresume.profil import (
     CLE_EMAIL,
     ENV_PROFIL_FILE,
     SECURITE_PAR_DEFAUT,
+    FluxExclus,
     Lecteur,
     Securite,
     load_profil,
@@ -277,6 +278,9 @@ class AppConfig:
     #: Plafond d'articles ramené à la catégorie pendant une mise au point. `None` conserve
     #: le passage intégral ; appliqué avant scoring et résumé, jamais au marquage global.
     limite_articles: int | None = None
+    #: Les flux que la personne retire du scoring et du résumé, déclarés dans son
+    #: document. Appliqués avant `limite_articles` et, comme elle, jamais au marquage lu.
+    flux_exclus: FluxExclus = dataclasses.field(default_factory=FluxExclus)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -318,6 +322,7 @@ class AppConfig:
             stack=personne.stack,
             securite=personne.securite,
             prenom=personne.prenom,
+            flux_exclus=personne.flux_exclus,
             audio_mode=load_audio_mode(_env(ENV_AUDIO_MODE)),
             debug=(_env(ENV_DEBUG, "false") or "").lower() == "true",
             score_threshold=int(_env("RSSRESUME_SCORE_THRESHOLD", "7") or "7"),
@@ -351,7 +356,7 @@ class AppConfig:
         """La configuration de l'installation, appliquée à une personne.
 
         Ce qui est personnel — profil, stack, régime de sécurité (`securite`), prénom,
-        destinataires — vient du document
+        destinataires, flux exclus — vient du document
         de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
         `{output}/{id}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
         `--journal`) suit sans savoir qu'il y a plusieurs personnes. L'identifiant et non
@@ -373,6 +378,7 @@ class AppConfig:
             prenom=personne.prenom,
             smtp_to=list(personne.emails),
             categories_abonnees=personne.categories,
+            flux_exclus=personne.flux_exclus,
         )
 
     def categories_installation(self, disponibles: list[str]) -> list[str]:

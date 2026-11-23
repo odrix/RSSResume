@@ -319,6 +319,17 @@ class ConfigPourTests(unittest.TestCase):
             self.assertIs(Securite.EXPLOITANT, installation.securite)
             self.assertIs(Securite.CURIEUX, installation.pour(bea).securite)
 
+    def test_pour_carries_the_excluded_feeds_of_the_profile(self):
+        """Personnels comme le reste du document : l'installation n'en exclut aucun."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installation = make_config(tmpdir)
+            bea = Lecteur(
+                "bea", profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B", "flux_exclus": ["NoLimitSecu"]})
+            )
+
+            self.assertFalse(installation.flux_exclus)
+            self.assertEqual(("NoLimitSecu",), installation.pour(bea).flux_exclus.titres)
+
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             lecteur = Lecteur("bea", Profil("B", identifiant=ID_BEA))
@@ -608,6 +619,63 @@ class TourneeTests(unittest.TestCase):
             self.assertEqual([], tournee.run(JOUR, send_email=False))
             self.assertEqual({}, vus)
             self.assertEqual(0, client.appels_marquage)
+
+    def _tournee_notee(self, tmpdir, documents):
+        """Une tournée dont chaque profil a son noteur, sur un podcast et deux articles."""
+        client = FreshRSSQuiOublieLesLus(
+            {
+                "Tech": [dataclasses.replace(article("podcast"), feed_title="NoLimitSecu"), article("item-2")],
+                "News": [article("item-3")],
+            }
+        )
+        self.noteurs = {}
+
+        def assembleur(config, freshrss):
+            self.noteurs[config.username] = FakeScorer(side_effect=noter_neuf)
+            return DigestService(
+                config=config,
+                freshrss_client=freshrss.pour(config.username),
+                summary_generator=SummaryGenerator(None),
+                audio_generator=FakeAudioGenerator(),
+                email_sender=FakeEmailSender(),
+                scorer=self.noteurs[config.username],
+            )
+
+        config = make_config(pathlib.Path(tmpdir) / "output")
+        return Tournee(config, self._annuaire(tmpdir, documents), client, assembleur), client
+
+    def _notes(self, nom):
+        return sorted(
+            a["id"] for appel in self.noteurs[nom].score_articles.call_args_list for a in appel.args[0]
+        )
+
+    def test_articles_excluded_by_one_profile_are_marked_read_once_by_the_tour(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            documents = {
+                "adrien": {"profil": "A", "flux_exclus": ["NoLimitSecu"]},
+                "bea": {"profil": "B", "flux_exclus": ["nolimitsecu"]},
+            }
+            tournee, client = self._tournee_notee(tmpdir, documents)
+
+            self.assertEqual([], tournee.run(JOUR, send_email=False))
+
+            self.assertEqual(1, client.appels_marquage)
+            self.assertEqual(
+                ["item-2", "item-3", "podcast"], sorted(a.item_id for a in client.marked_as_read)
+            )
+
+    def test_an_exclusion_is_personal_to_its_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            documents = {
+                "adrien": {"profil": "A", "flux_exclus": ["NoLimitSecu"]},
+                "bea": {"profil": "B"},
+            }
+            tournee, _ = self._tournee_notee(tmpdir, documents)
+
+            tournee.run(JOUR, send_email=False)
+
+            self.assertEqual(["item-2", "item-3"], self._notes("adrien"))
+            self.assertEqual(["item-2", "item-3", "podcast"], self._notes("bea"))
 
 
 def article_de(categorie, item_id):

@@ -112,6 +112,17 @@ Chaque article reçoit une **note** selon un profil de pertinence unique
 ([profil.py](rssresume/profil.py)). Le scoring ne voit que le **titre et un extrait de
 400 caractères** : c'est une étape de tri, pas de compréhension.
 
+Les articles des flux listés à la clé `flux_exclus` du profil n'y arrivent pas : un podcast sans
+transcription ou un journal des versions ne donnerait au modèle qu'un titre, et la note coûterait
+des tokens pour rien. L'appariement porte sur `Article.feed_title` — le titre du flux, jamais la
+catégorie —, par égalité une fois la casse et les accents retirés (`casefold_ascii`) : « Go »
+n'exclut pas « Google Cloud Blog ». L'exclusion passe avant `--limit`, et ne touche pas au
+marquage lu : `CategoryDigest.articles` garde toute la journée, seuls les articles à traiter
+sont notés et résumés. Une catégorie faite uniquement de flux exclus se termine comme une
+catégorie vide — marqueur `.no-article`, aucun appel. Les catégories CERT-FR, qui n'appellent
+aucun modèle, ne sont pas filtrées. Le journal de la catégorie liste les flux exclus dans
+`parametres.flux_exclus` ; l'empreinte de scoring n'en dépend pas.
+
 Une note, c'est trois champs — et les trois servent :
 
 | Champ | Ce que c'est | Où il sert |
@@ -931,6 +942,7 @@ Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil
 | `prenom` | par quel nom l'audio de journée ouvre | `MontageService`, en mode `global` seulement |
 | `securite` | le détail dû aux vulnérabilités : `exploitant`, `decideur` ou `curieux` | `SummaryGenerator` et `MontageService`, dans la consigne des CVE |
 | `categories` | les catégories publiques suivies, ou privées dont la personne est propriétaire | filtre avant le scoring dans `AppConfig.categories_servies` |
+| `flux_exclus` | les flux qui ne se résument pas, par leur titre FreshRSS exact, casse et accents ignorés | `DigestService._hors_flux_exclus`, avant le scoring et `--limit` ; marqués lus quand même |
 
 Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne — c'est une
 salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle fait échouer le
@@ -1144,7 +1156,7 @@ Une table, `profils` :
 | --- | --- |
 | `id` | clé primaire, l'UUID qui nomme `output/<id>/` |
 | `username` | `UNIQUE`, le nom des tags et de `--profil` |
-| `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom`, `securite` (toujours écrite, `exploitant` quand la saisie ne la porte pas) |
+| `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom`, `securite` (toujours écrite, `exploitant` quand la saisie ne la porte pas), `flux_exclus` (omise quand la liste est vide) |
 | `cree_le`, `modifie_le` | horodatages ISO 8601 en UTC |
 
 Et une seconde, `categories`, le [catalogue des catégories](#le-catalogue-des-catégories) :
