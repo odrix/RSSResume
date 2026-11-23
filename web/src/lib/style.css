@@ -346,6 +346,96 @@ th {
 	font-size: 0.8rem;
 }
 
+.choix-style {
+	display: grid;
+	gap: 0.25rem;
+	padding: 0.65rem 0.75rem;
+	border: 2px solid rgba(255, 255, 255, 0.55);
+	color: #fff;
+	font-size: 0.78rem;
+	text-transform: uppercase;
+}
+
+.choix-style select {
+	padding: 0.45rem 0.55rem;
+	border: 2px solid #fff;
+	box-shadow: 3px 3px 0 #5f72a0;
+	background: var(--surface);
+	color: var(--texte);
+	font-size: 0.82rem;
+	text-transform: none;
+}
+
+/* Variante inspirée de la maquette : plus éditoriale, avec un panneau bleu, des cartes
+   sobres et une mise en page de lecture plus dense. */
+:root[data-style-page='maquette'] {
+	--fond: #eceadf;
+	--surface: #fffef9;
+	--surface-jaune: #ffd13f;
+	--texte: #171b20;
+	--attenue: #686d72;
+	--bord: #171b20;
+	--accent: #ffd13f;
+	--bleu-noir: #111827;
+	--ombre: 5px 5px 0 var(--bord);
+}
+
+:root[data-style-page='maquette'] body {
+	background:
+		linear-gradient(rgba(23, 27, 32, 0.035) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(23, 27, 32, 0.035) 1px, transparent 1px),
+		var(--fond);
+	background-size: 26px 26px;
+}
+
+:root[data-style-page='maquette'] h1 {
+	letter-spacing: -0.055em;
+	text-transform: none;
+}
+
+:root[data-style-page='maquette'] .entete {
+	background: #f8f7f1;
+	border-right: 1px solid var(--bord);
+}
+
+:root[data-style-page='maquette'] .marque {
+	color: var(--texte);
+	border-bottom-color: var(--bord);
+}
+
+:root[data-style-page='maquette'] .entete a {
+	color: var(--texte);
+}
+
+:root[data-style-page='maquette'] .entete nav > a:not(.marque) {
+	border-color: var(--bord);
+	box-shadow: 3px 3px 0 #d9d6ca;
+	background: #fff;
+}
+
+:root[data-style-page='maquette'] .choix-style {
+	border-color: var(--bord);
+	color: var(--texte);
+	background: #fff;
+}
+
+:root[data-style-page='maquette'] .choix-style select {
+	border-color: var(--bord);
+	box-shadow: 2px 2px 0 #d9d6ca;
+}
+
+:root[data-style-page='maquette'] .qui {
+	color: var(--texte);
+}
+
+:root[data-style-page='maquette'] .deconnexion {
+	border-bottom-color: var(--bord);
+}
+
+:root[data-style-page='maquette'] button.lien {
+	color: var(--texte);
+}
+
 @media (max-width: 900px) {
 	.entete {
 		position: relative;
