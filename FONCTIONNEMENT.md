@@ -118,8 +118,10 @@ des tokens pour rien. L'appariement porte sur `Article.feed_title` — le titre 
 catégorie —, par égalité une fois la casse et les accents retirés (`casefold_ascii`) : « Go »
 n'exclut pas « Google Cloud Blog ». L'exclusion passe avant `--limit`, et ne touche pas au
 marquage lu : `CategoryDigest.articles` garde toute la journée, seuls les articles à traiter
-sont notés et résumés. Une catégorie faite uniquement de flux exclus se termine comme une
-catégorie vide — marqueur `.no-article`, aucun appel. Les catégories CERT-FR, qui n'appellent
+sont notés et résumés. Une catégorie faite uniquement de flux exclus s'arrête comme une
+catégorie vide — marqueur `.no-article`, aucun appel —, mais ne se dit pas vide : l'email
+annonce « N article(s) aujourd'hui dans la catégorie X, tous de flux exclus du résumé. »
+(`all_excluded_message`), phrase que le journal garde pour `--send-only`. Les catégories CERT-FR, qui n'appellent
 aucun modèle, ne sont pas filtrées. Le journal de la catégorie liste les flux exclus dans
 `parametres.flux_exclus` ; l'empreinte de scoring n'en dépend pas.
 

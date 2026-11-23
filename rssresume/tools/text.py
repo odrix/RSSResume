@@ -235,6 +235,13 @@ def no_article_message(category: str) -> str:
     return f"Aucun nouvel article aujourd'hui dans la catégorie {category}."
 
 
+def all_excluded_message(category: str, count: int) -> str:
+    return (
+        f"{count} article(s) aujourd'hui dans la catégorie {category}, "
+        "tous de flux exclus du résumé."
+    )
+
+
 def no_selection_message(category: str, threshold: int) -> str:
     return (
         f"Aucun article retenu aujourd'hui dans la catégorie {category} "

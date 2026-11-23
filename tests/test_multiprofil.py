@@ -33,6 +33,7 @@ from rssresume.profil import (
     AnnuaireDossier,
     AnnuaireFichier,
     AnnuaireVide,
+    FluxExclus,
     Lecteur,
     Profil,
     Securite,
@@ -329,6 +330,11 @@ class ConfigPourTests(unittest.TestCase):
 
             self.assertFalse(installation.flux_exclus)
             self.assertEqual(("NoLimitSecu",), installation.pour(bea).flux_exclus.titres)
+            # La dataclass compare ses champs : les mêmes flux, écrits autrement et portés
+            # par un autre objet, laissent la configuration égale à elle-même.
+            config = installation.pour(bea)
+            self.assertEqual(config, dataclasses.replace(config, flux_exclus=FluxExclus(["nolimitsecu"])))
+            self.assertNotEqual(config, dataclasses.replace(config, flux_exclus=FluxExclus()))
 
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:

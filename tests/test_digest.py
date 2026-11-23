@@ -6,10 +6,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rssresume import certfr
+from rssresume import certfr, runlog
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.models import ORIGINE_MONTAGE, Article, CategoryDigest, Link, Montage
+from rssresume.newsletter import Lettre
 from rssresume.profil import FluxExclus
 from rssresume.summaries import SummaryGenerator
 from tests.support import (
@@ -630,6 +631,8 @@ class FluxExclusTests(unittest.TestCase):
             digests = service.run(DAY, send_email=False)
             journal = pathlib.Path(tmpdir) / DAY.isoformat() / "tech.log.json"
             self.journal = json.loads(journal.read_text(encoding="utf-8")) if journal.exists() else None
+            # Ce que `--send-only` relit : les digests reconstruits des seuls journaux.
+            self.relus = runlog.read_day(pathlib.Path(tmpdir) / DAY.isoformat())
             return digests
 
     def _notes(self):
@@ -662,6 +665,29 @@ class FluxExclusTests(unittest.TestCase):
         self.summary.summarize.assert_not_called()
         self.assertIsNotNone(digests[0].marker_path)
         self.assertEqual(["podcast"], [a.item_id for a in digests[0].articles])
+
+    def test_a_category_made_only_of_excluded_feeds_says_so_rather_than_empty(self):
+        """« Aucun nouvel article » mentirait : le journal, lui, en compte deux."""
+        attendu = "2 article(s) aujourd'hui dans la catégorie Tech, tous de flux exclus du résumé."
+        digests = self._run(
+            {"Tech": [article_du_flux("podcast", "NoLimitSecu"), article_du_flux("version", "FreshRSS releases")],
+             "News": []},
+            ["NoLimitSecu", "FreshRSS releases"],
+        )
+
+        self.assertEqual(attendu, digests[0].summary_text)
+        self.assertEqual(2, self.journal["resultat"]["articles"])
+        self.assertEqual(attendu, self.journal["resume"])
+        # L'email du jour et celui de `--send-only` disent la même chose.
+        self.assertIn(attendu, Lettre.compose(DAY, digests).text)
+        relu, = self.relus
+        self.assertIn(attendu, Lettre.compose(DAY, [relu]).text)
+        self.assertNotIn("Aucun nouvel article", Lettre.compose(DAY, [relu]).text)
+
+    def test_an_empty_category_still_says_there_was_no_article(self):
+        digests = self._run({"Tech": [], "News": []}, ["NoLimitSecu"])
+
+        self.assertEqual("Aucun nouvel article aujourd'hui dans la catégorie Tech.", digests[0].summary_text)
 
     def test_an_excluded_article_is_still_marked_read(self):
         self._run(self.JOURNEE, ["NoLimitSecu", "FreshRSS releases"])

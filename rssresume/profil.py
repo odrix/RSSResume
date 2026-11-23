@@ -165,6 +165,22 @@ class FluxExclus:
     def __bool__(self) -> bool:
         return bool(self._replies)
 
+    def __eq__(self, autre: object) -> bool:
+        """Égaux quand ils excluent les mêmes flux, quelle que soit l'écriture des titres.
+
+        Sans cela, l'identité tranchait : `AppConfig` est une dataclass qui compare ses
+        champs, et deux configurations identiques se seraient dites différentes.
+        """
+        if not isinstance(autre, FluxExclus):
+            return NotImplemented
+        return self._replies == autre._replies
+
+    def __hash__(self) -> int:
+        return hash(self._replies)
+
+    def __repr__(self) -> str:
+        return f"FluxExclus({list(self.titres)!r})"
+
     def en_document(self) -> list[str]:
         """La forme d'échange, celle que le document stocké relit telle quelle."""
         return list(self.titres)

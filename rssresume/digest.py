@@ -45,7 +45,12 @@ from rssresume.protocols import (
     SummaryGeneratorProtocol,
 )
 from rssresume.tools import console, cve
-from rssresume.tools.text import no_article_message, no_selection_message, slugify
+from rssresume.tools.text import (
+    all_excluded_message,
+    no_article_message,
+    no_selection_message,
+    slugify,
+)
 
 #: Le scoring ne juge que sur un extrait : c'est le résumé, pas le scoring, qui lit tout.
 SCORING_EXCERPT_LENGTH = 400
@@ -370,7 +375,8 @@ class DigestService:
         # `articles` garde toute la journée, pour le marquage lu ; seul ce qui reste ici
         # est noté et résumé. Les flux exclus d'abord : `--limit` borne ce qui serait
         # vraiment traité, pas des articles qu'on aurait de toute façon écartés.
-        articles_a_traiter = self._hors_flux_exclus(articles)
+        hors_exclus = self._hors_flux_exclus(articles)
+        articles_a_traiter = hors_exclus
         if self._config.limite_articles is not None:
             articles_a_traiter = articles_a_traiter[:self._config.limite_articles]
             console.detail(f"{len(articles_a_traiter)} article(s) traité(s) (limite --limit)")
@@ -378,11 +384,21 @@ class DigestService:
         if not articles_a_traiter:
             # Aucun article à traiter : marqueur vide, ni résumé IA ni synthèse vocale.
             marker_path = self._write_marker(day_dir, slug)
-            console.detail(f"aucun article : {marker_path.name} (ni IA ni synthèse vocale)")
+            # Des articles reçus, tous de flux exclus, ne font pas une journée vide :
+            # « aucun nouvel article » mentirait au lecteur comme au journal, qui en
+            # compte N. La phrase dit ce qui s'est passé, l'email et `--send-only` la relisent.
+            if articles and not hors_exclus:
+                summary_text = all_excluded_message(category, len(articles))
+                console.detail(
+                    f"tous de flux exclus : {marker_path.name} (ni IA ni synthèse vocale)"
+                )
+            else:
+                summary_text = no_article_message(category)
+                console.detail(f"aucun article : {marker_path.name} (ni IA ni synthèse vocale)")
             return CategoryDigest(
                 category=category,
                 articles=articles,
-                summary_text=no_article_message(category),
+                summary_text=summary_text,
                 marker_path=marker_path,
             )
 

@@ -333,6 +333,14 @@ class FluxExclusTests(unittest.TestCase):
                 self.assertFalse(exclus.exclut(article_du_flux("NoLimitSecu")))
                 self.assertEqual([], exclus.en_document())
 
+    def test_two_lists_excluding_the_same_feeds_are_equal_and_show_their_titles(self):
+        """`AppConfig` est une dataclass : sans égalité, deux configs identiques différeraient."""
+        self.assertEqual(FluxExclus(["NoLimitSecu"]), FluxExclus(["nolimitsecu "]))
+        self.assertEqual(hash(FluxExclus(["NoLimitSecu"])), hash(FluxExclus(["NOLIMITSECU"])))
+        self.assertNotEqual(FluxExclus(["NoLimitSecu"]), FluxExclus(["FreshRSS releases"]))
+        self.assertEqual(FluxExclus(), FluxExclus([]))
+        self.assertEqual("FluxExclus(['NoLimitSecu'])", repr(FluxExclus(["NoLimitSecu"])))
+
     def test_a_malformed_list_fails_at_startup(self):
         for valeur in ("NoLimitSecu", {"NoLimitSecu": True}, ["NoLimitSecu", ""], ["  "], [3],
                        ["NoLimitSecu", "nolimitsecu"]):
