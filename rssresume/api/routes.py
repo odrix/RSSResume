@@ -8,6 +8,7 @@ et rendent des objets, la requête (`serveur.GestionnaireApi`) se charge du rest
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import re
 import urllib.parse
@@ -20,9 +21,10 @@ from rssresume.annuaire_sqlite import (
     ProfilDejaPris,
     ProfilInconnu,
 )
-from rssresume.api.sorties import Sorties
+from rssresume.api.sorties import Sorties, date_valide
 from rssresume.desabonnement import Demande, Desabonnement, JetonInvalide
 from rssresume.profil import ChampInvalide, username_valide, valider_username
+from rssresume.retours import LIMITE_LISTE_RETOURS, JourneeVisee, LienRetour, Retour
 from rssresume.scheduler import DailySchedule
 from rssresume.tools import console
 
@@ -90,12 +92,14 @@ class Route:
         passage: DailySchedule,
         gabarits=None,
         desabonnement: Desabonnement | None = None,
+        lien_retour: LienRetour | None = None,
     ):
         self.annuaire = annuaire
         self.sorties = sorties
         self.passage = passage
         self.gabarits = gabarits
         self.desabonnement = desabonnement
+        self.lien_retour = lien_retour
 
     def parametres(self, chemin: str) -> list[str] | None:
         """Les segments variables décodés, si `chemin` est de cette forme ; sinon `None`."""
@@ -202,6 +206,126 @@ class RouteDesabonnements(_RouteDesabonnement):
         if fiche is None:
             raise ErreurApi(404, LIEN_DESABONNEMENT_INVALIDE)
         requete.repondre_json(200, {"username": fiche.username})
+
+
+#: La seule réponse d'un lien de vote refusé : altéré, d'une autre clé, ou d'un profil
+#: disparu, qui tient le jeton n'a pas à apprendre lequel.
+LIEN_RETOUR_INVALIDE = "Lien de vote invalide."
+
+
+class _RouteRetourParLien(Route):
+    """Ce que les deux routes du vote par lien partagent : relire le jeton du corps.
+
+    Dans le corps et non dans l'URL, comme le désabonnement : les journaux d'accès notent
+    les chemins. Le profil et la journée ne viennent que du jeton — un `profil_id` ou un
+    `jour` glissés dans le corps ne sont pas lus.
+    """
+
+    def visee(self, corps: object) -> tuple[Fiche, JourneeVisee]:
+        jeton = corps.get("jeton") if isinstance(corps, dict) else None
+        if not isinstance(jeton, str) or self.lien_retour is None:
+            raise ErreurApi(404, LIEN_RETOUR_INVALIDE)
+        try:
+            visee = self.lien_retour.lire(jeton)
+        except JetonInvalide as exc:
+            raise ErreurApi(404, LIEN_RETOUR_INVALIDE) from exc
+        try:
+            fiche = self.annuaire.fiche_par_id(visee.profil_id)
+        except ValueError:
+            fiche = None
+        if fiche is None:
+            raise ErreurApi(404, LIEN_RETOUR_INVALIDE)
+        return fiche, visee
+
+
+class RouteRetourLecture(_RouteRetourParLien):
+    """`/api/v1/retours/lecture` : ce que le lien désigne, et le vote déjà donné, sans écrire.
+
+    La page du site l'appelle à l'affichage : un antivirus de messagerie qui ouvre le lien
+    ne doit pas voter à la place de la personne. Le vote existant est rendu pour que la
+    page le pré-remplisse — sans lui, un second envoi effacerait en silence le commentaire
+    laissé la première fois.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/retours/lecture")
+    methodes = ("POST",)
+
+    def post(self, requete, *parametres):
+        fiche, visee = self.visee(requete.corps_json())
+        retour = self.annuaire.retour(fiche.id, visee.jour)
+        requete.repondre_json(
+            200,
+            {
+                "username": fiche.username,
+                "jour": visee.jour.isoformat(),
+                "retour": retour.en_json() if retour else None,
+            },
+        )
+
+
+class RouteRetours(_RouteRetourParLien):
+    """`/api/v1/retours` : voter par le lien de la lettre (POST), lister les votes (GET).
+
+    La liste n'a pas d'autre garde que le jeton de l'API : c'est le site qui la réserve à
+    l'administration, comme il réserve déjà les journées à leur propriétaire.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/retours")
+    methodes = ("GET", "POST")
+
+    def get(self, requete, *parametres):
+        requete.repondre_json(
+            200, [retour.en_json() for retour in self.annuaire.retours(LIMITE_LISTE_RETOURS)]
+        )
+
+    def post(self, requete, *parametres):
+        corps = requete.corps_json()
+        fiche, visee = self.visee(corps)
+        retour = _enregistrer(self.annuaire, fiche, visee.jour, corps)
+        requete.repondre_json(
+            200, {"username": fiche.username, "jour": visee.jour.isoformat(), "retour": retour.en_json()}
+        )
+
+
+class RouteRetourJournee(Route):
+    """`/api/v1/profils/{username}/journees/{date}/retour` : le vote du site, pour qui est connecté.
+
+    Le site a déjà vérifié que la personne connectée est le propriétaire du profil ; l'API
+    ne vérifie pas que la journée existe sur le disque — le site non plus ne laisse voter
+    que sur une journée qu'il vient d'afficher.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)/journees/([^/]+)/retour")
+    methodes = ("GET", "PUT")
+
+    def get(self, requete, username, date):
+        fiche = self.fiche(username)
+        jour = _jour(date)
+        retour = self.annuaire.retour(fiche.id, jour)
+        if retour is None:
+            raise ErreurApi(404, "Aucun retour pour cette journée.")
+        requete.repondre_json(200, retour.en_json())
+
+    def put(self, requete, username, date):
+        fiche = self.fiche(username)
+        jour = _jour(date)
+        requete.repondre_json(200, _enregistrer(self.annuaire, fiche, jour, requete.corps_json()).en_json())
+
+
+def _jour(date: str) -> dt.date:
+    jour = date_valide(date)
+    if jour is None:
+        raise ErreurApi(404, "Journée introuvable.")
+    return jour
+
+
+def _enregistrer(annuaire: AnnuaireSqlite, fiche: Fiche, jour: dt.date, saisie: object) -> Retour:
+    """Le vote validé puis écrit, sous le nom du profil. Saisie refusée : 422, avec son champ."""
+    try:
+        retour = Retour.saisi(fiche.id, jour, saisie)
+    except ValueError as exc:
+        raise ErreurApi.refus(exc) from exc
+    return annuaire.enregistrer_retour(dataclasses.replace(retour, username=fiche.username))
 
 
 class RouteProfils(Route):
@@ -384,10 +508,13 @@ class RouteCoutsProfil(Route):
 ROUTES = (
     RouteDesabonnementLecture,
     RouteDesabonnements,
+    RouteRetourLecture,
+    RouteRetours,
     RouteProfils,
     RouteProfil,
     RouteJournees,
     RouteJournee,
+    RouteRetourJournee,
     RouteCoutsProfil,
     RouteAudio,
     RoutePassage,

@@ -26,6 +26,7 @@ import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
 import { LimiteurTentatives } from './limiteur.js';
 import { RelaisAudio } from './relais-audio.js';
+import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
 
 const MINUTE_MS = 60_000;
@@ -40,6 +41,7 @@ export class Contexte {
 	readonly relaisAudio: RelaisAudio;
 	readonly consultation: ConsultationResumes;
 	readonly desabonnement: Desabonnement;
+	readonly retours: Retours;
 	/** Par adresse visée : freine qui s'acharne sur un compte, d'où qu'il vienne. */
 	readonly limiteParEmail = new LimiteurTentatives(5, 15 * MINUTE_MS);
 	/** Par IP : freine qui balaie les adresses. Plus large, une IP pouvant être partagée. */
@@ -69,6 +71,7 @@ export class Contexte {
 		this.relaisAudio = new RelaisAudio(this.api);
 		this.consultation = new ConsultationResumes(this.api, base);
 		this.desabonnement = new Desabonnement(this.api);
+		this.retours = new Retours(this.api);
 
 		this.sessions.purgerExpirees();
 		this.jetons.purgerExpires();

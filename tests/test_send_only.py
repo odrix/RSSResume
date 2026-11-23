@@ -360,6 +360,12 @@ class MemeLettreTests(unittest.TestCase):
             self.assertEqual(self._sans_heure(corps), self._sans_heure(rejoue["body"]))
             self.assertEqual(self._sans_heure(html), self._sans_heure(rejoue["html"]))
             self.assertIn(f"Se désabonner : {rejoue['desabonnement']}", rejoue["body"])
+            # Les liens de vote aussi : signés pour la même journée, ils sont identiques —
+            # les égalités ci-dessus le prouvent, encore faut-il qu'ils y soient.
+            for rendu in (corps, html, rejoue["body"], rejoue["html"]):
+                self.assertIn(f"https://veille.example.com/retour/v1.{self.PROFIL_ID}.{JOUR.isoformat()}.", rendu)
+                self.assertIn("?avis=utile", rendu)
+                self.assertIn("?avis=pas_utile", rendu)
 
 
 class SendOnlyArgumentsTests(unittest.TestCase):

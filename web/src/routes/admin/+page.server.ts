@@ -1,6 +1,5 @@
 import type { ResumeProfil } from '#lib/profil.js';
-import type { CoutsProfil } from '#lib/server/api-resume.js';
-import { ErreurApi } from '#lib/server/api-resume.js';
+import { ErreurApi, type CoutsProfil, type Retour } from '#lib/server/api-resume.js';
 import { contexte } from '#lib/server/contexte.js';
 import { exigerAdmin } from '#lib/server/garde.js';
 import type { PageServerLoad } from './$types';
@@ -82,6 +81,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		lignes.set(compte.username, ligne);
 	}
 
+	// Après `exigerAdmin`, et jamais avant : la liste ne part de l'API que pour qui a le droit
+	// de la voir. Une erreur à part de celle des profils : l'une n'empêche pas l'autre.
+	let retours: Retour[] = [];
+	let erreurRetours: string | null = null;
+	try {
+		retours = await ctx.retours.lister();
+	} catch (cause) {
+		if (!(cause instanceof ErreurApi)) throw cause;
+		erreurRetours = cause.message;
+	}
+
 	for (const ligne of lignes.values()) {
 		ligne.desabonne = ligne.modifieLe !== null && ligne.emailsProfil.length === 0;
 		if (ligne.modifieLe !== null) {
@@ -116,6 +126,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		inscriptions30j: comptesConfirmes.filter((compte) => compte.creeLe >= limite30).length,
 		coutTotalSemaine,
 		deviseSemaine,
-		modelesSansTarifSemaine
+		modelesSansTarifSemaine,
+		retours,
+		erreurRetours
 	};
 };

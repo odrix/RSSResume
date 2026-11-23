@@ -8,6 +8,7 @@ et un titre d'article venu d'un flux ne doit jamais s'échapper dans le balisage
 import dataclasses
 import datetime as dt
 import pathlib
+import re
 import tempfile
 import unittest
 import wave
@@ -15,7 +16,16 @@ import wave
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.ephemeride import fetes
 from rssresume.models import Article, CategoryDigest, Ephemeride, Montage
-from rssresume.newsletter import NOM_SERVICE, Abonnement, Lettre, Section, date_longue, duree
+from rssresume.newsletter import (
+    NOM_SERVICE,
+    QUESTION_AVIS,
+    Abonnement,
+    Lettre,
+    Section,
+    date_longue,
+    duree,
+)
+from rssresume.retours import OBJET_RETOUR, LienRetour
 from tests.support import FakeEmailSender, make_config
 
 #: La journée que la lettre raconte, et celle où elle part : le passage de 7 h résume
@@ -661,6 +671,105 @@ class AbonnementDepuisConfigTests(unittest.TestCase):
             abonne = Abonnement.depuis_config(self._config(tmpdir, smtp_from="veille@example.com"))
 
             self.assertEqual(NOM_SERVICE, abonne.expediteur)
+
+
+class LiensAvisTests(unittest.TestCase):
+    """« Utile » et « Pas utile » au pied : signés pour le profil et la journée racontée.
+
+    Ce que ces tests protègent : les deux rendus portent la question et les deux liens tels
+    qu'ils partent — URL en clair en texte, ancres en HTML —, le jeton désigne la journée du
+    titre et non le jour de l'envoi, et une lettre sans clé ou sans abonnement n'en a pas."""
+
+    PROFIL_ID = "0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71"
+
+    def _abonnement(self, tmpdir, **surcharges):
+        config = dataclasses.replace(
+            make_config(tmpdir),
+            **{
+                "site_url": SITE,
+                "cle_signature": "k" * 48,
+                "username": "bea",
+                "profil_id": self.PROFIL_ID,
+                **surcharges,
+            },
+        )
+        return Abonnement.depuis_config(config)
+
+    def _lettre(self, tmpdir, digests=None, **surcharges):
+        return Lettre.compose(
+            JOUR,
+            [digest()] if digests is None else digests,
+            ephem(),
+            generated_at=COMPOSEE_LE,
+            abonnement=self._abonnement(tmpdir, **surcharges),
+        )
+
+    @staticmethod
+    def _liens(texte):
+        return re.findall(r"https://veille\.example\.com/retour/[^\s\"<]+", texte)
+
+    def test_the_question_and_both_links_are_in_both_renderings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir)
+
+        utile, pas_utile = self._liens(lettre.text)
+        self.assertTrue(utile.endswith("?avis=utile"))
+        self.assertTrue(pas_utile.endswith("?avis=pas_utile"))
+        self.assertEqual(utile.split("?")[0], pas_utile.split("?")[0])
+        # En texte : la question, puis une URL entière par ligne, ce qu'un client texte rend cliquable.
+        self.assertIn(
+            f"\n{QUESTION_AVIS}\nUtile : {utile}\nPas utile : {pas_utile}\n", lettre.text
+        )
+        # En HTML : la même question, et deux ancres sur les mêmes URL.
+        self.assertIn(QUESTION_AVIS, lettre.html)
+        self.assertIn(f'href="{utile}" style="color:#6b7280;text-decoration:underline;">Utile</a>', lettre.html)
+        self.assertIn(f'href="{pas_utile}" style="color:#6b7280;text-decoration:underline;">Pas utile</a>', lettre.html)
+
+    def test_the_token_names_the_day_told_not_the_day_sent(self):
+        """Le titre dit « Veille du 27 août », la lettre part le 28 : c'est le 27 qu'on juge."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir)
+
+        self.assertNotEqual(lettre.day, lettre.sent_on)
+        jeton = self._liens(lettre.text)[0].rsplit("/", 1)[1].split("?")[0]
+        visee = LienRetour(Signataire("k" * 48, OBJET_RETOUR)).lire(jeton)
+        self.assertEqual((self.PROFIL_ID, JOUR), (visee.profil_id, visee.jour))
+
+    def test_recipients_are_not_required(self):
+        """Le jeton ne porte pas les adresses : une liste vide n'empêche pas de demander l'avis."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, smtp_to=[])
+
+        self.assertEqual(2, len(self._liens(lettre.text)))
+        self.assertNotIn("Se désabonner", lettre.text)
+
+    def test_without_a_key_an_id_or_a_subscription_there_is_no_vote_link(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettres = [
+                self._lettre(tmpdir, cle_signature=None),
+                self._lettre(tmpdir, profil_id=""),
+                Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE),
+            ]
+        for lettre in lettres:
+            for rendu in (lettre.text, lettre.html):
+                self.assertNotIn("/retour/", rendu)
+                self.assertNotIn(QUESTION_AVIS, rendu)
+
+    def test_the_empty_letter_carries_them_too(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, digests=[])
+
+        self.assertEqual(2, len(self._liens(lettre.text)))
+        self.assertIn(QUESTION_AVIS, lettre.html)
+        self.assertEqual(2, len(self._liens(lettre.html)))
+
+    def test_only_the_unsubscribe_link_goes_to_the_sender(self):
+        """`List-Unsubscribe` reste le seul en-tête : les liens de vote ne vivent que dans le corps."""
+        expediteur = FakeEmailSender()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._lettre(tmpdir).envoyer(expediteur)
+
+        self.assertTrue(expediteur.desabonnements[0].startswith(f"{SITE}/desabonnement/"))
 
 
 if __name__ == "__main__":

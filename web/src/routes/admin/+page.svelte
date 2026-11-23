@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { LIBELLES_AVIS } from '#lib/retour.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -88,9 +89,57 @@
 	<li>{data.inscriptions30j} inscription(s) confirmée(s) sur 30 jours</li>
 	<li>Coût total des 7 derniers jours : {data.coutTotalSemaine === null ? `? (${data.modelesSansTarifSemaine.join(', ') || 'tarification incomplète'})` : `${data.coutTotalSemaine.toFixed(6)} ${data.deviseSemaine ?? ''}`}</li>
 </ul>
-<p class="attenue">Les écoutes depuis l’email ou l’audio ne sont pas encore comptées : elles seront disponibles avec BL-075. Les retours « utile / pas utile » seront disponibles avec BL-079. Les consultations ci-dessous sont celles ouvertes sur le site.</p>
+<p class="attenue">Les écoutes depuis l’email ou l’audio ne sont pas encore comptées : elles seront disponibles avec BL-075. Les consultations ci-dessous sont celles ouvertes sur le site.</p>
+
+<h2>Retours</h2>
+
+{#if data.erreurRetours}
+	<p class="message erreur" role="alert">Retours indisponibles : {data.erreurRetours}</p>
+{:else if !data.retours.length}
+	<p class="attenue">Aucun retour pour l'instant.</p>
+{:else}
+	<p class="attenue">{data.retours.length} retour(s), les plus récents d'abord.</p>
+	<div class="table-defile">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Reçu le</th>
+					<th scope="col">Profil</th>
+					<th scope="col">Journée</th>
+					<th scope="col">Avis</th>
+					<th scope="col">Commentaire</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each data.retours as retour, rang (rang)}
+					<tr>
+						<td>{quand(retour.vote_le)}</td>
+						<td>
+							{#if retour.username}{retour.username}{:else}<span class="attenue">profil supprimé</span>{/if}
+						</td>
+						<td>
+							{#if retour.username}
+								<a href="/resumes/{encodeURIComponent(retour.username)}/{retour.jour}">{retour.jour}</a>
+							{:else}
+								{retour.jour}
+							{/if}
+						</td>
+						<td>{LIBELLES_AVIS[retour.avis]}</td>
+						<td class="commentaire">{retour.commentaire}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
+{/if}
 
 <style>
+	/* Le commentaire garde ses retours à la ligne, sans jamais être lu comme du balisage :
+	 * Svelte l'échappe, le CSS seul le met en forme. */
+	.commentaire {
+		white-space: pre-wrap;
+	}
+
 	.visuellement-cache {
 		position: absolute;
 		width: 1px;

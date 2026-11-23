@@ -24,7 +24,7 @@ from unittest import mock
 from rssresume import newsletter, runlog
 from rssresume.annuaire_sqlite import AnnuaireSqlite
 from rssresume.api import __main__ as api_main
-from rssresume.api.routes import LIEN_DESABONNEMENT_INVALIDE, RoutePassage
+from rssresume.api.routes import LIEN_DESABONNEMENT_INVALIDE, LIEN_RETOUR_INVALIDE, RoutePassage
 from rssresume.api.serveur import (
     ENV_API_TOKEN,
     TAILLE_MAX_CORPS,
@@ -37,6 +37,7 @@ from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.newsletter import Lettre
 from rssresume.profil import ENV_PROFILES_DB
+from rssresume.retours import LONGUEUR_MAX_COMMENTAIRE, OBJET_RETOUR, LienRetour
 from rssresume.scheduler import DailySchedule
 from tests.support import make_config
 
@@ -828,6 +829,151 @@ class DesabonnementApiTests(ServeurTestCase):
         statut, entetes, _ = self.appel("GET", "/api/v1/desabonnements")
         self.assertEqual(405, statut)
         self.assertEqual("POST", entetes["Allow"])
+
+
+class RetoursApiTests(ServeurTestCase):
+    """Les retours « utile / pas utile » : par le lien de la lettre, par le site, et leur liste.
+
+    Ce que ces tests protègent : un jeton signé par le travailleur vaut pour son profil et sa
+    journée et pour rien d'autre, un jeton altéré ou d'un profil disparu reçoit le même 404,
+    la lecture n'écrit rien, et un second vote — d'où qu'il vienne — remplace le premier."""
+
+    JOUR = datetime.date(2026, 11, 22)
+
+    def setUp(self):
+        super().setUp()
+        self.fiche = self.annuaire.creer("bea", {"profil": "B", "email": ["b@example.com"]})
+        self.autre = self.annuaire.creer("cle", {"profil": "C"})
+        # Signé « côté travailleur » : par l'abonnement de la lettre, avec le secret de l'API.
+        config = dataclasses.replace(
+            make_config(self.tmpdir),
+            site_url="https://veille.example.com",
+            cle_signature=JETON,
+            username="bea",
+            profil_id=self.fiche.id,
+        )
+        lien = newsletter.Abonnement.depuis_config(config).liens_avis(self.JOUR)[0].url
+        self.jeton = lien.rsplit("/", 1)[1].split("?")[0]
+
+    def _lignes(self):
+        with self.annuaire._connexion() as connexion:
+            return connexion.execute("SELECT profil_id, jour, avis, commentaire FROM retours").fetchall()
+
+    def test_reading_the_link_writes_nothing(self):
+        self.assertEqual(
+            (200, {"username": "bea", "jour": "2026-11-22", "retour": None}),
+            self.json("POST", "/api/v1/retours/lecture", {"jeton": self.jeton}),
+        )
+        self.assertEqual([], self._lignes())
+
+    def test_a_vote_by_link_is_written_for_the_profile_and_day_of_the_token(self):
+        statut, corps = self.json(
+            "POST",
+            "/api/v1/retours",
+            # Un corps qui tente de viser un autre profil et un autre jour : ignorés.
+            {"jeton": self.jeton, "avis": "pas_utile", "commentaire": "Trop long.",
+             "profil_id": self.autre.id, "jour": "2026-01-01", "username": "cle"},
+        )
+
+        self.assertEqual(200, statut)
+        self.assertEqual(("bea", "2026-11-22"), (corps["username"], corps["jour"]))
+        self.assertEqual(
+            ("bea", "2026-11-22", "pas_utile", "Trop long."),
+            tuple(corps["retour"][cle] for cle in ("username", "jour", "avis", "commentaire")),
+        )
+        self.assertEqual([(self.fiche.id, "2026-11-22", "pas_utile", "Trop long.")], self._lignes())
+        # La lecture rend maintenant le vote, que la page pré-remplit.
+        _, lecture = self.json("POST", "/api/v1/retours/lecture", {"jeton": self.jeton})
+        self.assertEqual("Trop long.", lecture["retour"]["commentaire"])
+
+    def test_an_altered_token_or_a_deleted_profile_is_the_same_404(self):
+        refus = (404, {"erreur": LIEN_RETOUR_INVALIDE})
+        corps_id, _, signature = self.jeton.rpartition(".")
+        forges = (
+            self.jeton.replace(self.fiche.id, self.autre.id),
+            self.jeton.replace("2026-11-22", "2026-11-21"),
+            corps_id + "." + signature[::-1],
+            LienRetour(Signataire("x" * 48, OBJET_RETOUR)).jeton(self.fiche.id, self.JOUR),
+            # Le jeton de désabonnement de la même lettre, même secret : un autre usage.
+            Desabonnement(Signataire(JETON, OBJET_DESABONNEMENT)).jeton(self.fiche.id, ["b@example.com"]),
+        )
+        for corps in [*({"jeton": forge, "avis": "utile"} for forge in forges), {"jeton": 3}, {}, ["x"]]:
+            for chemin in ("/api/v1/retours", "/api/v1/retours/lecture"):
+                with self.subTest(corps=corps, chemin=chemin):
+                    self.assertEqual(refus, self.json("POST", chemin, corps))
+
+        self.annuaire.supprimer("bea")
+        for chemin in ("/api/v1/retours", "/api/v1/retours/lecture"):
+            self.assertEqual(refus, self.json("POST", chemin, {"jeton": self.jeton, "avis": "utile"}))
+        self.assertEqual([], self._lignes())
+
+    def test_a_refused_entry_names_its_field(self):
+        for corps, champ in (
+            ({"avis": "moyen"}, "avis"),
+            ({"avis": "utile", "commentaire": "x" * (LONGUEUR_MAX_COMMENTAIRE + 1)}, "commentaire"),
+        ):
+            with self.subTest(champ=champ):
+                statut, reponse = self.json("POST", "/api/v1/retours", {"jeton": self.jeton, **corps})
+                self.assertEqual((422, champ), (statut, reponse["champ"]))
+                statut, reponse = self.json("PUT", "/api/v1/profils/bea/journees/2026-11-22/retour", corps)
+                self.assertEqual((422, champ), (statut, reponse["champ"]))
+        self.assertEqual([], self._lignes())
+
+    def test_a_vote_from_the_site_replaces_the_vote_from_the_letter(self):
+        self.json("POST", "/api/v1/retours", {"jeton": self.jeton, "avis": "utile", "commentaire": "Lettre."})
+
+        statut, retour = self.json(
+            "PUT", "/api/v1/profils/bea/journees/2026-11-22/retour", {"avis": "pas_utile", "commentaire": "Site."}
+        )
+
+        self.assertEqual((200, "pas_utile", "Site."), (statut, retour["avis"], retour["commentaire"]))
+        self.assertEqual([(self.fiche.id, "2026-11-22", "pas_utile", "Site.")], self._lignes())
+        self.assertEqual(
+            (200, "Site."),
+            (lambda s, r: (s, r["commentaire"]))(*self.json("GET", "/api/v1/profils/bea/journees/2026-11-22/retour")),
+        )
+
+    def test_reading_a_day_without_vote_an_unknown_profile_or_a_bad_date_is_not_found(self):
+        for chemin in (
+            "/api/v1/profils/bea/journees/2026-11-22/retour",
+            "/api/v1/profils/inconnu/journees/2026-11-22/retour",
+            "/api/v1/profils/bea/journees/2026-02-30/retour",
+            "/api/v1/profils/bea/journees/20261122/retour",
+        ):
+            with self.subTest(chemin=chemin):
+                self.assertEqual(404, self.json("GET", chemin)[0])
+        self.assertEqual(404, self.json("PUT", "/api/v1/profils/bea/journees/hier/retour", {"avis": "utile"})[0])
+
+    def test_the_list_is_most_recent_first(self):
+        with mock.patch("rssresume.annuaire_sqlite._maintenant", return_value="2026-11-22T07:00:00+00:00"):
+            self.json("POST", "/api/v1/retours", {"jeton": self.jeton, "avis": "utile"})
+        with mock.patch("rssresume.annuaire_sqlite._maintenant", return_value="2026-11-23T07:00:00+00:00"):
+            self.json("PUT", "/api/v1/profils/cle/journees/2026-11-21/retour", {"avis": "pas_utile", "commentaire": "<b>"})
+
+        statut, liste = self.json("GET", "/api/v1/retours")
+
+        self.assertEqual(200, statut)
+        self.assertEqual(
+            [
+                {"username": "cle", "jour": "2026-11-21", "avis": "pas_utile", "commentaire": "<b>",
+                 "vote_le": "2026-11-23T07:00:00+00:00"},
+                {"username": "bea", "jour": "2026-11-22", "avis": "utile", "commentaire": "",
+                 "vote_le": "2026-11-22T07:00:00+00:00"},
+            ],
+            liste,
+        )
+
+    def test_the_bearer_is_still_required(self):
+        for methode, chemin in (
+            ("POST", "/api/v1/retours"),
+            ("POST", "/api/v1/retours/lecture"),
+            ("GET", "/api/v1/retours"),
+            ("PUT", "/api/v1/profils/bea/journees/2026-11-22/retour"),
+        ):
+            with self.subTest(chemin=chemin):
+                corps = None if methode == "GET" else {"jeton": self.jeton, "avis": "utile"}
+                self.assertEqual(401, self.appel(methode, chemin, corps, jeton=None)[0])
+        self.assertEqual([], self._lignes())
 
 
 class GabaritsApiTests(ServeurTestCase):

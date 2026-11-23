@@ -59,6 +59,13 @@ describe('postIntersiteInterdit', () => {
 		expect(postIntersiteInterdit(...requete('/desabonnement/abc', { ...ailleurs, methode: 'DELETE' }))).toBe(true);
 	});
 
+	it('garde la protection sur la page de vote, qui ne reçoit que son propre formulaire', () => {
+		for (const origine of ['https://ailleurs.test', null]) {
+			expect(postIntersiteInterdit(...requete('/retour/v1.abc.2026-11-22.def', { origine }))).toBe(true);
+		}
+		expect(postIntersiteInterdit(...requete('/retour/v1.abc.2026-11-22.def', { origine: SITE }))).toBe(false);
+	});
+
 	it('laisse passer la même origine, les lectures et le JSON', () => {
 		expect(postIntersiteInterdit(...requete('/profil', { origine: SITE }))).toBe(false);
 		expect(postIntersiteInterdit(...requete('/profil', { methode: 'GET', origine: null, type: null }))).toBe(false);

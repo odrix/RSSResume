@@ -25,6 +25,7 @@ from rssresume.api.sorties import Audio, Sorties
 from rssresume.config import ENV_API_TOKEN, ENV_TIMEZONE, load_timezone
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
 from rssresume.profil import ENV_PROFILES_DB, Annuaire
+from rssresume.retours import OBJET_RETOUR, LienRetour
 from rssresume.scheduler import DailySchedule, parse_schedule
 from rssresume.tools import console
 from rssresume.gabarits import CHEMIN_BUILTIN, Gabarits
@@ -122,8 +123,10 @@ class ApplicationApi:
         # Le même secret que celui du travailleur, qui signe les liens de la lettre : c'est
         # le jeton de l'API, que les deux lisent dans le même environnement.
         desabonnement = Desabonnement(Signataire(jeton, OBJET_DESABONNEMENT))
+        lien_retour = LienRetour(Signataire(jeton, OBJET_RETOUR))
         self.routes: list[Route] = [
-            route(annuaire, sorties, passage, gabarits, desabonnement) for route in ROUTES
+            route(annuaire, sorties, passage, gabarits, desabonnement, lien_retour)
+            for route in ROUTES
         ]
 
     @classmethod

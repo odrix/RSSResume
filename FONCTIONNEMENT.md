@@ -443,6 +443,7 @@ Vendredi 28 août 2026, saint Augustin. 1988…  <- introduction : le jour de l'
 1 résumé audio en pièce jointe. Composée le 30/08/2026 à 07:30.
 Envoyée par La Veille — https://veille.example.com.      <- avec RSSRESUME_SITE_URL
 Vous la recevez parce que cette adresse est destinataire du profil « bea ».
+Cette journée vous a-t-elle été utile ? Utile · Pas utile
 Mes résumés · Modifier mon profil · Se désabonner
 ```
 
@@ -480,6 +481,29 @@ poste sur l'URL sans rien afficher. `Lettre.envoyer` passe l'URL à l'expéditeu
 transport l'écrit à sa manière — dans le message pour le SMTP, dans le JSON pour Resend.
 Désabonner porte sur le profil entier et non sur une adresse : la lettre part en un seul envoi,
 `To:` commun, et rien ne dit lequel des destinataires a cliqué.
+
+**« Utile » et « Pas utile » : un vote par profil et par journée** (`retours.py`). Le pied
+pose la question « Cette journée vous a-t-elle été utile ? » et deux liens,
+`/retour/<jeton>?avis=utile` et `?avis=pas_utile`, avec le même jeton :
+`v1.<id du profil>.<AAAA-MM-JJ>.<signature>`, signé comme le désabonnement mais sous une clé
+propre au vote — un jeton de l'un n'est jamais valable pour l'autre. La date est celle de la
+journée **racontée**, `Lettre.day`, celle du titre, et non le jour de l'envoi : c'est elle
+qu'on juge, et c'est sous elle que `/resumes` la range. L'avis n'est pas signé : il ne fait que
+pré-cocher le formulaire. Le jeton ne porte pas les adresses, n'exige donc pas de
+destinataires, et se recalcule à l'identique : `--send-only` rend les mêmes liens. Il n'expire
+pas ; l'API le refuse seulement quand le profil n'existe plus. Seul `List-Unsubscribe` part en
+en-tête : les liens de vote ne vivent que dans le corps.
+
+Ouvrir le lien n'enregistre **rien** — un antivirus de messagerie ouvre les liens. La page
+`/retour/<jeton>` montre l'avis pré-coché et un commentaire facultatif (2 000 caractères au
+plus, refusé au-delà plutôt que tronqué), et le vote n'est compté qu'une fois ce formulaire
+envoyé ; la page le dit. Un second envoi, depuis la lettre ou depuis la page des résumés, remplace
+le premier. Les co-destinataires d'un profil partagent donc **un** vote par journée — la lettre
+part en un seul envoi, rien ne dit qui a cliqué —, et chacun voit pré-rempli le commentaire du
+précédent. Comme pour le désabonnement, une lettre transférée laisse un tiers voter : le lien
+est l'autorisation. La page des résumés porte le même formulaire pour le propriétaire connecté,
+pas pour un administrateur qui consulte la journée d'un autre ; `/admin` liste les 200 retours
+les plus récents, commentaire échappé.
 
 **Les liens sont posés dans le texte, en HTML** (`ancres.py`). Pour chaque article retenu, on
 cherche dans le résumé le groupe de mots le plus distinctif de son titre — un nom propre, un
@@ -1282,6 +1306,19 @@ est décrit dans le [README](README.md#api-http).
   action reçoit le bouton comme le POST en un clic des clients mail. Ce dernier arrive sans
   `Origin` : la protection CSRF de SvelteKit est donc levée (`csrf.trustedOrigins: ['*']`) et
   réécrite à l'identique dans `hooks.server.ts` (`csrf.ts`), cette seule route exceptée.
+- **Retours** : `POST /api/v1/retours/lecture` dit quelle journée un lien de vote désigne et
+  rend le vote déjà donné, sans rien écrire ; `POST /api/v1/retours` vote. Le jeton voyage dans
+  le corps, comme celui du désabonnement, et le profil et la journée ne viennent que de lui — un
+  `profil_id` ou un `jour` glissés dans le corps sont ignorés. Jeton faux, d'un autre usage, ou
+  d'un profil supprimé : le même 404. Pour qui est connecté, le site passe par
+  `GET` / `PUT /api/v1/profils/{username}/journees/{date}/retour` après son propre contrôle
+  d'accès — propriétaire seulement. `AnnuaireSqlite.enregistrer_retour` écrit dans la table
+  `retours`, clé primaire `(profil_id, jour)`, par un `INSERT … ON CONFLICT DO UPDATE` sous
+  `BEGIN IMMEDIATE` : un second vote remplace le premier, d'où qu'il vienne. La table est créée
+  à l'ouverture de la base (`CREATE TABLE IF NOT EXISTS`), sans clé étrangère : le retour d'un
+  profil supprimé reste. `GET /api/v1/retours` rend les 200 plus récents ; l'API ne garde pas
+  cette liste, c'est `/admin` qui la réserve aux administrateurs. La page `/retour/{jeton}` du
+  site garde la protection CSRF : le vote ne part que de son propre formulaire.
 - **Chemins** : trois barrières indépendantes entre une URL et le disque. La date doit suivre
   `AAAA-MM-JJ` **et** passer `date.fromisoformat` ; le nom ne doit contenir ni `/`, ni `\`, ni
   `..`, et figurer dans la liste des `.mp3` / `.wav` de la journée (liens symboliques exclus) ;

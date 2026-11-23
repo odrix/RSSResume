@@ -1,8 +1,13 @@
 <script lang="ts">
 	import ContenuJournee from '#lib/ContenuJournee.svelte';
+	import FormulaireRetour from '#lib/FormulaireRetour.svelte';
+	import { LIBELLES_AVIS } from '#lib/retour.js';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
+
+	/** Le vote à montrer : celui qu'on vient d'envoyer, sinon celui déjà donné. */
+	const retour = $derived(form?.vote ?? data.retour);
 
 	const formatDate = new Intl.DateTimeFormat('fr-FR', {
 		weekday: 'long',
@@ -33,3 +38,26 @@
 {/if}
 
 <ContenuJournee contenu={data.contenu} username={data.username} />
+
+{#if data.proprietaire}
+	<section class="avis">
+		<h2>Votre avis sur cette journée</h2>
+		{#if form?.vote}
+			<p class="message succes" role="status">
+				Merci : votre avis « {LIBELLES_AVIS[form.vote.avis]} » est enregistré.
+			</p>
+		{/if}
+		<FormulaireRetour
+			avis={retour?.avis ?? null}
+			commentaire={form?.message ? (form.commentaire ?? '') : (retour?.commentaire ?? '')}
+			message={form?.message ?? null}
+			dejaVote={retour !== null}
+		/>
+	</section>
+{/if}
+
+<style>
+	.avis {
+		margin-top: 2rem;
+	}
+</style>
