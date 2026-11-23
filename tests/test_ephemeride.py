@@ -5,16 +5,28 @@ modèle qui hésite ne doit jamais combler. Un fait inventé dans une lettre de 
 coûte plus cher que pas de fait du tout.
 """
 
+import ast
 import datetime as dt
+import inspect
+import re
 import unittest
 
 from rssresume import ephemeride
 from rssresume.ephemeride import EphemerideService, fetes, histoire
+from rssresume.llm import prompts
 from rssresume.models import Ephemeride
 
 #: Une date de la table embarquée, et une qui n'y est pas.
 CONNUE = dt.date(2026, 12, 9)  # Log4Shell
+# Cette date ne doit jamais entrer dans la table : les tests du calendrier en dépendent.
 INCONNUE = dt.date(2026, 3, 3)
+
+#: Ce qui signe une entrée de chronique sécurité. Bornes de mot des deux côtés : sans
+#: elles, « ver » attrape « version » et « verse ».
+SECURITE = re.compile(
+    r"\b(failles?|ver|virus|attaques?|cyber\w*|rançongiciels?|CVE|fuites?|botnet)\b",
+    re.IGNORECASE,
+)
 
 
 class FakeProvider:
@@ -174,6 +186,52 @@ class TableTests(unittest.TestCase):
                 self.assertRegex(texte, r"^(19|20)\d{2} — ")
                 self.assertGreater(len(texte), 40)
                 self.assertLess(len(texte), ephemeride.LONGUEUR_MAX)
+
+    def test_no_date_is_written_twice_in_the_source(self):
+        """Une clé répétée dans un dict littéral écrase la première sans un mot.
+
+        Le dict chargé n'en garde aucune trace : seul le source le montre.
+        """
+        arbre = ast.parse(inspect.getsource(histoire))
+        litteral = next(
+            noeud.value
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.AnnAssign) and getattr(noeud.target, "id", "") == "EVENEMENTS"
+        )
+        cles = [ast.literal_eval(cle) for cle in litteral.keys]
+
+        self.assertEqual([], sorted({cle for cle in cles if cles.count(cle) > 1}))
+
+    def test_the_table_is_not_a_security_chronicle(self):
+        """Un dev ou un designer ne doit pas ouvrir sa lettre sur un ver un matin sur deux.
+
+        Un tiers et non la moitié : l'ancienne table, presque toute cyber, passait déjà
+        sous la moitié grâce à ses jalons d'informatique générale.
+        """
+        securite = [texte for texte in histoire.EVENEMENTS.values() if SECURITE.search(texte)]
+
+        self.assertLess(len(securite) * 3, len(histoire.EVENEMENTS))
+
+    def test_a_non_security_date_comes_from_the_table(self):
+        resultat = EphemerideService().of(dt.date(2026, 8, 25))
+
+        self.assertEqual("table", resultat.origine)
+        self.assertIn("Linux", resultat.texte)
+
+
+class PromptTests(unittest.TestCase):
+    """Le prompt de l'éphéméride : un appel par journée, donc un domaine commun à tous."""
+
+    def test_the_prompt_is_tech_wide_not_security_first(self):
+        prompt = prompts.ephemeride_system().lower()
+
+        self.assertNotIn("sécurité", prompt)
+        self.assertIn("informatique", prompt)
+
+    def test_the_prompt_still_promises_the_word_the_service_waits_for(self):
+        """Réécrire le prompt ne doit pas rompre le mot qui fait descendre à la table."""
+        self.assertIn(prompts.NO_EPHEMERIDE, prompts.ephemeride_system())
+        self.assertEqual(ephemeride.AUCUNE, prompts.NO_EPHEMERIDE.casefold())
 
 
 if __name__ == "__main__":
