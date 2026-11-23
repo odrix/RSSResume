@@ -27,13 +27,17 @@
 	<title>{titre} — RSSResume</title>
 </svelte:head>
 
-<p><a href="/resumes/{encodeURIComponent(data.username)}">← {data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</a></p>
+<p class="retour"><a class="bouton bouton-secondaire" href="/resumes/{encodeURIComponent(data.username)}">← {data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</a></p>
 
-<h1>{titre}</h1>
+<header class="titre-page">
+	<p class="eyebrow">Lecture · veille textuelle</p>
+	<h1>{titre}</h1>
+</header>
 
 {#if data.contenu.ecoute || data.contenu.categories.length}
-	<p class="attenue">
-		{data.contenu.racontees}/{data.contenu.categories.length} catégorie{data.contenu.categories.length > 1 ? 's' : ''}{#if data.contenu.ecoute} · {data.contenu.ecoute} d'écoute{/if}
+	<p class="bilan">
+		<span>{data.contenu.racontees}/{data.contenu.categories.length} catégorie{data.contenu.categories.length > 1 ? 's' : ''}</span>
+		{#if data.contenu.ecoute}<span>{data.contenu.ecoute} d'écoute</span>{/if}
 	</p>
 {/if}
 
@@ -57,7 +61,37 @@
 {/if}
 
 <style>
+	.retour {
+		margin: 0 0 1.5rem;
+	}
+
+	.eyebrow {
+		display: inline-block;
+		margin: 0 0 1rem;
+		padding: 0.35rem 0.65rem;
+		background: var(--texte);
+		color: var(--accent);
+		text-transform: uppercase;
+	}
+
+	.titre-page {
+		margin-bottom: 1.25rem;
+	}
+
+	.bilan {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0 0 1.5rem;
+	}
+
+	.bilan span {
+		border: 2px solid var(--bord);
+		background: var(--accent);
+		padding: 0.25rem 0.55rem;
+	}
+
 	.avis {
-		margin-top: 2rem;
+		margin-top: 2.5rem;
 	}
 </style>
