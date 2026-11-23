@@ -125,13 +125,14 @@ Ce qui n'est **pas** là, volontairement :
     adresse non prouvée. L'alerte à `ADMIN_EMAIL` part à ce moment-là aussi ;
   - le formulaire fait choisir un **métier** parmi les gabarits de l'API (ou « Autre ») ;
     son texte s'affiche, modifiable. Le compte en attente garde une copie des réglages du
-    gabarit (texte, régime, axes, catégories) et le profil est créé avec eux : le premier
+    gabarit (texte, stack, régime, axes, catégories) et le profil est créé avec eux : le premier
     digest correspond déjà au métier. API injoignable à l'affichage : le formulaire revient
     au texte général, sans liste ;
   - à la confirmation, un **email de bienvenue** part une fois : ce que la personne va
     recevoir, l'heure du passage, où ajuster son profil, comment ne plus rien recevoir. Un
     échec d'envoi est journalisé, sans relance ni effet sur le compte ;
-  - la **première connexion** mène à « Mon profil » plutôt qu'à une liste de résumés vide ;
+  - la **première connexion** mène à « Mon profil » plutôt qu'à une liste de résumés vide.
+    Une connexion qui suit un lien vers une autre page (`?suite=`) y mène sans la consommer ;
   - tant que le compte est en attente, la connexion est refusée, et la session aussi. Le
     message n'apparaît qu'après un mot de passe correct. La page « Renvoyer le lien » répond
     la même chose quelle que soit l'adresse (3 demandes par adresse et 10 par IP et par heure) ;

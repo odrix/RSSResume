@@ -8,7 +8,7 @@
 
 import { hash, verify } from '@node-rs/argon2';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Axe, Securite } from '#lib/profil.js';
+import type { Axe, ComposantStack, Securite } from '#lib/profil.js';
 import { normaliserEmail } from './validation.js';
 
 export type Role = 'membre' | 'admin';
@@ -61,6 +61,7 @@ export class Utilisateur {
 export interface ReglagesGabarit {
 	metier: string;
 	libelle: string;
+	stack: ComposantStack[];
 	securite: Securite;
 	axes: Axe[];
 	categories: string[];

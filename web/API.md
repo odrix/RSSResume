@@ -196,8 +196,8 @@ Le site relaie `Range` tel quel et recopie statut et en-têtes : sans `206`, un 
 Chaque gabarit est un document de départ. Il peut être affiché puis modifié librement avant
 création du profil ; l’identifiant `metier` n’est pas stocké avec le profil.
 
-Le site le lit deux fois : pour la liste du formulaire d'inscription (métier, libellé, texte,
-catégories), puis à l'envoi du formulaire, pour copier le texte, le régime, les axes et les
-catégories du métier choisi dans le compte en attente. Le profil créé à la confirmation
-reprend cette copie : la personne reçoit ce qu'elle a vu, même si le catalogue a changé
-entre-temps.
+Le site s'en sert deux fois : pour la liste du formulaire d'inscription (métier, libellé,
+texte, catégories), puis à l'envoi du formulaire, pour copier le texte, la stack, le régime,
+les axes et les catégories du métier choisi dans le compte en attente. Il garde la liste
+cinq minutes en mémoire (jamais une erreur). Le profil créé à la confirmation reprend cette
+copie : la personne reçoit ce qu'elle a vu, même si le catalogue a changé entre-temps.

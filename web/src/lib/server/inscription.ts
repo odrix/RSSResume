@@ -92,6 +92,7 @@ export class Inscription {
 				gabarit: gabarit && {
 					metier: gabarit.metier,
 					libelle: gabarit.libelle,
+					stack: gabarit.stack,
 					securite: gabarit.securite,
 					axes: gabarit.axes,
 					categories: gabarit.categories
@@ -138,7 +139,7 @@ export class Inscription {
 		const saisie: ProfilSaisi = {
 			// Le défaut couvre les comptes inscrits avant les gabarits, au brouillon parfois vide.
 			profil: brouillon.profil || PROFIL_PAR_DEFAUT,
-			stack: [],
+			stack: gabarit?.stack ?? [],
 			// L'adresse du compte vient d'être prouvée : c'est le premier destinataire.
 			email: [compte.email],
 			prenom: brouillon.prenom,

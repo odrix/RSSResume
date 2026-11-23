@@ -30,8 +30,15 @@ export function destinationSure(suite: string | null, defaut = '/resumes'): stri
 }
 
 /** Après la connexion : la première mène au profil, que la personne relise ce qui
- * décidera de ses articles plutôt qu'une liste de résumés encore vide. Une page demandée
- * explicitement l'emporte : on l'y renvoie, comme toujours. */
-export function destinationApresConnexion(suite: string | null, premiere: boolean): string {
-	return destinationSure(suite, premiere ? '/profil' : '/resumes');
+ * décidera de ses articles plutôt qu'une liste de résumés encore vide.
+ *
+ * Une page demandée explicitement l'emporte, et ne consomme pas la première connexion :
+ * le lien des résumés dans l'email de bienvenue passe par `?suite=/resumes`, et la noter
+ * là priverait la personne de son profil pour toujours. `noterPremiere` n'est donc
+ * appelée que si la connexion mène effectivement au profil, ou pourrait y mener. */
+export function destinationApresConnexion(suite: string | null, noterPremiere: () => boolean): string {
+	const demandee = destinationSure(suite, '');
+	if (demandee && new URL(demandee, 'http://site.invalid').pathname !== '/profil') return demandee;
+	const premiere = noterPremiere();
+	return demandee || (premiere ? '/profil' : '/resumes');
 }

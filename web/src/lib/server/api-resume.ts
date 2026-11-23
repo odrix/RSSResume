@@ -66,6 +66,10 @@ export interface OptionsClient {
 	fetch?: typeof fetch;
 	/** Délai des appels JSON. L'audio n'en a pas : un flux long n'est pas une panne. */
 	delaiMs?: number;
+	/** Durée de vie de la liste des gabarits en mémoire. */
+	dureeGabaritsMs?: number;
+	/** Injectée pour les tests ; `Date.now` sinon. */
+	maintenant?: () => number;
 }
 
 export class ClientApiResume {
@@ -73,12 +77,17 @@ export class ClientApiResume {
 	readonly #jeton: string;
 	readonly #fetch: typeof fetch;
 	readonly #delaiMs: number;
+	readonly #dureeGabaritsMs: number;
+	readonly #maintenant: () => number;
+	#gabarits: { liste: Gabarit[]; expireLe: number } | null = null;
 
 	constructor(options: OptionsClient) {
 		this.#base = options.baseUrl.replace(/\/+$/, '');
 		this.#jeton = options.jeton;
 		this.#fetch = options.fetch ?? fetch;
 		this.#delaiMs = options.delaiMs ?? 10_000;
+		this.#dureeGabaritsMs = options.dureeGabaritsMs ?? 5 * 60 * 1000;
+		this.#maintenant = options.maintenant ?? Date.now;
 	}
 
 	listerProfils(): Promise<ResumeProfil[]> {
@@ -113,8 +122,15 @@ export class ClientApiResume {
 		return this.#json('GET', '/api/v1/passage');
 	}
 
-	listerGabarits(): Promise<Gabarit[]> {
-		return this.#json('GET', '/api/v1/gabarits');
+	/** Gardés en mémoire quelques minutes : chaque visite anonyme de l'inscription les
+	 * demande, deux fois sur une erreur de formulaire, alors que le catalogue ne bouge
+	 * presque jamais. Une erreur n'est pas gardée : l'appel suivant réessaie. */
+	async listerGabarits(): Promise<Gabarit[]> {
+		const maintenant = this.#maintenant();
+		if (this.#gabarits && maintenant < this.#gabarits.expireLe) return this.#gabarits.liste;
+		const liste = await this.#json<Gabarit[]>('GET', '/api/v1/gabarits');
+		this.#gabarits = { liste, expireLe: maintenant + this.#dureeGabaritsMs };
+		return liste;
 	}
 
 	/** Le flux audio brut, statut et en-têtes compris : le relais les recopie.
@@ -157,7 +173,16 @@ export class ClientApiResume {
 		});
 		if (!reponse.ok) throw await this.#erreur(reponse);
 		if (reponse.status === 204) return undefined as T;
-		return (await reponse.json()) as T;
+		try {
+			return (await reponse.json()) as T;
+		} catch (cause) {
+			// Un corps qui n'est pas du JSON, ou un délai qui expire en pleine lecture. Rendus en
+			// `ErreurApi` comme une API muette, pour que les appelants qui font « au mieux » —
+			// l'heure du passage dans la bienvenue, la liste des métiers — les rattrapent aussi
+			// au lieu de laisser passer une 500 après coup.
+			console.error(`API de résumé : réponse illisible (${methode} ${chemin}) :`, cause);
+			throw new ErreurApi(0, 'Le service de résumé a rendu une réponse illisible.');
+		}
 	}
 
 	async #appeler(

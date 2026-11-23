@@ -93,6 +93,46 @@ describe('ClientApiResume', () => {
 		expect(lecture.headers.get('authorization')).toBe(`Bearer ${JETON}`);
 	});
 
+	it('garde les gabarits en mémoire quelques minutes, sans mémoriser une erreur', async () => {
+		const { fausseApi } = monter();
+		const h = { t: 1_800_000_000_000 };
+		let enPanne = true;
+		const api = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			dureeGabaritsMs: 5 * 60 * 1000,
+			maintenant: () => h.t,
+			fetch: (entree, init) =>
+				enPanne ? Promise.reject(new TypeError('fetch failed')) : fausseApi.traiter(entree, init)
+		});
+		const lectures = () => fausseApi.requetes.filter((r) => r.url.endsWith('/api/v1/gabarits')).length;
+
+		// Une erreur n'est pas gardée : l'appel suivant réessaie.
+		expect((await erreurDe(api.listerGabarits())).statut).toBe(0);
+		enPanne = false;
+		expect(await api.listerGabarits()).toEqual(GABARITS_DEMO);
+		expect(lectures()).toBe(1);
+
+		h.t += 5 * 60 * 1000 - 1;
+		expect(await api.listerGabarits()).toEqual(GABARITS_DEMO);
+		expect(lectures()).toBe(1);
+
+		h.t += 1;
+		await api.listerGabarits();
+		expect(lectures()).toBe(2);
+	});
+
+	it('rend une ErreurApi quand un 200 porte un corps illisible', async () => {
+		const api = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: async () => new Response('<html>passerelle</html>', { status: 200 })
+		});
+		const erreur = await erreurDe(api.lirePassage());
+		expect(erreur.statut).toBe(0);
+		expect(erreur.message).toMatch(/illisible/);
+	});
+
 	it('transmet axes et catégories, et les omet quand absents', async () => {
 		const { api, fausseApi } = monter();
 		const axes = [{ slug: 'cyber', libelle: 'Cybersécurité', description: 'failles et incidents' }];

@@ -43,12 +43,25 @@ describe('gardes', () => {
 	it('la première connexion mène au profil, les suivantes aux résumés, une suite explicite l’emporte', async () => {
 		const { creerConfirme, comptes } = monter();
 		const moi = await creerConfirme('moi@example.com', 'moi');
-		// L'enchaînement de la page de connexion : noter, puis choisir la destination.
-		expect(destinationApresConnexion(null, comptes.noterPremiereConnexion(moi.id))).toBe('/profil');
-		expect(destinationApresConnexion(null, comptes.noterPremiereConnexion(moi.id))).toBe('/resumes');
+		// Ce que fait la page de connexion : la première connexion n'est notée qu'au besoin.
+		const apres = (suite: string | null) =>
+			destinationApresConnexion(suite, () => comptes.noterPremiereConnexion(moi.id));
 
-		expect(destinationApresConnexion('/resumes/moi/2026-11-21', true)).toBe('/resumes/moi/2026-11-21');
-		// Une suite forgée ne fait pas perdre la règle de la première connexion.
-		expect(destinationApresConnexion('//ailleurs.example', true)).toBe('/profil');
+		// Le lien des résumés de la bienvenue passe par `?suite=/resumes` : il y mène, sans
+		// consommer la première connexion.
+		expect(apres('/resumes')).toBe('/resumes');
+		expect(apres('/resumes/moi/2026-11-21')).toBe('/resumes/moi/2026-11-21');
+		// Une suite forgée ne compte pas : c'est bien la première connexion, vers le profil.
+		expect(apres('//ailleurs.example')).toBe('/profil');
+		expect(apres(null)).toBe('/resumes');
+	});
+
+	it('une suite vers le profil consomme la première connexion', async () => {
+		const { creerConfirme, comptes } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		const apres = (suite: string | null) =>
+			destinationApresConnexion(suite, () => comptes.noterPremiereConnexion(moi.id));
+		expect(apres('/profil?x=1')).toBe('/profil?x=1');
+		expect(apres(null)).toBe('/resumes');
 	});
 });

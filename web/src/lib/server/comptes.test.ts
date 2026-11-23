@@ -19,6 +19,7 @@ describe('Comptes', () => {
 		const gabarit = {
 			metier: 'rssi',
 			libelle: 'RSSI',
+			stack: ['Traefik', { nom: 'Keycloak', alias: ['RH-SSO'] }],
 			securite: 'exploitant' as const,
 			axes: [{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives' }],
 			categories: ['Cybersécurité']

@@ -76,8 +76,11 @@ describe('Inscription', () => {
 		expect(fausseApi.profils.get('moi')?.profil).toBe('RSSI');
 	});
 
-	it('à la confirmation, crée le profil du gabarit choisi : texte, axes, catégories, régime', async () => {
+	it('à la confirmation, crée le profil du gabarit choisi : texte, axes, catégories, régime, stack', async () => {
 		const { inscription, courrier, fausseApi } = monter();
+		// Les gabarits livrés n'ont pas encore de stack ; l'API l'expose pourtant.
+		const stack = ['Traefik', { nom: 'Keycloak', alias: ['RH-SSO'] }];
+		fausseApi.gabarits = GABARITS_DEMO.map((gabarit) => (gabarit.metier === 'cto' ? { ...gabarit, stack } : gabarit));
 		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
 		// Rien côté API avant la confirmation, sinon la lecture des gabarits.
 		expect(fausseApi.requetes.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
@@ -87,6 +90,7 @@ describe('Inscription', () => {
 
 		expect(fausseApi.profils.get('moi')).toMatchObject({
 			profil: CTO.profil,
+			stack,
 			securite: 'decideur',
 			axes: CTO.axes,
 			categories: CTO.categories,
@@ -194,6 +198,27 @@ describe('Inscription', () => {
 		expect(bienvenue.texte).toContain('après le passage quotidien');
 		expect(bienvenue.texte).not.toContain('04:00');
 		expect(fausseApi.profils.has('moi')).toBe(true);
+	});
+
+	it('la bienvenue part sans heure quand le passage renvoie un corps illisible', async () => {
+		const { comptes, jetons, courrier, fausseApi } = monter();
+		const passageIllisible = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: async (entree, init) =>
+				String(entree).endsWith('/api/v1/passage')
+					? new Response('<html>passerelle</html>', { status: 200 })
+					: fausseApi.traiter(entree, init)
+		});
+		const inscription = new Inscription(comptes, jetons, passageIllisible, courrier);
+		await inscription.inscrire(SAISIE, ORIGINE);
+		// Le compte est confirmé et le jeton consommé avant la lecture de l'heure : une erreur
+		// ici serait une 500 sans bienvenue, jamais rattrapée.
+		const confirme = await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+
+		expect(confirme.confirme).toBe(true);
+		const bienvenue = courrier.envoyes.find((m) => m.sujet === SUJET_BIENVENUE)!;
+		expect(bienvenue.texte).toContain('après le passage quotidien');
 	});
 
 	it('refuse un lien expiré au bout de 24 heures', async () => {

@@ -54,7 +54,9 @@ export const actions: Actions = {
 		poserCookieSession(cookies, jeton, expireLe);
 		redirect(
 			303,
-			destinationApresConnexion(url.searchParams.get('suite'), ctx.comptes.noterPremiereConnexion(utilisateur.id))
+			destinationApresConnexion(url.searchParams.get('suite'), () =>
+				ctx.comptes.noterPremiereConnexion(utilisateur.id)
+			)
 		);
 	}
 };
