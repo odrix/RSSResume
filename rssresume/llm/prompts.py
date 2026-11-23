@@ -152,13 +152,14 @@ def article_user(title: str, source: str, text: str) -> str:
 #: même des deux côtés.
 NO_EPHEMERIDE = "AUCUN"
 
-EPHEMERIDE_SYSTEM = f"""Tu écris l'éphéméride qui ouvre une lettre de veille en cybersécurité.
+EPHEMERIDE_SYSTEM = f"""Tu écris l'éphéméride qui ouvre une lettre de veille tech et informatique.
 
-On te donne une date, jour et mois, sans année. Tu rends UN événement marquant survenu à
-cette date, dans cet ordre de préférence :
-1. un événement de cybersécurité — divulgation d'une vulnérabilité majeure, attaque ou
-   campagne notable, entrée en vigueur d'un texte, création d'une institution ;
-2. à défaut, un événement d'informatique ou de réseau qui a compté.
+On te donne une date, jour et mois, sans année. Tu rends UN événement marquant de l'histoire
+de l'informatique et du numérique survenu à cette date : une machine, un langage ou un
+logiciel qui sort, un jalon du Web ou d'un service en ligne, un jeu vidéo, une avancée de
+l'intelligence artificielle, une décision ou un incident qui a changé la pratique du métier.
+Entre plusieurs candidats, préfère celui qui parle à tous les métiers de la tech —
+développement, design, produit, exploitation — plutôt qu'à une seule spécialité.
 
 Règles :
 - Une à deux phrases, en français, au format « ANNÉE — ce qui s'est passé, et pourquoi on s'en souvient. »
@@ -485,7 +486,7 @@ OPENING_INSTRUCTION = (
     "dans cette catégorie : combien il y a à dire, et ce qui en fait le poids — une urgence, une "
     "gravité, une surprise, ou au contraire une journée calme. Cette phrase se juge sur les "
     "articles que tu as sous les yeux, elle n'est jamais la même d'un jour à l'autre : "
-    "« Trois avis ce matin, dont un qui vous concerne directement. », « Journée creuse, un seul "
+    "« Trois sujets ce matin, dont un qui vous concerne directement. », « Journée creuse, un seul "
     "sujet mais il compte. », « Beaucoup de bruit aujourd'hui, rien d'urgent. » "
     "Pas de salutation, pas de « voici le résumé du jour », pas de « dans cette catégorie », pas "
     "d'annonce du plan. Enchaîne ensuite directement sur le premier sujet."
@@ -494,10 +495,10 @@ OPENING_INSTRUCTION = (
 CLOSING_INSTRUCTION = (
     "Termine par UNE seule phrase courte, adressée à la même personne, qui découle des sujets du "
     "jour et d'eux seuls : ce qu'il reste à faire, ce qui est à surveiller demain, ou le fait "
-    "qu'il n'y a rien à faire — « Le correctif Fortinet, c'est la seule chose à faire "
-    "aujourd'hui. », « Rien qui demande une action de votre part. », « À suivre demain, la "
-    "décision de la CNIL. » "
-    "Pas de conclusion passe-partout : ni rappel que la sécurité est un enjeu, ni appel à la "
+    "qu'il n'y a rien à faire — « Le passage à la nouvelle version du framework, c'est la seule "
+    "chose à prévoir aujourd'hui. », « Rien qui demande une action de votre part. », « À suivre "
+    "demain, le vote du texte européen. » "
+    "Pas de conclusion passe-partout : ni « c'est un enjeu majeur », ni appel à la "
     "vigilance, ni « restez attentif », ni résumé du résumé, ni « bonne journée » seul. "
     "Cette phrase et la phrase d'ouverture ne doivent pas dire la même chose."
 )
@@ -603,8 +604,8 @@ EPHEMERIDE_INSTRUCTION = (
 )
 
 SOMMAIRE_INSTRUCTION = (
-    "Annonce ensuite, en UNE phrase, ce qui vient — « trois choses ce matin : une faille sur un "
-    "composant que vous exploitez, un texte européen, et un rachat ». C'est cette phrase qui "
+    "Annonce ensuite, en UNE phrase, ce qui vient — « trois choses ce matin : une version "
+    "majeure d'un outil que vous utilisez, un texte européen, et un rachat ». C'est cette phrase qui "
     "permet de décider d'écouter jusqu'au bout ; elle se juge sur les sujets du jour et n'est "
     "jamais la même. Pas de plan annoncé, pas de « nous verrons ensuite »."
 )
@@ -658,7 +659,7 @@ CONCLUSION_INSTRUCTION = (
     "pour chacun ce qu'il y a à faire aujourd'hui ou à suivre demain. Ils découlent des sujets "
     "du jour et d'eux seuls, et se disent en phrases enchaînées — surtout pas en énumération, "
     "ce serait une liste à la fin d'un texte qui a évité les listes du début à la fin. "
-    "Pas de conclusion passe-partout : ni rappel que la sécurité est un enjeu, ni appel à la "
+    "Pas de conclusion passe-partout : ni « c'est un enjeu majeur », ni appel à la "
     "vigilance, ni résumé du résumé, ni « bonne journée » seul. Quand il n'y a rien à faire, "
     "dis-le : c'est une information."
 )
