@@ -27,9 +27,8 @@
 
 	function dureeLisible(secondes: number): string {
 		if (!Number.isFinite(secondes)) return '';
-		const minutes = Math.floor(secondes / 60);
-		const reste = Math.round(secondes % 60);
-		return `${minutes}:${reste.toString().padStart(2, '0')}`;
+		const minutes = Math.max(1, Math.round(secondes / 60));
+		return `${minutes} min`;
 	}
 
 	function lireMeta(date: string, nom: string, evenements: Event): void {
@@ -92,22 +91,30 @@
 <ul class="journees">
 	{#each data.journees as journee (journee.date)}
 		<li class="carte journee">
-			<h2>{dateLisible(journee.date)}</h2>
-			<div class="actions">
-				<a class="bouton lire" href={urlJournee(journee.date)}>Lire la veille</a>
-				{#each journee.audios as audio (audio.nom)}
-					<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
+			{#if journee.audios.length}
+				{@const audio = journee.audios[0]}
+				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
+				<div class="titre-carte">
+					<span class="duree-principale">
+						{durees[cleAudio(journee.date, audio.nom)] ?? '…'}
+					</span>
+					<h2>{dateLisible(journee.date)}</h2>
+				</div>
+				<div class="actions">
 					<button type="button" class="lecture" onclick={() => lire(journee.date, audio.nom)}>
-						<span aria-hidden="true">▶</span>
+						<span class="icone-lecture" aria-hidden="true">▶</span>
 						Lecture
-						{#if durees[cleAudio(journee.date, audio.nom)]}
-							<span class="duree">· {durees[cleAudio(journee.date, audio.nom)]}</span>
-						{/if}
 					</button>
-				{:else}
-					<span class="attenue">Pas d'audio ce jour-là.</span>
-				{/each}
-			</div>
+					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
+				</div>
+			{:else}
+				<div class="titre-carte">
+					<h2>{dateLisible(journee.date)}</h2>
+				</div>
+				<div class="actions">
+					<a class="resume-secondaire seul" href={urlJournee(journee.date)}>Lire le résumé</a>
+				</div>
+			{/if}
 		</li>
 	{/each}
 </ul>
@@ -125,35 +132,79 @@
 <style>
 	.journees {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.75rem;
 	}
 
 	.journee {
-		padding: 0.9rem;
+		aspect-ratio: 1 / 0.82;
+		padding: 0.85rem;
 		margin-bottom: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+	}
+
+	.titre-carte {
+		display: grid;
+		gap: 0.55rem;
+		justify-items: start;
+	}
+
+	.duree-principale {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.25rem;
+		padding: 0.25rem 0.55rem;
+		background: var(--texte);
+		color: var(--accent);
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 1.15rem;
+		line-height: 1;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.journee h2 {
-		font-size: 1.15rem;
-		margin: 0 0 0.75rem;
+		font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+		line-height: 1.05;
+		margin: 0;
 	}
 
 	.actions {
-		display: flex;
-		align-items: center;
-		gap: 0.65rem;
-		flex-wrap: wrap;
+		display: grid;
+		gap: 0.55rem;
 	}
 
 	.lecture {
+		width: 100%;
 		display: inline-flex;
+		justify-content: center;
 		align-items: center;
-		gap: 0.45rem;
+		gap: 0.55rem;
+		min-height: 3.25rem;
+		font-size: 1.05rem;
 	}
 
-	.duree {
-		font-variant-numeric: tabular-nums;
+	.icone-lecture {
+		display: inline-grid;
+		place-items: center;
+		width: 1.8rem;
+		height: 1.8rem;
+		border: 2px solid var(--texte);
+		border-radius: 50%;
+		font-size: 0.75rem;
+		padding-left: 0.12rem;
+	}
+
+	.resume-secondaire {
+		justify-self: start;
+		font-size: 0.88rem;
+		text-decoration-thickness: 1px;
+		text-transform: uppercase;
+	}
+
+	.resume-secondaire.seul {
+		align-self: end;
 	}
 
 	.meta-audio {
@@ -188,13 +239,26 @@
 		width: 100%;
 	}
 
+	@media (max-width: 1100px) {
+		.journees {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
 	@media (max-width: 900px) {
+		.lecteur-large {
+			left: 0;
+		}
+	}
+
+	@media (max-width: 520px) {
 		.journees {
 			grid-template-columns: 1fr;
 		}
 
-		.lecteur-large {
-			left: 0;
+		.journee {
+			aspect-ratio: auto;
+			min-height: 11.5rem;
 		}
 	}
 </style>
