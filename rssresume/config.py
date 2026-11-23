@@ -356,7 +356,7 @@ class AppConfig:
         """La configuration de l'installation, appliquée à une personne.
 
         Ce qui est personnel — profil, stack, régime de sécurité (`securite`), prénom,
-        destinataires, flux exclus — vient du document
+        destinataires, flux exclus, axes — vient du document
         de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
         `{output}/{id}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
         `--journal`) suit sans savoir qu'il y a plusieurs personnes. L'identifiant et non
@@ -379,6 +379,7 @@ class AppConfig:
             smtp_to=list(personne.emails),
             categories_abonnees=personne.categories,
             flux_exclus=personne.flux_exclus,
+            axes=personne.axes,
         )
 
     def categories_installation(self, disponibles: list[str]) -> list[str]:
