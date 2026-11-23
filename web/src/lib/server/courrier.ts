@@ -88,8 +88,8 @@ export abstract class Courrier {
 	/** Part à la confirmation : sans lui, rien ne dit à la personne ce qui l'attend avant
 	 * que le premier digest arrive, ni que le profil se réécrit avant qu'il parte.
 	 *
-	 * Rien sur le changement de catégories : le site ne permet pas encore de les modifier,
-	 * et promettre un réglage introuvable est pire que le taire. */
+	 * Le profil centralise les choix de catégories, de rubriques et de réglages avancés :
+	 * l'email les présente simplement sans exposer leur fonctionnement interne. */
 	souhaiterBienvenue(inscrit: Inscrit, bienvenue: Bienvenue): Promise<boolean> {
 		const salutation = bienvenue.prenom ? `Bonjour ${bienvenue.prenom},` : 'Bonjour,';
 		const depart = bienvenue.libelleMetier
@@ -113,6 +113,7 @@ export abstract class Courrier {
 				`Ajuster votre veille\n` +
 				`Le texte de votre profil décide des articles retenus : réécrivez-le dans Mon profil, ` +
 				`${bienvenue.origine}/profil\n` +
+				`Vous y choisissez aussi vos catégories et vos rubriques.\n` +
 				`Vous y changez aussi le régime de sécurité, la stack surveillée et les adresses de réception.\n` +
 				`Vos résumés, à lire et à écouter : ${bienvenue.origine}/resumes\n\n` +
 				`Se désabonner\n` +

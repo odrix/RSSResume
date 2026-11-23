@@ -11,6 +11,8 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	// Un seul 404 pour l'absence et le refus : la page ne dit pas ce qui existe chez les autres.
 	const contenu = await contexte().consultation.journee(utilisateur, params.username, params.date);
 	if (!contenu) error(404, 'Journée introuvable');
+	contexte().consultation.noter(utilisateur, params.date);
+
 	const proprietaire = params.username === utilisateur.username;
 	// Le vote déjà donné, pour pré-remplir : sans lui, un second envoi effacerait en silence
 	// le commentaire laissé depuis la lettre. Au mieux : une API muette n'empêche pas de lire.

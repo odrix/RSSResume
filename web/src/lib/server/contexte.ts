@@ -69,7 +69,7 @@ export class Contexte {
 			new LimiteurTentatives(10, 60 * MINUTE_MS)
 		);
 		this.relaisAudio = new RelaisAudio(this.api);
-		this.consultation = new ConsultationResumes(this.api);
+		this.consultation = new ConsultationResumes(this.api, base);
 		this.desabonnement = new Desabonnement(this.api);
 		this.retours = new Retours(this.api);
 
