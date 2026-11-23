@@ -19,6 +19,23 @@ const MOTIF_USERNAME = /^[a-z0-9][a-z0-9_-]{1,31}$/;
  * @typedef {{ date: string, audios: { nom: string, octets: Uint8Array }[], contenu?: ContenuStocke }} JourneeStockee
  */
 
+/**
+ * Le catalogue des catégories : toutes celles des gabarits ci-dessous, publiques, plus une
+ * privée de `moi` et une privée de `bea`, de quoi voir la règle de visibilité. Vide de
+ * propriétaires, une catégorie est publique, comme dans `rssresume/categories.py`.
+ * @typedef {{ libelle: string, description: string, proprietaires: string[] }} CategorieStockeeCatalogue
+ * @type {CategorieStockeeCatalogue[]}
+ */
+export const CATALOGUE_DEMO = [
+	{ libelle: '1 - Alertes et avis CERT-FR ANSSI', description: "Les avis de sécurité de l'ANSSI.", proprietaires: [] },
+	{ libelle: '11 - Qualite logicielle et tests', description: 'Tests, revue de code, outillage.', proprietaires: [] },
+	{ libelle: 'Cybersécurité', description: 'Menaces, failles et incidents.', proprietaires: [] },
+	{ libelle: 'Réglementaire', description: 'Ce que la loi impose au logiciel et aux données.', proprietaires: [] },
+	{ libelle: 'Tech generaliste', description: "L'actualité technique au sens large.", proprietaires: [] },
+	{ libelle: 'Veille concurrentielle', description: 'Les mouvements des concurrents.', proprietaires: ['moi'] },
+	{ libelle: 'Veille interne', description: "La veille d'une autre équipe.", proprietaires: ['bea'] }
+];
+
 /** Le passage annoncé par la fausse API : celui du déploiement par défaut. */
 const HEURE_PASSAGE = '04:00';
 const FUSEAU_PASSAGE = 'Europe/Paris';
@@ -98,8 +115,8 @@ function json(statut, corps) {
 	});
 }
 
-/** @param {number} statut @param {string} message */
-const erreur = (statut, message) => json(statut, { erreur: message });
+/** @param {number} statut @param {string} message @param {string | null} [champ] */
+const erreur = (statut, message, champ = null) => json(statut, champ ? { erreur: message, champ } : { erreur: message });
 
 export class FausseApi {
 	/** @type {Map<string, ProfilStocke>} */
@@ -112,6 +129,9 @@ export class FausseApi {
 	journeesDeDemo = false;
 	/** Ce que `GET /api/v1/gabarits` rend ; un test peut le remplacer. @type {GabaritStocke[]} */
 	gabarits = GABARITS_DEMO;
+	/** Le catalogue des catégories ; `null`, il est ouvert : tout est suivi, rien n'est
+	 * proposé ni vérifié. @type {CategorieStockeeCatalogue[] | null} */
+	catalogue = CATALOGUE_DEMO;
 
 	/** @param {string} jeton */
 	constructor(jeton) {
@@ -159,6 +179,18 @@ export class FausseApi {
 				this.journees.delete(username);
 				return json(204);
 			}
+		} else if (sous === 'categories' && date === undefined) {
+			// Comme l'API : le profil n'a pas à exister, seul le nom doit être valide.
+			if (!MOTIF_USERNAME.test(username)) return erreur(404, `profil inconnu : ${username}`);
+			if (methode !== 'GET') return erreur(405, 'méthode non prise en charge');
+			return json(200, {
+				ouvert: this.catalogue === null,
+				categories: this.#proposables(username).map(({ libelle, description, proprietaires }) => ({
+					libelle,
+					description,
+					privee: proprietaires.length > 0
+				}))
+			});
 		} else if (sous === 'journees' && methode === 'GET') {
 			if (!this.profils.has(username)) return erreur(404, `profil inconnu : ${username}`);
 			const journees = this.journees.get(username) ?? [];
@@ -224,8 +256,8 @@ export class FausseApi {
 			return erreur(422, 'username invalide');
 		}
 		if (this.profils.has(corps.username)) return erreur(409, `username déjà pris : ${corps.username}`);
-		const invalide = valider(corps);
-		if (invalide) return erreur(422, invalide);
+		const invalide = this.#valider(corps, corps.username);
+		if (invalide) return erreur(422, invalide.message, invalide.champ);
 		/** @type {ProfilStocke} */
 		const profil = {
 			// Attribué ici et jamais lu dans le corps : un `id` envoyé par le client est ignoré.
@@ -256,8 +288,8 @@ export class FausseApi {
 
 	/** @param {ProfilStocke} profil @param {any} corps */
 	#modifier(profil, corps) {
-		const invalide = valider(corps);
-		if (invalide) return erreur(422, invalide);
+		const invalide = this.#valider(corps, profil.username);
+		if (invalide) return erreur(422, invalide.message, invalide.champ);
 		// Remplacement complet, comme l'API : des axes ou catégories absents du corps
 		// disparaissent du profil.
 		delete profil.axes;
@@ -272,6 +304,25 @@ export class FausseApi {
 			modifie_le: new Date().toISOString()
 		});
 		return json(200, profil);
+	}
+
+	/** Les catégories que `username` peut suivre : publiques, ou privées dont il est
+	 * propriétaire. @param {string} username */
+	#proposables(username) {
+		return (this.catalogue ?? []).filter(
+			(categorie) => !categorie.proprietaires.length || categorie.proprietaires.includes(username)
+		);
+	}
+
+	/** Les règles du document, puis le catalogue : une catégorie privée d'un autre est
+	 * refusée comme une inconnue, comme le fait l'API. @param {any} corps @param {string} username */
+	#valider(corps, username) {
+		const invalide = valider(corps);
+		if (invalide || this.catalogue === null || !Array.isArray(corps.categories)) return invalide;
+		const permises = new Set(this.#proposables(username).map((categorie) => categorie.libelle));
+		const refusee = corps.categories.find((/** @type {any} */ libelle) => !permises.has(String(libelle)));
+		if (refusee === undefined) return null;
+		return { champ: 'categories', message: `categories : catégorie « ${refusee} » inconnue du catalogue` };
 	}
 }
 
@@ -406,23 +457,34 @@ function resume(p) {
 	return { id: p.id, username: p.username, prenom: p.prenom, email: p.email, modifie_le: p.modifie_le };
 }
 
-/** Les règles de `rssresume/profil.py`, en plus court. @param {any} corps */
+/**
+ * Les règles de `rssresume/profil.py`, en plus court : la clé fautive, et le message.
+ * @param {any} corps
+ * @returns {{ champ: string | null, message: string } | null}
+ */
 function valider(corps) {
-	if (!corps || typeof corps.profil !== 'string' || !corps.profil.trim()) {
-		return 'profil : un texte non vide est exigé';
+	if (!corps || typeof corps !== 'object' || Array.isArray(corps)) {
+		return { champ: null, message: 'un profil est un objet JSON' };
 	}
-	if (corps.stack !== undefined && !Array.isArray(corps.stack)) return 'stack : une liste est attendue';
+	if (typeof corps.profil !== 'string' || !corps.profil.trim()) {
+		return { champ: 'profil', message: 'profil : un texte non vide est exigé' };
+	}
+	if (corps.stack !== undefined && !Array.isArray(corps.stack)) {
+		return { champ: 'stack', message: 'stack : une liste est attendue' };
+	}
 	if (corps.email !== undefined) {
-		if (!Array.isArray(corps.email)) return 'email : une liste est attendue';
+		if (!Array.isArray(corps.email)) return { champ: 'email', message: 'email : une liste est attendue' };
 		for (const adresse of corps.email) {
 			if (typeof adresse !== 'string' || !/^[^\s@]+@[^\s@]+$/.test(adresse)) {
-				return `email : adresse invalide (${String(adresse)})`;
+				return { champ: 'email', message: `email : adresse invalide (${String(adresse)})` };
 			}
 		}
 	}
-	if (corps.prenom !== undefined && typeof corps.prenom !== 'string') return 'prenom : un texte est attendu';
+	if (corps.prenom !== undefined && typeof corps.prenom !== 'string') {
+		return { champ: 'prenom', message: 'prenom : un texte est attendu' };
+	}
 	if (corps.securite !== undefined && !['exploitant', 'decideur', 'curieux'].includes(corps.securite)) {
-		return 'securite : exploitant, decideur ou curieux est attendu';
+		return { champ: 'securite', message: 'securite : exploitant, decideur ou curieux est attendu' };
 	}
 	return null;
 }
