@@ -18,6 +18,10 @@
 	}
 
 	onMount(() => {
+		if (!data.utilisateur?.admin) {
+			appliquerStyle('actuel');
+			return;
+		}
 		const enregistre = localStorage.getItem('rssresume-style-page');
 		appliquerStyle(enregistre === 'maquette' ? 'maquette' : 'actuel');
 	});
@@ -33,13 +37,15 @@
 		{#if data.utilisateur}
 			<a href="/resumes">Mes résumés</a>
 			<a href="/profil">Mon profil</a>
-			<label class="choix-style">
-				<span>Style de page</span>
-				<select value={stylePage} onchange={changerStyle}>
-					<option value="actuel">Actuel</option>
-					<option value="maquette">Maquette</option>
-				</select>
-			</label>
+			{#if data.utilisateur.admin}
+				<label class="choix-style">
+					<span>Style de page</span>
+					<select value={stylePage} onchange={changerStyle}>
+						<option value="actuel">Actuel</option>
+						<option value="maquette">Maquette</option>
+					</select>
+				</label>
+			{/if}
 			<form method="POST" action="/deconnexion" class="deconnexion">
 				<span class="qui">{data.utilisateur.username}</span>
 				<button type="submit" class="lien">Se déconnecter</button>
@@ -48,13 +54,6 @@
 				<a class="administration" href="/admin">Administration</a>
 			{/if}
 		{:else}
-			<label class="choix-style">
-				<span>Style de page</span>
-				<select value={stylePage} onchange={changerStyle}>
-					<option value="actuel">Actuel</option>
-					<option value="maquette">Maquette</option>
-				</select>
-			</label>
 			<a href="/connexion">Se connecter</a>
 			<a href="/inscription">Créer un compte</a>
 		{/if}
