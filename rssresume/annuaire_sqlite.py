@@ -22,7 +22,7 @@ import datetime as dt
 import json
 import pathlib
 import sqlite3
-from typing import Iterator
+from typing import Iterable, Iterator
 
 from rssresume.axes import CLE_AXES
 from rssresume.categories import Catalogue, CatalogueOuvert
@@ -87,6 +87,15 @@ class ProfilDejaPris(ValueError):
     """Le nom ou l'identifiant est déjà celui d'un autre profil."""
 
 
+class CatalogueIllisible(ValueError):
+    """Le catalogue en base ne se relit plus : une ligne corrigée à la main et devenue fautive.
+
+    `ValueError` pour que la tournée échoue au lancement comme avant ; une classe à part
+    pour que l'API en fasse une erreur d'exploitation (500, journalisée) et non un refus de
+    la saisie (422) : la personne qui enregistre son profil n'y est pour rien.
+    """
+
+
 class Fiche:
     """Un profil de la base : le document, et ce que la base sait de lui.
 
@@ -146,13 +155,15 @@ def document_normalise(
     id: str,
     origine: str,
     catalogue: "Catalogue | None" = None,
+    acquises: Iterable[str] = (),
 ) -> dict:
     """Le document à écrire, validé : `ValueError` avec le message de `profil_depuis_dict`.
 
     Seules les clés du format sont gardées : une clé de plus ne serait lue par personne,
     et un document qui ne se relit pas tel qu'on l'a écrit trompe celui qui l'édite. Les
     adresses sont rangées en liste et le texte rogné — ce que la lecture ferait de toute
-    façon —, pour que le site relise ce que la tournée servira.
+    façon —, pour que le site relise ce que la tournée servira. `acquises` : les catégories
+    que le document stocké suit déjà, que le catalogue ne revérifie pas (voir `modifier`).
     """
     if not isinstance(saisie, dict):
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
@@ -178,7 +189,7 @@ def document_normalise(
     if brut.get(CLE_FLUX_EXCLUS) == []:
         del brut[CLE_FLUX_EXCLUS]
     brut[CLE_ID] = id
-    profil = profil_depuis_dict(brut, origine, catalogue, origine)
+    profil = profil_depuis_dict(brut, origine, catalogue, origine, acquises)
     if not id_valide(profil.id):
         raise ValueError(f"{origine} : identifiant de profil invalide (« {id} »).")
     document = {CLE_ID: id, CLE_PROFIL: profil.texte, CLE_STACK: list(brut.get(CLE_STACK) or [])}
@@ -312,19 +323,26 @@ class AnnuaireSqlite(Annuaire):
     def modifier(self, username: str, saisie: object) -> Fiche:
         """Remplace le document de `username`, son id et son nom gardés. Absent : `ProfilInconnu`.
 
-        Le catalogue est vérifié comme à la création : sans lui, un PUT ferait suivre une
-        catégorie inconnue ou la catégorie privée d'un autre, ce que `creer` refuse. Il est lu
-        avant la transaction, pour ne pas ouvrir une lecture sous le verrou d'écriture.
+        Le catalogue est vérifié pour les catégories **ajoutées** : sans lui, un PUT ferait
+        suivre une catégorie inconnue ou la catégorie privée d'un autre, ce que `creer`
+        refuse. Celles que le document stocké suit déjà passent sans revérification : une
+        catégorie retirée du catalogue, ou devenue privée d'autrui, bloquerait sinon tout
+        enregistrement qui la renvoie — la confirmation d'une adresse, la page qui n'a pas pu
+        montrer les catégories —, alors que la tournée la refiltre de toute façon
+        (`AppConfig.categories_servies`) et qu'elle ne sert donc plus rien à personne.
+
+        Le catalogue est lu avant la transaction, pour ne pas ouvrir une lecture sous le
+        verrou d'écriture.
         """
         catalogue = self.catalogue()
         with self._ecriture() as connexion:
             ligne = connexion.execute(
-                "SELECT id, cree_le FROM profils WHERE username = ?", (username,)
+                "SELECT id, cree_le, document FROM profils WHERE username = ?", (username,)
             ).fetchone()
             if ligne is None:
                 raise ProfilInconnu(f"Profil inconnu : « {username} ».")
-            id, cree_le = ligne
-            document = document_normalise(saisie, id, username, catalogue)
+            id, cree_le, stocke = ligne
+            document = document_normalise(saisie, id, username, catalogue, _categories_suivies(stocke))
             horodatage = _maintenant()
             connexion.execute(
                 "UPDATE profils SET document = ?, modifie_le = ? WHERE id = ?",
@@ -361,10 +379,13 @@ class AnnuaireSqlite(Annuaire):
             try:
                 document[libelle] = json.loads(contenu)
             except json.JSONDecodeError as exc:
-                raise ValueError(
+                raise CatalogueIllisible(
                     f"Catalogue {self.chemin}, « {libelle} » : document JSON illisible en base ({exc})."
                 ) from exc
-        return Catalogue.depuis_document(document, str(self.chemin))
+        try:
+            return Catalogue.depuis_document(document, str(self.chemin))
+        except ValueError as exc:
+            raise CatalogueIllisible(str(exc)) from exc
 
     def remede_sans_catalogue(self) -> str:
         return (
@@ -396,6 +417,22 @@ class AnnuaireSqlite(Annuaire):
         if not isinstance(contenu, dict) or contenu.get(CLE_ID) != id:
             raise ValueError(f"{username} : le document en base ne porte pas l'identifiant {id}.")
         return Fiche(id, username, contenu, cree_le, modifie_le)
+
+
+def _categories_suivies(stocke: str) -> list[str]:
+    """Les catégories du document stocké ; aucune s'il ne se relit pas.
+
+    Un document illisible n'a rien d'acquis : sa saisie est alors vérifiée entière, comme
+    une création.
+    """
+    try:
+        document = json.loads(stocke)
+    except json.JSONDecodeError:
+        return []
+    categories = document.get(CLE_CATEGORIES) if isinstance(document, dict) else None
+    if not isinstance(categories, list):
+        return []
+    return [categorie for categorie in categories if isinstance(categorie, str)]
 
 
 def _json(document: dict) -> str:

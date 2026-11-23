@@ -6,9 +6,11 @@ import {
 	depuisLignesAxes,
 	erreurSaisieProfil,
 	lireFormulaireProfil,
+	saisieAReafficher,
 	slugAxe,
 	versLignes,
 	versLignesAxes,
+	type CategoriesProposees,
 	type ProfilSaisi
 } from './profil.js';
 
@@ -106,17 +108,8 @@ describe('catégories et axes du formulaire de profil', () => {
 	});
 
 	it('repartir d’un gabarit remplace texte, régime, axes et catégories, et garde le reste', () => {
-		const actuel: ProfilSaisi = {
-			profil: 'Mon texte',
-			stack: ['PostgreSQL'],
-			email: ['moi@example.com'],
-			prenom: 'Camille',
-			securite: 'curieux',
-			axes: [{ slug: 'a', libelle: 'A', description: 'a' }],
-			categories: ['Tech']
-		};
 		const rssi = GABARITS_DEMO.find((gabarit) => gabarit.metier === 'rssi')!;
-		expect(depuisGabarit(actuel, rssi)).toEqual({
+		expect(depuisGabarit(ACTUEL, rssi, proposees(...rssi.categories, 'Tech'))).toEqual({
 			profil: rssi.profil,
 			stack: ['PostgreSQL'],
 			email: ['moi@example.com'],
@@ -125,9 +118,71 @@ describe('catégories et axes du formulaire de profil', () => {
 			axes: rssi.axes,
 			categories: rssi.categories
 		});
-		expect(depuisGabarit(null, rssi)).toMatchObject({ stack: [], email: [], prenom: '', profil: rssi.profil });
+		expect(depuisGabarit(null, rssi, null)).toMatchObject({ stack: [], email: [], prenom: '', profil: rssi.profil });
+	});
+
+	it('ne reprend du gabarit que les catégories proposées, sous leur libellé proposé', () => {
+		const gabarit = { ...GABARITS_DEMO[0], categories: ['cybersecurite', 'Veille interne', 'Inconnue'] };
+		expect(depuisGabarit(ACTUEL, gabarit, proposees('Tech', 'Cybersécurité')).categories).toEqual([
+			'Cybersécurité'
+		]);
+		// Aucune visible : tout coché plutôt que rien, que l'enregistrement refuserait.
+		const sansVisible = depuisGabarit(ACTUEL, gabarit, proposees('Tech'));
+		expect(sansVisible.categories).toBeNull();
+	});
+
+	it('garde les catégories du profil quand la page ne peut pas les montrer', () => {
+		const rssi = GABARITS_DEMO.find((gabarit) => gabarit.metier === 'rssi')!;
+		for (const masquees of [null, { ouvert: true, categories: [] }, proposees()]) {
+			expect(depuisGabarit(ACTUEL, rssi, masquees).categories).toEqual(['Tech']);
+			expect(depuisGabarit({ ...ACTUEL, categories: undefined }, rssi, masquees).categories).toBeUndefined();
+		}
+	});
+
+	it('après un refus, ne réaffiche que les slugs des axes existants', () => {
+		const donnees = formulaireComplet(
+			['Tech'],
+			[
+				['tests', 'Tests', 'outillage'],
+				['', 'Qualté', 'revue de code']
+			]
+		);
+		const saisie = lireFormulaireProfil(donnees);
+		// Le slug fabriqué part à l'API…
+		expect(saisie.axes?.map((axe) => axe.slug)).toEqual(['tests', 'qualte']);
+		// … mais pas dans la page réaffichée : il serait sinon figé au prochain envoi.
+		const reaffichee = saisieAReafficher(saisie, donnees);
+		expect(reaffichee.axes?.map((axe) => axe.slug)).toEqual(['tests', '']);
+		expect(reaffichee.categories).toEqual(['Tech']);
+
+		const corrige = formulaireComplet(
+			['Tech'],
+			reaffichee.axes!.map((axe): [string, string, string] => [
+				axe.slug,
+				axe.libelle === 'Qualté' ? 'Qualité' : axe.libelle,
+				axe.description
+			])
+		);
+		expect(lireFormulaireProfil(corrige).axes?.map((axe) => axe.slug)).toEqual(['tests', 'qualite']);
 	});
 });
+
+const ACTUEL: ProfilSaisi = {
+	profil: 'Mon texte',
+	stack: ['PostgreSQL'],
+	email: ['moi@example.com'],
+	prenom: 'Camille',
+	securite: 'curieux',
+	axes: [{ slug: 'a', libelle: 'A', description: 'a' }],
+	categories: ['Tech']
+};
+
+function proposees(...libelles: string[]): CategoriesProposees {
+	return {
+		ouvert: false,
+		categories: libelles.map((libelle) => ({ libelle, description: `${libelle}.`, privee: false }))
+	};
+}
 
 describe('formulaire de profil', () => {
 	it('relit texte, prénom, adresses et stack', () => {

@@ -170,6 +170,16 @@ class CatalogueServiesTests(unittest.TestCase):
         self.assertTrue(str(leve.exception).endswith("Catégories proposées : Tech, Veille marché."))
         self.assertEqual([], CatalogueOuvert().proposables("adrien"))
 
+    def test_an_already_followed_category_is_kept_even_outside_the_catalogue(self):
+        catalogue = Catalogue([CategorieCatalogue("Tech", "Tech.", ["developpeur"])])
+
+        self.assertEqual(
+            ("Tech", "Ancienne"),
+            catalogue.abonnement(["tech", "ANCIENNE"], "bea", "bea", acquises=["Ancienne"]),
+        )
+        with self.assertRaises(ValueError):
+            catalogue.abonnement(["Tech", "Nouvelle"], "bea", "bea", acquises=["Ancienne"])
+
     def test_an_open_catalogue_serves_everything_to_everyone(self):
         ouvert = CatalogueOuvert()
 

@@ -10,6 +10,7 @@ import http.client
 import json
 import os
 import pathlib
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -225,6 +226,57 @@ class ProfilsTests(ServeurTestCase):
         )
         self.assertEqual(200, statut)
         self.assertEqual(["Tech", "Veille marché"], modifie["categories"])
+
+    def test_put_keeps_a_followed_category_since_removed_from_the_catalogue(self):
+        """Seul ce qu'on ajoute se vérifie : confirmer une adresse ne doit pas échouer parce
+        qu'une catégorie suivie a quitté le catalogue — la tournée la refiltre."""
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+            CategorieCatalogue("Ancienne", "Retirée ensuite.", ["cto"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["bea"]),
+        ]))
+        self.json("POST", "/api/v1/profils", {**self.BEA, "categories": ["Tech", "Ancienne", "Veille marché"]})
+        # « Ancienne » disparaît, « Veille marché » passe à une autre propriétaire.
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["zoe"]),
+        ]))
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Autre", "categories": ["Tech", "ancienne", "Veille marché"]
+        })
+
+        self.assertEqual(200, statut)
+        self.assertEqual(["Tech", "Ancienne", "Veille marché"], modifie["categories"])
+        # Retirée puis renvoyée, elle n'est plus acquise : c'est un ajout, vérifié.
+        self.json("PUT", "/api/v1/profils/bea", {"profil": "Autre", "categories": ["Tech"]})
+        statut, corps = self.json("PUT", "/api/v1/profils/bea", {"profil": "Autre", "categories": ["Ancienne"]})
+        self.assertEqual((422, "categories"), (statut, corps["champ"]))
+
+    def test_an_unreadable_catalogue_is_a_server_error_not_a_refusal(self):
+        self.json("POST", "/api/v1/profils", self.BEA)
+        connexion = sqlite3.connect(self.annuaire.chemin)
+        try:
+            connexion.execute(
+                "INSERT INTO categories (libelle, document) VALUES (?, ?)", ("Tech", '{"description": ""}')
+            )
+            connexion.commit()
+        finally:
+            connexion.close()
+
+        with mock.patch("rssresume.api.routes.console.error") as journal:
+            for methode, chemin, corps in (
+                ("PUT", "/api/v1/profils/bea", {"profil": "x"}),
+                ("POST", "/api/v1/profils", {"username": "zoe", "profil": "x"}),
+                ("GET", "/api/v1/profils/bea/categories", None),
+            ):
+                with self.subTest(methode=methode, chemin=chemin):
+                    statut, reponse = self.json(methode, chemin, corps)
+                    self.assertEqual(500, statut)
+                    self.assertNotIn("champ", reponse)
+                    self.assertNotIn("Tech", reponse["erreur"])
+        self.assertEqual(3, journal.call_count)
+        self.assertEqual("Veille", self.json("GET", "/api/v1/profils/bea")[1]["profil"])
 
     def test_the_security_regime_is_kept_and_read_back(self):
         self.json("POST", "/api/v1/profils", {**self.BEA, "securite": "decideur"})

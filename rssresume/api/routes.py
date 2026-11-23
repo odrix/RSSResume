@@ -13,7 +13,13 @@ import re
 import urllib.parse
 from typing import TYPE_CHECKING
 
-from rssresume.annuaire_sqlite import AnnuaireSqlite, Fiche, ProfilDejaPris, ProfilInconnu
+from rssresume.annuaire_sqlite import (
+    AnnuaireSqlite,
+    CatalogueIllisible,
+    Fiche,
+    ProfilDejaPris,
+    ProfilInconnu,
+)
 from rssresume.api.sorties import Sorties
 from rssresume.profil import ChampInvalide, username_valide, valider_username
 from rssresume.scheduler import DailySchedule
@@ -47,7 +53,14 @@ class ErreurApi(Exception):
 
     @classmethod
     def refus(cls, exc: ValueError) -> "ErreurApi":
-        """Le 422 d'un document refusé, avec sa clé fautive quand elle est connue."""
+        """La réponse d'un document refusé : 422, avec sa clé fautive quand elle est connue.
+
+        Un catalogue illisible n'est pas un refus de la saisie, mais une base à réparer : 500,
+        journalisée pour l'exploitant, sans rien montrer à la personne qu'elle puisse corriger.
+        """
+        if isinstance(exc, CatalogueIllisible):
+            console.error(f"API : catalogue des catégories illisible : {exc}")
+            return cls(500, "Le catalogue des catégories est illisible.")
         return cls(422, str(exc), champ=exc.champ if isinstance(exc, ChampInvalide) else None)
 
     def corps(self) -> dict:
@@ -271,11 +284,8 @@ class RouteCategoriesProposees(Route):
             raise ErreurApi(404, f"Profil inconnu : « {username} ».")
         try:
             catalogue = self.annuaire.catalogue()
-        except ValueError as exc:
-            # Une ligne corrigée à la main et devenue fautive : c'est l'exploitant qui doit
-            # le lire, pas la personne — elle n'y peut rien.
-            console.error(f"API : catalogue des catégories illisible : {exc}")
-            raise ErreurApi(500, "Le catalogue des catégories est illisible.") from exc
+        except CatalogueIllisible as exc:
+            raise ErreurApi.refus(exc) from exc
         requete.repondre_json(
             200,
             {

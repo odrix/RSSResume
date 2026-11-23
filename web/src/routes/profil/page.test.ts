@@ -133,11 +133,24 @@ describe('page Mon profil', () => {
 			{ metier: 'qa', libelle: 'QA', profil: 'Testeuse.' },
 			{ metier: 'rssi', libelle: 'RSSI', profil: 'RSSI.' }
 		];
-		const html = rendre({ gabarits, gabaritApplique: { metier: 'rssi', libelle: 'RSSI' } });
+		const html = rendre({ gabarits, gabaritApplique: { metier: 'rssi', libelle: 'RSSI', categories: true } });
 		expect(html).toContain('Repartir d');
 		expect(html).toMatch(/<option value="rssi" selected/);
-		expect(html).toContain('pré-rempli avec le gabarit « RSSI »');
+		expect(html).toContain('pré-rempli avec le gabarit « RSSI » : texte, régime, rubriques et catégories.');
 		expect(html).toContain('Exemple : le gabarit « RSSI »');
 		expect(html).toMatch(/<form method="POST" action="\/profil"/);
+	});
+
+	it('ne prétend pas appliquer les catégories du gabarit quand elles sont masquées', () => {
+		const gabarits = [{ metier: 'rssi', libelle: 'RSSI', profil: 'RSSI.' }];
+		const html = rendre({
+			gabarits,
+			categories: null,
+			gabaritApplique: { metier: 'rssi', libelle: 'RSSI', categories: false }
+		});
+		expect(html).toContain('texte, régime et rubriques ; vos catégories ne changent pas.');
+		expect(html).not.toContain('rubriques et catégories');
+		expect(html).toContain('Remplace le texte, le régime de sécurité, les rubriques par ceux');
+		expect(champs(html, 'categories_editees')).toEqual([]);
 	});
 });

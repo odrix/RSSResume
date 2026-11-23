@@ -1,8 +1,10 @@
 import { fail } from '@sveltejs/kit';
 import {
+	categoriesACocher,
 	depuisGabarit,
 	erreurSaisieProfil,
 	lireFormulaireProfil,
+	saisieAReafficher,
 	type CategoriesProposees,
 	type Gabarit,
 	type Profil,
@@ -50,11 +52,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	// « Repartir d'un gabarit » : un simple GET, qui pré-remplit sans rien enregistrer.
 	const gabarit = gabarits.find((candidat) => candidat.metier === url.searchParams.get('gabarit'));
-	const depart: ProfilSaisi | null = gabarit ? depuisGabarit(profil, gabarit) : profil;
+	const depart: ProfilSaisi | null = gabarit ? depuisGabarit(profil, gabarit, categories) : profil;
 	return {
 		profil,
 		depart,
-		gabaritApplique: gabarit ? { metier: gabarit.metier, libelle: gabarit.libelle } : null,
+		// `categories` dit si celles du gabarit ont été reprises : sans catégories à cocher,
+		// le bandeau ne doit pas prétendre les avoir appliquées.
+		gabaritApplique: gabarit
+			? {
+					metier: gabarit.metier,
+					libelle: gabarit.libelle,
+					categories: categoriesACocher(categories).length > 0
+				}
+			: null,
 		erreur,
 		enAttente: ctx.destinataires.enAttente(utilisateur.id),
 		categories,
@@ -65,9 +75,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
 	default: async ({ locals, request, url }) => {
 		const utilisateur = exigerConnexion(locals.utilisateur, url);
-		const saisie = lireFormulaireProfil(await request.formData());
+		const donnees = await request.formData();
+		const saisie = lireFormulaireProfil(donnees);
+		// Ce que la page réaffiche après un refus : la saisie, sans les slugs fabriqués.
+		const refusee = (statut: number, message: string, champ: string | null) =>
+			fail(statut, { message, saisie: saisieAReafficher(saisie, donnees), champ });
 		const refus = erreurSaisieProfil(saisie);
-		if (refus) return fail(422, { message: refus.message, saisie, champ: refus.champ });
+		if (refus) return refusee(422, refus.message, refus.champ);
 		try {
 			const { liensEnvoyes } = await contexte().destinataires.enregistrerProfil(
 				utilisateur,
@@ -76,13 +90,11 @@ export const actions: Actions = {
 			);
 			return { enregistre: true, liensEnvoyes };
 		} catch (erreur) {
-			if (erreur instanceof ErreurDestinataire) {
-				return fail(422, { message: erreur.message, saisie, champ: erreur.champ as string | null });
-			}
+			if (erreur instanceof ErreurDestinataire) return refusee(422, erreur.message, erreur.champ);
 			if (!(erreur instanceof ErreurApi)) throw erreur;
 			// 422 : la validation de l'API, affichée sous le champ qu'elle nomme, la saisie conservée.
 			const invalide = erreur.statut === 422;
-			return fail(invalide ? 422 : 502, { message: erreur.message, saisie, champ: invalide ? erreur.champ : null });
+			return refusee(invalide ? 422 : 502, erreur.message, invalide ? erreur.champ : null);
 		}
 	}
 };

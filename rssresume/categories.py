@@ -143,7 +143,13 @@ class Catalogue:
         """
         return [entree for entree in self.entrees() if entree.visible_par(username)]
 
-    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+    def abonnement(
+        self,
+        categories: Iterable[str],
+        username: str,
+        origine: str,
+        acquises: Iterable[str] = (),
+    ) -> tuple[str, ...]:
         """Les catégories que `username` déclare suivre, sous leur libellé du catalogue.
 
         Le libellé canonique et non celui saisi : le site relit ce que la tournée sert, et
@@ -152,9 +158,17 @@ class Catalogue:
         Une catégorie privée d'un autre reçoit **le même** refus qu'une inconnue : un
         message qui la distinguerait révélerait qu'elle existe. Les catégories proposées
         dans le message sont celles que `username` pourrait suivre, jamais davantage.
+
+        `acquises` : celles que la personne suit déjà, gardées sous leur libellé stocké même
+        si le catalogue ne les décrit plus ou ne les lui montre plus. Seul ce qu'on ajoute
+        est un choix à vérifier ; ce qui était acquis, la tournée le refiltre au passage.
         """
+        deja = {cle_categorie(libelle): libelle for libelle in acquises}
         libelles = []
         for categorie in categories:
+            if cle_categorie(categorie) in deja:
+                libelles.append(deja[cle_categorie(categorie)])
+                continue
             entree = self.entree(categorie)
             if entree is None or not entree.visible_par(username):
                 proposables = [e.libelle for e in self.proposables(username)]
@@ -240,7 +254,13 @@ class CatalogueOuvert(Catalogue):
         déjà suivi — il n'y a rien à cocher."""
         return []
 
-    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+    def abonnement(
+        self,
+        categories: Iterable[str],
+        username: str,
+        origine: str,
+        acquises: Iterable[str] = (),
+    ) -> tuple[str, ...]:
         """Telles que déclarées : sans catalogue, rien ne dit quels libellés existent."""
         return tuple(categories)
 

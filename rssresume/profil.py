@@ -368,6 +368,7 @@ def profil_depuis_dict(
     origine: str = "profil",
     catalogue: "Catalogue | None" = None,
     username: str = "",
+    acquises: Iterable[str] = (),
 ) -> Profil:
     """Le profil porté par un objet JSON déjà décodé. Fautif : `ValueError`.
 
@@ -380,7 +381,9 @@ def profil_depuis_dict(
     l'appelant n'a qu'une exception à attraper pour dire « ce document est refusé ».
     Quand la faute tient à une clé, c'est `ChampInvalide`, qui la nomme : le site place
     le refus sous le champ concerné. Le refus d'une catégorie par le catalogue y est
-    rattaché à `categories`, au même titre qu'une liste mal formée.
+    rattaché à `categories`, au même titre qu'une liste mal formée. `acquises` : les
+    catégories que la personne suit déjà, que le catalogue ne revérifie pas
+    (`Catalogue.abonnement`).
     """
     if not isinstance(document, dict):
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(document).__name__}.")
@@ -406,7 +409,7 @@ def profil_depuis_dict(
     categories = _categories(document.get(CLE_CATEGORIES), origine)
     if categories is not None and catalogue is not None:
         try:
-            categories = catalogue.abonnement(categories, username, origine)
+            categories = catalogue.abonnement(categories, username, origine, acquises)
         except ValueError as exc:
             raise ChampInvalide(CLE_CATEGORIES, str(exc)) from exc
     return Profil(

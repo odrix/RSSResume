@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		AXES_PAR_DEFAUT,
+		categoriesACocher,
 		NOMBRE_MAX_AXES,
 		NOMBRE_MIN_AXES,
 		REGIMES,
@@ -26,9 +27,7 @@
 		saisieRefusee ? saisieRefusee.email : [...(data.depart?.email ?? []), ...data.enAttente]
 	);
 
-	const categoriesProposees = $derived(
-		data.categories && !data.categories.ouvert ? data.categories.categories : []
-	);
+	const categoriesProposees = $derived(categoriesACocher(data.categories));
 	const champRefuse = $derived.by(() => {
 		if (!form || !('champ' in form) || !form.champ) return null;
 		const affiches = categoriesProposees.length ? [...CHAMPS_AFFICHES, 'categories'] : CHAMPS_AFFICHES;
@@ -100,8 +99,9 @@
 	<form method="GET" action="/profil" class="carte repartir">
 		<label for="gabarit">Repartir d'un gabarit</label>
 		<span class="aide">
-			Remplace le texte, le régime de sécurité, les rubriques et les catégories par ceux d'un métier ;
-			votre stack, vos adresses et votre prénom restent. Rien n'est enregistré avant « Enregistrer ».
+			Remplace le texte, le régime de sécurité, les rubriques{#if categoriesProposees.length} et les
+				catégories{/if} par ceux d'un métier ; votre stack, vos adresses et votre prénom restent. Rien
+			n'est enregistré avant « Enregistrer ».
 		</span>
 		<div class="ligne">
 			<select id="gabarit" name="gabarit">
@@ -118,8 +118,13 @@
 
 {#if data.gabaritApplique && !saisieRefusee}
 	<p class="message annonce" role="status">
-		Formulaire pré-rempli avec le gabarit « {data.gabaritApplique.libelle} ». Rien n'est enregistré
-		tant que vous n'avez pas cliqué sur « Enregistrer ».
+		Formulaire pré-rempli avec le gabarit « {data.gabaritApplique.libelle} » :
+		{#if data.gabaritApplique.categories}
+			texte, régime, rubriques et catégories.
+		{:else}
+			texte, régime et rubriques ; vos catégories ne changent pas.
+		{/if}
+		Rien n'est enregistré tant que vous n'avez pas cliqué sur « Enregistrer ».
 	</p>
 {/if}
 

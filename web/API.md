@@ -26,7 +26,8 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
   Quand le refus tient à une clé du profil, le corps la nomme aussi :
   `{"erreur": "…", "champ": "categories"}` — `profil`, `stack`, `email`, `prenom`, `securite`,
   `axes`, `categories`, `flux_exclus` ou `id`. Le site affiche alors le message sous ce champ ;
-  sans `champ`, ou pour un champ que la page ne montre pas, en tête de page.
+  sans `champ`, ou pour un champ que la page ne montre pas, en tête de page. Un catalogue
+  des catégories illisible en base est une panne, pas un refus : `500`, sans `champ`.
 
 ## Ce que le site garantit à l'API
 
@@ -63,7 +64,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
 
 | `flux_exclus` | liste de titres de flux FreshRSS            | ni notés ni résumés, marqués lus quand même ; titre exact, casse et accents ignorés ; absente de la réponse quand vide ; entrée vide ou doublon → `422` |
 | `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent ou `[]` = les rubriques par défaut ; 3 à 6 axes, slug `^[a-z][a-z0-9-]{1,23}$` |
-| `categories` | liste de noms de catégories                 | facultatif ; absent ou `[]` = tout ce que le catalogue autorise, futures comprises ; une catégorie inconnue ou privée d'autrui → `422` (`champ: "categories"`), en `POST` comme en `PUT` |
+| `categories` | liste de noms de catégories                 | facultatif ; absent ou `[]` = tout ce que le catalogue autorise, futures comprises ; une catégorie inconnue ou privée d'autrui → `422` (`champ: "categories"`) ; en `PUT`, seules les catégories **ajoutées** sont vérifiées, celles déjà suivies passent même retirées du catalogue depuis (la tournée les refiltre) |
 
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le

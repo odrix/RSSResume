@@ -243,10 +243,35 @@ function couperSlug(slug: string, longueur: number): string {
 	return slug.slice(0, longueur).replace(/-+$/, '');
 }
 
-/** Le profil pré-rempli d'un gabarit : son texte, son régime, ses axes et ses catégories
- * remplacent les siens. La stack, les adresses et le prénom restent : un gabarit ne sait
- * rien de ce que la personne exploite, ni de qui elle est. */
-export function depuisGabarit(profil: ProfilSaisi | null, gabarit: Gabarit): ProfilSaisi {
+/** Les catégories que la page peut faire cocher : aucune quand le catalogue est ouvert ou
+ * que la liste n'a pas pu être lue — la section est alors masquée. */
+export function categoriesACocher(proposees: CategoriesProposees | null): CategorieProposee[] {
+	return proposees && !proposees.ouvert ? proposees.categories : [];
+}
+
+/** Le profil pré-rempli d'un gabarit : son texte, son régime et ses axes remplacent les
+ * siens. La stack, les adresses et le prénom restent : un gabarit ne sait rien de ce que la
+ * personne exploite, ni de qui elle est.
+ *
+ * Ses catégories ne sont reprises que parmi celles proposées à la personne, sous leur
+ * libellé proposé : un gabarit est écrit pour tout le monde, et une catégorie qu'elle ne
+ * peut pas suivre ne doit ni apparaître cochée ni partir à l'API. Si aucune ne reste, tout
+ * est coché plutôt que rien — rien serait refusé à l'enregistrement. Sans catégories à
+ * cocher, la page ne les montre pas : celles du profil sont gardées telles quelles. */
+export function depuisGabarit(
+	profil: ProfilSaisi | null,
+	gabarit: Gabarit,
+	proposees: CategoriesProposees | null
+): ProfilSaisi {
+	const aCocher = categoriesACocher(proposees);
+	let categories = profil?.categories;
+	if (aCocher.length) {
+		const duGabarit = new Set(gabarit.categories.map(cleCategorie));
+		const retenues = aCocher
+			.map((categorie) => categorie.libelle)
+			.filter((libelle) => duGabarit.has(cleCategorie(libelle)));
+		categories = retenues.length ? retenues : null;
+	}
 	return {
 		profil: gabarit.profil,
 		stack: profil?.stack ?? [],
@@ -254,8 +279,18 @@ export function depuisGabarit(profil: ProfilSaisi | null, gabarit: Gabarit): Pro
 		prenom: profil?.prenom ?? '',
 		securite: gabarit.securite,
 		axes: gabarit.axes,
-		categories: gabarit.categories
+		categories
 	};
+}
+
+/** La forme sous laquelle deux libellés se comparent, comme `cle_categorie` côté appli :
+ * rognée, sans casse ni accents. */
+function cleCategorie(libelle: string): string {
+	return libelle
+		.trim()
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.toLowerCase();
 }
 
 /** Ce que le site refuse avant l'API. Aucune catégorie cochée : l'API lirait la liste vide
@@ -304,6 +339,25 @@ export function lireFormulaireProfil(donnees: FormData): ProfilSaisi {
 		saisie.categories = toutes ? null : cochees;
 	}
 	return saisie;
+}
+
+/** La saisie telle que la page la réaffiche après un refus : les slugs fabriqués pour les
+ * axes nouveaux en sont retirés. Réécrits dans le champ caché, ils passeraient au prochain
+ * envoi pour ceux d'axes existants, et resteraient figés même le libellé corrigé
+ * (« Qualté » donnerait `qualte` pour toujours). Seuls restent les slugs envoyés par la
+ * page, qui viennent du profil enregistré. */
+export function saisieAReafficher(saisie: ProfilSaisi, donnees: FormData): ProfilSaisi {
+	if (!saisie.axes) return saisie;
+	const existants = new Set(
+		donnees
+			.getAll('axe_slug')
+			.map((slug) => String(slug).trim())
+			.filter(Boolean)
+	);
+	return {
+		...saisie,
+		axes: saisie.axes.map((axe) => (existants.has(axe.slug) ? axe : { ...axe, slug: '' }))
+	};
 }
 
 function decouper(texte: string, separateur: RegExp): string[] {

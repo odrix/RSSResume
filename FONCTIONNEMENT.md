@@ -954,8 +954,9 @@ pas `decideur` — fait échouer le lancement plutôt que de retomber sur le dé
 plages de versions à qui avait demandé de ne plus les entendre (voir « Le cas des CVE »).
 `categories` s'édite depuis la page « Mon profil » du site, qui ne propose que ce que
 `Catalogue.proposables` autorise et omet la clé quand tout est coché — la personne suit alors
-aussi les catégories ajoutées plus tard ; un `PUT` est vérifié contre le catalogue comme une
-création. Le texte de pertinence est ce qui définit ce qu'est une information
+aussi les catégories ajoutées plus tard. Un `PUT` ne vérifie contre le catalogue que les
+catégories **ajoutées** : celles déjà suivies passent, même retirées du catalogue depuis — la
+tournée les refiltre, et les refuser bloquerait tout enregistrement qui les renvoie. Le texte de pertinence est ce qui définit ce qu'est une information
 pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
 sont personnelles au même titre, et c'est tout ce qui les réunit ici.
 
@@ -1224,7 +1225,9 @@ est décrit dans le [README](README.md#api-http).
 - **Erreurs** : `{"erreur": "…"}`, et `"champ"` en plus quand le refus tient à une clé du
   document. La validation lève alors `profil.ChampInvalide`, une `ValueError` au message
   inchangé — la tournée et la CLI n'y voient rien — dont le champ permet au site d'afficher le
-  refus sous la case fautive au lieu de le deviner d'après le texte.
+  refus sous la case fautive au lieu de le deviner d'après le texte. Un catalogue illisible en
+  base (`annuaire_sqlite.CatalogueIllisible`) donne 500, journalisé : c'est une base à réparer,
+  pas une saisie à corriger.
 - **Audios** : lus dans `output/<id>/<date>/`, envoyés par blocs de 64 Kio, jamais chargés en
   mémoire. `Range` est servi sous ses trois formes (`a-b`, `a-`, `-n`) en 206 ; une plage hors du
   fichier donne 416 ; un en-tête illisible ou multiple, le fichier entier (ce que la RFC permet).
