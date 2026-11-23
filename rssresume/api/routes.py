@@ -13,10 +13,17 @@ import re
 import urllib.parse
 from typing import TYPE_CHECKING
 
-from rssresume.annuaire_sqlite import AnnuaireSqlite, Fiche, ProfilDejaPris, ProfilInconnu
+from rssresume.annuaire_sqlite import (
+    AnnuaireSqlite,
+    CatalogueIllisible,
+    Fiche,
+    ProfilDejaPris,
+    ProfilInconnu,
+)
 from rssresume.api.sorties import Sorties
-from rssresume.profil import username_valide, valider_username
+from rssresume.profil import ChampInvalide, username_valide, valider_username
 from rssresume.scheduler import DailySchedule
+from rssresume.tools import console
 
 if TYPE_CHECKING:
     from rssresume.api.serveur import GestionnaireApi
@@ -25,13 +32,44 @@ PREFIXE = "/api/v1"
 
 
 class ErreurApi(Exception):
-    """Une réponse d'erreur : son statut, et le message rendu sous `{"erreur": …}`."""
+    """Une réponse d'erreur : son statut, et le message rendu sous `{"erreur": …}`.
 
-    def __init__(self, statut: int, message: str, entetes: dict[str, str] | None = None):
+    `champ` nomme la clé du document en cause quand la validation la connaît : le site
+    affiche alors le refus sous ce champ, au lieu de le deviner d'après le message.
+    """
+
+    def __init__(
+        self,
+        statut: int,
+        message: str,
+        entetes: dict[str, str] | None = None,
+        champ: str | None = None,
+    ):
         super().__init__(message)
         self.statut = statut
         self.message = message
         self.entetes = entetes or {}
+        self.champ = champ
+
+    @classmethod
+    def refus(cls, exc: ValueError) -> "ErreurApi":
+        """La réponse d'un document refusé : 422, avec sa clé fautive quand elle est connue.
+
+        Un catalogue illisible n'est pas un refus de la saisie, mais une base à réparer : 500,
+        journalisée pour l'exploitant, sans rien montrer à la personne qu'elle puisse corriger.
+        """
+        if isinstance(exc, CatalogueIllisible):
+            console.error(f"API : catalogue des catégories illisible : {exc}")
+            return cls(500, "Le catalogue des catégories est illisible.")
+        return cls(422, str(exc), champ=exc.champ if isinstance(exc, ChampInvalide) else None)
+
+    def corps(self) -> dict:
+        """Le corps JSON de la réponse. `champ` n'y est que s'il est connu : un refus qui ne
+        tient pas à une clé (un corps qui n'est pas un objet) n'a pas de case où s'afficher."""
+        corps = {"erreur": self.message}
+        if self.champ:
+            corps["champ"] = self.champ
+        return corps
 
 
 class Route:
@@ -110,7 +148,7 @@ class RouteProfils(Route):
         except ProfilDejaPris as exc:
             raise ErreurApi(409, str(exc)) from exc
         except ValueError as exc:
-            raise ErreurApi(422, str(exc)) from exc
+            raise ErreurApi.refus(exc) from exc
         requete.repondre_json(
             201, fiche.complet_json(), {"Location": f"{PREFIXE}/profils/{fiche.username}"}
         )
@@ -141,7 +179,7 @@ class RouteProfil(Route):
         except ProfilInconnu as exc:
             raise ErreurApi(404, str(exc)) from exc
         except ValueError as exc:
-            raise ErreurApi(422, str(exc)) from exc
+            raise ErreurApi.refus(exc) from exc
         requete.repondre_json(200, fiche.complet_json())
 
     def delete(self, requete, username):
@@ -227,5 +265,44 @@ class RouteGabarits(Route):
         requete.repondre_json(200, [gabarit.en_json() for gabarit in self.gabarits])
 
 
+class RouteCategoriesProposees(Route):
+    """`/api/v1/profils/{username}/categories` : les catégories que la page profil propose.
+
+    Calculées ici, par `Catalogue.proposables`, et non filtrées par le site : la règle de
+    visibilité est celle qui refusera l'enregistrement, et une catégorie privée d'autrui ne
+    doit jamais quitter l'API, même pour être masquée.
+
+    Le profil n'a pas besoin d'exister : la page s'affiche avant le premier enregistrement,
+    qui le crée. Un nom invalide reste un 404, rien ne pouvant exister sous ce nom.
+    """
+
+    motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)/categories")
+    methodes = ("GET",)
+
+    def get(self, requete, username):
+        if not username_valide(username):
+            raise ErreurApi(404, f"Profil inconnu : « {username} ».")
+        try:
+            catalogue = self.annuaire.catalogue()
+        except CatalogueIllisible as exc:
+            raise ErreurApi.refus(exc) from exc
+        requete.repondre_json(
+            200,
+            {
+                "ouvert": catalogue.ouvert,
+                "categories": [entree.proposition_json() for entree in catalogue.proposables(username)],
+            },
+        )
+
+
 #: Les routes servies, dans l'ordre où elles sont essayées.
-ROUTES = (RouteProfils, RouteProfil, RouteJournees, RouteJournee, RouteAudio, RoutePassage, RouteGabarits)
+ROUTES = (
+    RouteProfils,
+    RouteProfil,
+    RouteJournees,
+    RouteJournee,
+    RouteAudio,
+    RoutePassage,
+    RouteGabarits,
+    RouteCategoriesProposees,
+)

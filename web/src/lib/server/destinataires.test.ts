@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ProfilSaisi } from '#lib/profil.js';
+import { ErreurApi } from './api-resume.js';
 import type { Utilisateur } from './comptes.js';
 import { CourrierAbsent } from './courrier.js';
 import { Destinataires, ErreurDestinataire, MAX_EN_ATTENTE } from './destinataires.js';
@@ -146,6 +147,53 @@ describe('Destinataires', () => {
 			axes,
 			categories: ['Cybersécurité']
 		});
+	});
+
+	it('enregistre les catégories cochées dans la clé categories, et les axes saisis', async () => {
+		const axes = [
+			{ slug: 'tests', libelle: 'Tests', description: 'outillage' },
+			{ slug: 'qualite', libelle: 'Qualité', description: 'revue de code' },
+			{ slug: 'livraison', libelle: 'Livraison', description: 'déploiement' }
+		];
+		await env.destinataires.enregistrerProfil(
+			moi,
+			{ ...saisie([MOI]), axes, categories: ['Tech generaliste', 'Veille concurrentielle'] },
+			ORIGINE
+		);
+		expect(env.fausseApi.profils.get('moi')).toMatchObject({
+			axes,
+			categories: ['Tech generaliste', 'Veille concurrentielle']
+		});
+	});
+
+	it('tout coché : la clé categories disparaît, et une liste d’axes vide revient au défaut', async () => {
+		const axes = [{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives' }];
+		env.fausseApi.profils.delete('moi');
+		await env.api.creerProfil('moi', { ...saisie([MOI]), axes, categories: ['Cybersécurité'] });
+
+		await env.destinataires.enregistrerProfil(moi, { ...saisie([MOI]), axes: [], categories: null }, ORIGINE);
+		const profil = env.fausseApi.profils.get('moi');
+		expect(profil).not.toHaveProperty('categories');
+		expect(profil).not.toHaveProperty('axes');
+		const corps = await env.fausseApi.requetes.at(-1)!.json();
+		expect(corps).not.toHaveProperty('categories');
+	});
+
+	it("rattache au champ des adresses le refus d'une adresse", async () => {
+		const erreur = await echec(
+			env.destinataires.enregistrerProfil(moi, saisie(['pas-une-adresse']), ORIGINE),
+			ErreurDestinataire
+		);
+		expect(erreur.champ).toBe('email');
+	});
+
+	it("refuse une catégorie privée d'un autre, et le dit sur le champ", async () => {
+		const erreur = await echec(
+			env.destinataires.enregistrerProfil(moi, { ...saisie([MOI]), categories: ['Veille interne'] }, ORIGINE),
+			ErreurApi
+		);
+		expect(erreur.statut).toBe(422);
+		expect(erreur.champ).toBe('categories');
 	});
 
 	it("refuse un jeton d'inscription ou inconnu", async () => {

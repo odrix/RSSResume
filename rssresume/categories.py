@@ -68,6 +68,15 @@ class CategorieCatalogue:
     def visible_par(self, username: str) -> bool:
         return self.publique or username in self.proprietaires
 
+    def proposition_json(self) -> dict:
+        """Ce que le site montre d'une catégorie à cocher : de quoi choisir, rien de plus.
+
+        Ni les propriétaires ni les métiers : la page n'en a pas l'usage, et les
+        propriétaires d'une catégorie privée nommeraient d'autres personnes à qui la lit.
+        `privee` dit seulement à la personne que celle-ci n'est montrée qu'à elle.
+        """
+        return {"libelle": self.libelle, "description": self.description, "privee": not self.publique}
+
     def en_document(self) -> dict:
         """L'entrée sous sa forme d'échange, celle que `Catalogue.depuis_document` relit."""
         document = {
@@ -126,7 +135,21 @@ class Catalogue:
         """Les catégories que le catalogue ne décrit pas — servies à personne."""
         return [categorie for categorie in categories if self.entree(categorie) is None]
 
-    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+    def proposables(self, username: str) -> list[CategorieCatalogue]:
+        """Les catégories que `username` peut suivre : les publiques, et ses privées.
+
+        Une seule règle pour la page qui les propose et pour le refus qui les cite : sans
+        quoi la page pourrait offrir à cocher ce que l'enregistrement refuserait ensuite.
+        """
+        return [entree for entree in self.entrees() if entree.visible_par(username)]
+
+    def abonnement(
+        self,
+        categories: Iterable[str],
+        username: str,
+        origine: str,
+        acquises: Iterable[str] = (),
+    ) -> tuple[str, ...]:
         """Les catégories que `username` déclare suivre, sous leur libellé du catalogue.
 
         Le libellé canonique et non celui saisi : le site relit ce que la tournée sert, et
@@ -135,12 +158,20 @@ class Catalogue:
         Une catégorie privée d'un autre reçoit **le même** refus qu'une inconnue : un
         message qui la distinguerait révélerait qu'elle existe. Les catégories proposées
         dans le message sont celles que `username` pourrait suivre, jamais davantage.
+
+        `acquises` : celles que la personne suit déjà, gardées sous leur libellé stocké même
+        si le catalogue ne les décrit plus ou ne les lui montre plus. Seul ce qu'on ajoute
+        est un choix à vérifier ; ce qui était acquis, la tournée le refiltre au passage.
         """
+        deja = {cle_categorie(libelle): libelle for libelle in acquises}
         libelles = []
         for categorie in categories:
+            if cle_categorie(categorie) in deja:
+                libelles.append(deja[cle_categorie(categorie)])
+                continue
             entree = self.entree(categorie)
             if entree is None or not entree.visible_par(username):
-                proposables = [e.libelle for e in self.entrees() if e.visible_par(username)]
+                proposables = [e.libelle for e in self.proposables(username)]
                 raise ValueError(
                     f"{origine} : catégorie « {categorie} » inconnue du catalogue. "
                     f"Catégories proposées : {', '.join(proposables) or '(aucune)'}."
@@ -218,7 +249,18 @@ class CatalogueOuvert(Catalogue):
     def hors_catalogue(self, categories: list[str]) -> list[str]:
         return []
 
-    def abonnement(self, categories: Iterable[str], username: str, origine: str) -> tuple[str, ...]:
+    def proposables(self, username: str) -> list[CategorieCatalogue]:
+        """Aucune : sans catalogue, rien ne dit quelles catégories existent, et tout est
+        déjà suivi — il n'y a rien à cocher."""
+        return []
+
+    def abonnement(
+        self,
+        categories: Iterable[str],
+        username: str,
+        origine: str,
+        acquises: Iterable[str] = (),
+    ) -> tuple[str, ...]:
         """Telles que déclarées : sans catalogue, rien ne dit quels libellés existent."""
         return tuple(categories)
 

@@ -48,10 +48,15 @@ confirmation (empreinte, 24 h, usage unique, remplacement), l'inscription en deu
 gabarits injoignables ; profil, alerte et bienvenue à la confirmation seulement et une
 seule fois, lien expiré, API indisponible, renvoi, fermeture sans transport d'email), la
 destination après connexion (le profil la première fois), les destinataires (ajout en
-attente, confirmation, retrait immédiat, plafond, fréquence, axes et catégories conservés),
-les transports d'email et le contenu de la bienvenue, le client d'API contre la fausse API
-(dont le champ `id`, jamais renvoyé, et les gabarits), et le relais audio : contrôle
-propriétaire/admin, chemins forgés, transmission du `Range` et relais des `206`/`416`.
+attente, confirmation, retrait immédiat, plafond, fréquence, axes et catégories conservés
+quand la page ne les montre pas, enregistrés quand elle les montre, clé retirée quand tout
+est coché), les transports d'email et le contenu de la bienvenue, le client d'API contre la
+fausse API (dont le champ `id`, jamais renvoyé, les gabarits, les catégories proposées et le
+champ d'une erreur de validation), la page « Mon profil » (seules les catégories autorisées
+proposées, cochées selon le profil, erreur affichée sous son champ, stack facultative,
+régimes expliqués, gabarit pré-rempli), la lecture de son formulaire (axes et leurs slugs,
+catégories cochées, aucune refusée), et le relais audio : contrôle propriétaire/admin,
+chemins forgés, transmission du `Range` et relais des `206`/`416`.
 
 ## Arborescence
 
@@ -59,7 +64,7 @@ propriétaire/admin, chemins forgés, transmission du `Range` et relais des `206
 src/
   env.ts                     variables d'environnement déclarées (SvelteKit 3)
   hooks.server.ts            session → locals.utilisateur, en-têtes de sécurité
-  lib/profil.ts              types du profil, lecture du formulaire (partagé)
+  lib/profil.ts              types du profil, régimes, axes, lecture du formulaire (partagé)
   lib/server/
     contexte.ts              le seul endroit où l'environnement est lu et tout assemblé
     api-resume.ts            client typé de l'API de résumé
@@ -140,6 +145,13 @@ Ce qui n'est **pas** là, volontairement :
     inscription : son adresse et son username sont alors libérés ;
   - sans `RESEND_API_KEY` ou `MAIL_FROM` en production, les inscriptions sont refusées
     (« inscriptions momentanément fermées ») et l'erreur est journalisée.
+- **Mon profil** : le texte de veille avec une aide en trois rubriques (mon métier, ce que je
+  veux suivre, ce qui ne m'intéresse pas) et le texte d'un gabarit en exemple ; « Repartir
+  d'un gabarit », qui pré-remplit sans rien enregistrer ; les catégories à cocher, celles que
+  l'API autorise et elles seules, avec leur description — tout coché, la personne suit aussi
+  les catégories ajoutées plus tard ; le régime de sécurité expliqué en une ligne par valeur ;
+  les rubriques (axes), de 3 à 6, vides pour celles par défaut ; la stack, facultative. Un
+  refus de l'API s'affiche sous le champ qu'elle nomme.
 - **Destinataires du digest** : dans « Mon profil », une adresse ajoutée reçoit son propre
   lien et attend dans la base du site. L'API ne reçoit que les adresses confirmées. L'adresse
   du compte, prouvée à l'inscription, passe directement. Retirer une adresse est immédiat.

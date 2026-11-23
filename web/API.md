@@ -23,6 +23,11 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
 - **Erreurs** : corps `{"erreur": "message lisible"}`, statuts `400`, `401`, `404`, `409`,
   `422`. Le message d'un `422` est **affiché tel quel** à la personne dans « Mon profil » :
   il doit être en français et dire quel champ est en cause (`email : adresse invalide (x)`).
+  Quand le refus tient à une clé du profil, le corps la nomme aussi :
+  `{"erreur": "…", "champ": "categories"}` — `profil`, `stack`, `email`, `prenom`, `securite`,
+  `axes`, `categories`, `flux_exclus` ou `id`. Le site affiche alors le message sous ce champ ;
+  sans `champ`, ou pour un champ que la page ne montre pas, en tête de page. Un catalogue
+  des catégories illisible en base est une panne, pas un refus : `500`, sans `champ`.
 
 ## Ce que le site garantit à l'API
 
@@ -58,18 +63,23 @@ Le document de la personne, au format de `rssresume/profil.py` :
 | `securite` | `"exploitant"`, `"decideur"` ou `"curieux"`   | `"exploitant"` quand absent ; toute autre valeur → `422` |
 
 | `flux_exclus` | liste de titres de flux FreshRSS            | ni notés ni résumés, marqués lus quand même ; titre exact, casse et accents ignorés ; absente de la réponse quand vide ; entrée vide ou doublon → `422` |
-| `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent = les rubriques par défaut |
-| `categories` | liste de noms de catégories                 | facultatif ; absent = tout le catalogue ouvert |
+| `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent ou `[]` = les rubriques par défaut ; 3 à 6 axes, slug `^[a-z][a-z0-9-]{1,23}$` |
+| `categories` | liste de noms de catégories                 | facultatif ; absent ou `[]` = tout ce que le catalogue autorise, futures comprises ; une catégorie inconnue ou privée d'autrui → `422` (`champ: "categories"`) ; en `PUT`, seules les catégories **ajoutées** sont vérifiées, celles déjà suivies passent même retirées du catalogue depuis (la tournée les refiltre) |
 
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
 document stocké avait une adresse seule ou pas de prénom. `axes` et `categories` n'y
 figurent que si le profil les déclare.
 
-Le site les recopie d'un gabarit à la confirmation du compte, et ne les édite pas encore :
-comme un `PUT` remplace tout le document, il renvoie ceux qu'il vient de lire à chaque
-enregistrement de « Mon profil » et à chaque adresse confirmée, et ne les envoie pas quand
-le profil n'en a pas.
+Le site les recopie d'un gabarit à la confirmation du compte, et « Mon profil » les édite :
+des cases pour les catégories proposées (voir `GET …/categories`), six lignes libellé +
+description pour les axes. Un axe existant garde son slug, un nouveau en reçoit un tiré de
+son libellé ; toutes les lignes vides envoient `axes: []`. Toutes les catégories cochées
+n'envoient **pas** la clé : le profil suit alors aussi celles ajoutées plus tard. Aucune
+cochée est refusé par le site avant l'appel, l'API lisant `[]` comme « tout ». Une section
+que la page n'a pas pu montrer (catalogue injoignable ou ouvert) garde la valeur lue : comme
+un `PUT` remplace tout le document, le site renvoie ce qu'il vient de lire, à chaque
+enregistrement et à chaque adresse confirmée, et ne l'envoie pas quand le profil n'en a pas.
 
 `id` figure dans toutes les réponses qui portent un profil (la liste, `GET`, `POST`, `PUT`).
 Les URL restent adressées par **username** ; le site n'envoie jamais `id` (ni `modifie_le`)
@@ -106,7 +116,26 @@ Corps : `{"profil", "stack", "email", "prenom", "securite"}`, plus `axes` et `ca
 s'il en a — remplacement complet, pas de fusion : une clé omise revient à son défaut.
 
 - `200` → le profil complet, `modifie_le` mis à jour, `id` inchangé
-- `404`, `422`
+- `404`, `422` (avec `champ` quand une clé est en cause)
+
+### `GET /api/v1/profils/{username}/categories`
+
+→ `200`, les catégories que ce username peut suivre — publiques, et privées dont il est
+propriétaire —, dans l'ordre du catalogue :
+
+```json
+{"ouvert": false, "categories": [{"libelle": "Cybersécurité", "description": "…", "privee": false}]}
+```
+
+- Jamais les propriétaires ni les métiers : la page n'en a pas l'usage, et une catégorie
+  privée d'autrui n'apparaît pas du tout. La règle est celle qui refuse l'enregistrement.
+- `ouvert: true` et `categories: []` quand aucun catalogue n'est déclaré : tout est suivi,
+  il n'y a rien à cocher.
+- Le profil n'a pas à exister (la page s'affiche avant le premier enregistrement) ; `404`
+  pour un username invalide.
+
+Le site l'appelle à chaque affichage de « Mon profil », sans cache ; injoignable, la section
+des catégories est masquée et la clé n'est pas envoyée.
 
 ### `DELETE /api/v1/profils/{username}`
 
@@ -201,6 +230,9 @@ création du profil ; l’identifiant `metier` n’est pas stocké avec le profi
 
 Le site s'en sert deux fois : pour la liste du formulaire d'inscription (métier, libellé,
 texte, catégories), puis à l'envoi du formulaire, pour copier le texte, la stack, le régime,
-les axes et les catégories du métier choisi dans le compte en attente. Il garde la liste
+les axes et les catégories du métier choisi dans le compte en attente. « Mon profil » s'en
+sert aussi : « Repartir d'un gabarit » (`/profil?gabarit=<metier>`) pré-remplit le texte, le
+régime, les axes et les catégories sans rien enregistrer, et le texte d'un gabarit y sert
+d'exemple. Il garde la liste
 cinq minutes en mémoire (jamais une erreur). Le profil créé à la confirmation reprend cette
 copie : la personne reçoit ce qu'elle a vu, même si le catalogue a changé entre-temps.

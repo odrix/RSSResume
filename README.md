@@ -873,7 +873,8 @@ les audios que le passage a écrits. Bibliothèque standard seulement (`http.ser
 | `RSSRESUME_API_HOST` / `RSSRESUME_API_PORT` | adresse d'écoute | `0.0.0.0` / `8080` |
 
 Toutes les routes exigent le jeton (401 sinon). Réponses en JSON UTF-8 ; une erreur est
-`{"erreur": "…"}`, avec 400, 401, 404, 405, 409, 413, 416 ou 422.
+`{"erreur": "…"}`, avec 400, 401, 404, 405, 409, 413, 416 ou 422. Un 422 qui tient à une clé du
+document la nomme en plus : `{"erreur": "…", "champ": "securite"}`.
 
 | Méthode et route | Réponse |
 | --- | --- |
@@ -886,6 +887,7 @@ Toutes les routes exigent le jeton (401 sinon). Réponses en JSON UTF-8 ; une er
 | `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |
 | `GET /api/v1/profils/{username}/journees/{date}` | le contenu de la journée relu de ses journaux, comme `--send-only` : résumés, articles « à lire » et « à surveiller » (`url` à `null` hors http(s)), audios, `raison` d'une journée sans article ; 404 |
 | `GET /api/v1/passage` | `{"heure","fuseau","prochain"}`, lus de `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` comme le travailleur |
+| `GET /api/v1/profils/{username}/categories` | `{"ouvert", "categories": [{"libelle","description","privee"}]}` : les catégories que ce nom peut suivre — publiques et privées dont il est propriétaire —, jamais les propriétaires ; vide quand le catalogue est ouvert ; le profil n'a pas à exister ; 404 nom invalide |
 
 Un document est validé par `profil_depuis_dict`, la fonction même que le passage appelle : l'API
 refuse exactement ce que la tournée refuserait, avec le même message. Le corps d'une écriture

@@ -8,7 +8,7 @@
  */
 
 import type { ContenuJournee, Passage } from '#lib/journee.js';
-import type { Gabarit, Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
+import type { CategoriesProposees, Gabarit, Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
 
 export interface AudioJournee {
 	nom: string;
@@ -23,11 +23,13 @@ export interface Journee {
 /** Une réponse d'erreur de l'API, ou son absence.
  *
  * `statut` vaut 0 quand l'API n'a pas répondu du tout : la page doit pouvoir dire « le
- * service est indisponible » sans confondre ce cas avec un 404. */
+ * service est indisponible » sans confondre ce cas avec un 404. `champ` nomme la clé du
+ * profil refusée quand l'API la connaît : la page affiche le refus sous ce champ. */
 export class ErreurApi extends Error {
 	constructor(
 		readonly statut: number,
-		message: string
+		message: string,
+		readonly champ: string | null = null
 	) {
 		super(message);
 		this.name = 'ErreurApi';
@@ -45,7 +47,8 @@ export class ErreurApi extends Error {
  * `axes` et `categories` ne partent que s'ils sont définis : le PUT remplace tout le
  * document, et une clé absente y vaut « réglage par défaut » — l'omettre quand on ne la
  * connaît pas, c'est ne pas inventer un réglage, la recopier quand on la connaît, c'est
- * ne pas effacer celui du gabarit. */
+ * ne pas effacer celui du gabarit. `categories: null` (tout coché) part aussi sans la clé :
+ * c'est précisément « tout le catalogue ». */
 function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
 	const corps: ProfilSaisi = {
 		profil: saisie.profil,
@@ -55,7 +58,7 @@ function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
 		securite: saisie.securite
 	};
 	if (saisie.axes !== undefined) corps.axes = saisie.axes;
-	if (saisie.categories !== undefined) corps.categories = saisie.categories;
+	if (saisie.categories != null) corps.categories = saisie.categories;
 	return corps;
 }
 
@@ -120,6 +123,12 @@ export class ClientApiResume {
 
 	lirePassage(): Promise<Passage> {
 		return this.#json('GET', '/api/v1/passage');
+	}
+
+	/** Les catégories que `username` peut cocher. Pas de cache, contrairement aux gabarits :
+	 * la liste dépend de la personne, et seule « Mon profil » la demande. */
+	listerCategories(username: string): Promise<CategoriesProposees> {
+		return this.#json('GET', `${this.#profil(username)}/categories`);
 	}
 
 	/** Gardés en mémoire quelques minutes : chaque visite anonyme de l'inscription les
@@ -209,9 +218,11 @@ export class ClientApiResume {
 
 	async #erreur(reponse: Response): Promise<ErreurApi> {
 		let message = `Le service de résumé a répondu ${reponse.status}.`;
+		let champ: string | null = null;
 		try {
-			const corps = (await reponse.json()) as { erreur?: unknown };
+			const corps = (await reponse.json()) as { erreur?: unknown; champ?: unknown };
 			if (typeof corps.erreur === 'string' && corps.erreur) message = corps.erreur;
+			if (typeof corps.champ === 'string' && corps.champ) champ = corps.champ;
 		} catch {
 			// Corps absent ou non JSON : le message générique suffit.
 		}
@@ -220,6 +231,6 @@ export class ClientApiResume {
 			console.error('API de résumé : jeton refusé (401). Vérifier RSSRESUME_API_TOKEN.');
 			message = 'Le service de résumé refuse la connexion du site.';
 		}
-		return new ErreurApi(reponse.status, message);
+		return new ErreurApi(reponse.status, message, champ);
 	}
 }

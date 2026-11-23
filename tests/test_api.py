@@ -10,6 +10,7 @@ import http.client
 import json
 import os
 import pathlib
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -31,6 +32,7 @@ from rssresume.api.serveur import (
     valider_jeton,
 )
 from rssresume.api.sorties import Sorties, lien_sur
+from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.newsletter import Lettre
 from rssresume.profil import ENV_PROFILES_DB
 from rssresume.scheduler import DailySchedule
@@ -180,6 +182,101 @@ class ProfilsTests(ServeurTestCase):
 
         self.assertEqual(422, statut)
         self.assertIn("securite", corps["erreur"])
+
+    def test_a_refusal_names_the_faulty_field(self):
+        self.json("POST", "/api/v1/profils", self.BEA)
+        axes_trop_courts = [{"slug": "qualite", "libelle": "Qualité", "description": "tests"}]
+
+        for document, champ in (
+            ({"profil": "x", "securite": "expert"}, "securite"),
+            ({"profil": "x", "axes": axes_trop_courts}, "axes"),
+        ):
+            with self.subTest(champ=champ):
+                statut, corps = self.json("PUT", "/api/v1/profils/bea", document)
+                self.assertEqual(422, statut)
+                self.assertEqual(champ, corps["champ"])
+                self.assertIn(champ, corps["erreur"])
+        statut, corps = self.json("POST", "/api/v1/profils", {"username": "zoe", "profil": "x", "prenom": 3})
+        self.assertEqual((422, "prenom"), (statut, corps["champ"]))
+        # Un refus qui ne tient à aucune clé n'en invente pas.
+        statut, corps = self.json("PUT", "/api/v1/profils/bea", [1, 2])
+        self.assertEqual(422, statut)
+        self.assertNotIn("champ", corps)
+
+    def test_put_refuses_a_category_outside_the_catalogue_with_its_field(self):
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["bea"]),
+            CategorieCatalogue("Veille interne", "Interne.", ["cto"], ["zoe"]),
+        ]))
+        self.assertEqual(201, self.json("POST", "/api/v1/profils", self.BEA)[0])
+
+        for categorie in ("Inconnue", "Veille interne"):
+            with self.subTest(categorie=categorie):
+                statut, corps = self.json(
+                    "PUT", "/api/v1/profils/bea", {"profil": "x", "categories": ["Tech", categorie]}
+                )
+                self.assertEqual(422, statut)
+                self.assertEqual("categories", corps["champ"])
+                self.assertNotIn("Veille interne,", corps["erreur"])
+        self.assertNotIn("categories", self.json("GET", "/api/v1/profils/bea")[1])
+
+        statut, modifie = self.json(
+            "PUT", "/api/v1/profils/bea", {"profil": "x", "categories": ["tech", "Veille marché"]}
+        )
+        self.assertEqual(200, statut)
+        self.assertEqual(["Tech", "Veille marché"], modifie["categories"])
+
+    def test_put_keeps_a_followed_category_since_removed_from_the_catalogue(self):
+        """Seul ce qu'on ajoute se vérifie : confirmer une adresse ne doit pas échouer parce
+        qu'une catégorie suivie a quitté le catalogue — la tournée la refiltre."""
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+            CategorieCatalogue("Ancienne", "Retirée ensuite.", ["cto"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["bea"]),
+        ]))
+        self.json("POST", "/api/v1/profils", {**self.BEA, "categories": ["Tech", "Ancienne", "Veille marché"]})
+        # « Ancienne » disparaît, « Veille marché » passe à une autre propriétaire.
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["zoe"]),
+        ]))
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Autre", "categories": ["Tech", "ancienne", "Veille marché"]
+        })
+
+        self.assertEqual(200, statut)
+        self.assertEqual(["Tech", "Ancienne", "Veille marché"], modifie["categories"])
+        # Retirée puis renvoyée, elle n'est plus acquise : c'est un ajout, vérifié.
+        self.json("PUT", "/api/v1/profils/bea", {"profil": "Autre", "categories": ["Tech"]})
+        statut, corps = self.json("PUT", "/api/v1/profils/bea", {"profil": "Autre", "categories": ["Ancienne"]})
+        self.assertEqual((422, "categories"), (statut, corps["champ"]))
+
+    def test_an_unreadable_catalogue_is_a_server_error_not_a_refusal(self):
+        self.json("POST", "/api/v1/profils", self.BEA)
+        connexion = sqlite3.connect(self.annuaire.chemin)
+        try:
+            connexion.execute(
+                "INSERT INTO categories (libelle, document) VALUES (?, ?)", ("Tech", '{"description": ""}')
+            )
+            connexion.commit()
+        finally:
+            connexion.close()
+
+        with mock.patch("rssresume.api.routes.console.error") as journal:
+            for methode, chemin, corps in (
+                ("PUT", "/api/v1/profils/bea", {"profil": "x"}),
+                ("POST", "/api/v1/profils", {"username": "zoe", "profil": "x"}),
+                ("GET", "/api/v1/profils/bea/categories", None),
+            ):
+                with self.subTest(methode=methode, chemin=chemin):
+                    statut, reponse = self.json(methode, chemin, corps)
+                    self.assertEqual(500, statut)
+                    self.assertNotIn("champ", reponse)
+                    self.assertNotIn("Tech", reponse["erreur"])
+        self.assertEqual(3, journal.call_count)
+        self.assertEqual("Veille", self.json("GET", "/api/v1/profils/bea")[1]["profil"])
 
     def test_the_security_regime_is_kept_and_read_back(self):
         self.json("POST", "/api/v1/profils", {**self.BEA, "securite": "decideur"})
@@ -656,6 +753,51 @@ class GabaritsApiTests(ServeurTestCase):
             {"cto", "developpeur", "ops", "dsi", "rssi", "chef-de-projet", "qa", "po-pm", "designer"},
             metiers,
         )
+
+
+class CategoriesApiTests(ServeurTestCase):
+    """`GET /api/v1/profils/{username}/categories` : ce que la page profil propose de cocher."""
+
+    def setUp(self):
+        super().setUp()
+        self.annuaire.remplacer_catalogue(Catalogue([
+            CategorieCatalogue("Tech", "L'actualité technique.", ["developpeur"]),
+            CategorieCatalogue("Veille marché", "Les concurrents.", ["cto"], ["bea"]),
+            CategorieCatalogue("Veille interne", "Interne.", ["cto"], ["zoe"]),
+        ]))
+
+    def test_only_the_categories_a_profile_may_follow_are_listed(self):
+        # Le profil n'a pas besoin d'exister : la page s'affiche avant de le créer.
+        statut, proposees = self.json("GET", "/api/v1/profils/bea/categories")
+
+        self.assertEqual(200, statut)
+        self.assertEqual(
+            {
+                "ouvert": False,
+                "categories": [
+                    {"libelle": "Tech", "description": "L'actualité technique.", "privee": False},
+                    {"libelle": "Veille marché", "description": "Les concurrents.", "privee": True},
+                ],
+            },
+            proposees,
+        )
+        self.assertNotIn("proprietaires", json.dumps(proposees))
+        self.assertNotIn("zoe", json.dumps(proposees))
+        self.assertEqual(401, self.appel("GET", "/api/v1/profils/bea/categories", jeton=None)[0])
+
+    def test_an_open_catalogue_lists_nothing_and_says_so(self):
+        self.annuaire.remplacer_catalogue(Catalogue())
+
+        self.assertEqual(
+            (200, {"ouvert": True, "categories": []}), self.json("GET", "/api/v1/profils/bea/categories")
+        )
+
+    def test_an_invalid_username_is_not_found(self):
+        for nom in ("Bea", "..%2F..%2Fetc", "a"):
+            with self.subTest(nom=nom):
+                self.assertEqual(404, self.appel("GET", f"/api/v1/profils/{nom}/categories")[0])
+        statut, entetes, _ = self.appel("PUT", "/api/v1/profils/bea/categories", {"categories": []})
+        self.assertEqual((405, "GET"), (statut, entetes["Allow"]))
 
 
 if __name__ == "__main__":

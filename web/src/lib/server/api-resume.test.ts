@@ -163,6 +163,37 @@ describe('ClientApiResume', () => {
 		expect((await erreurDe(api.listerJournees('personne'))).statut).toBe(404);
 	});
 
+	it('lit les catégories proposées : publiques et privées de la personne, sans propriétaires', async () => {
+		const { api, fausseApi } = monter();
+		// Le profil n'a pas à exister : la page les propose avant le premier enregistrement.
+		const proposees = await api.listerCategories('moi');
+		expect(proposees.ouvert).toBe(false);
+		const libelles = proposees.categories.map((categorie) => categorie.libelle);
+		expect(libelles).toContain('Veille concurrentielle');
+		expect(libelles).not.toContain('Veille interne');
+		expect(proposees.categories.find((c) => c.libelle === 'Veille concurrentielle')).toEqual({
+			libelle: 'Veille concurrentielle',
+			description: 'Les mouvements des concurrents.',
+			privee: true
+		});
+		expect(JSON.stringify(proposees)).not.toContain('proprietaires');
+		expect(fausseApi.requetes.at(-1)?.url).toBe('http://api.test/api/v1/profils/moi/categories');
+
+		fausseApi.catalogue = null;
+		expect(await api.listerCategories('moi')).toEqual({ ouvert: true, categories: [] });
+	});
+
+	it('rattache au champ fautif une erreur de validation', async () => {
+		const { api } = monter();
+		await api.creerProfil('moi', SAISIE);
+		const regime = await erreurDe(api.modifierProfil('moi', { ...SAISIE, securite: 'expert' as 'curieux' }));
+		expect([regime.statut, regime.champ]).toEqual([422, 'securite']);
+		const categorie = await erreurDe(api.modifierProfil('moi', { ...SAISIE, categories: ['Veille interne'] }));
+		expect([categorie.statut, categorie.champ]).toEqual([422, 'categories']);
+		// Une erreur qui ne nomme pas de champ n'en a pas.
+		expect((await erreurDe(api.lireProfil('personne'))).champ).toBeNull();
+	});
+
 	it("ne montre pas un 401 comme la faute de l'utilisateur", async () => {
 		const { fausseApi } = monter();
 		const api = new ClientApiResume({ baseUrl: 'http://api.test', jeton: 'faux', fetch: fausseApi.traiter });

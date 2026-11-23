@@ -25,8 +25,11 @@ import { erreurEmail, normaliserEmail } from './validation.js';
 /** Au-delà, une liste d'attente n'est plus une liste de destinataires mais un envoi de masse. */
 export const MAX_EN_ATTENTE = 10;
 
-/** Une saisie refusée avant tout appel à l'API ; le message est affiché tel quel. */
-export class ErreurDestinataire extends Error {}
+/** Une saisie refusée avant tout appel à l'API ; le message est affiché tel quel, sous le
+ * champ des adresses — c'est toujours d'elles qu'il s'agit. */
+export class ErreurDestinataire extends Error {
+	readonly champ = 'email';
+}
 
 export interface Enregistrement {
 	profil: Profil;
@@ -92,9 +95,16 @@ export class Destinataires {
 			throw new ErreurDestinataire("Trop d'adresses ajoutées récemment. Réessayez dans une heure.");
 		}
 
-		// Le formulaire n'édite ni les axes ni les catégories ; le PUT remplaçant tout le
-		// document, les omettre effacerait ceux du gabarit au premier enregistrement.
-		const corps = { ...saisie, axes: actuel?.axes, categories: actuel?.categories, email: directes };
+		// Axes ou catégories que la page n'a pas montrés (`undefined`) sont recopiés du profil
+		// lu : le PUT remplaçant tout le document, les omettre effacerait ceux du gabarit.
+		// `categories: null` (tout coché) reste `null` et part sans la clé : le profil suit
+		// alors tout le catalogue, futures catégories comprises.
+		const corps = {
+			...saisie,
+			axes: saisie.axes ?? actuel?.axes,
+			categories: saisie.categories === undefined ? actuel?.categories : saisie.categories,
+			email: directes
+		};
 		const profil = actuel
 			? await this.api.modifierProfil(utilisateur.username, corps)
 			: await this.api.creerProfil(utilisateur.username, corps);

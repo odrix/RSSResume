@@ -281,7 +281,7 @@ class GestionnaireApi(BaseHTTPRequestHandler):
     def _repondre_erreur(self, erreur: ErreurApi) -> None:
         if not self._corps_lu:
             self._ecarter_corps()
-        self.repondre_json(erreur.statut, {"erreur": erreur.message}, erreur.entetes)
+        self.repondre_json(erreur.statut, erreur.corps(), erreur.entetes)
 
     def _ecarter_corps(self) -> None:
         """Lit et jette un corps resté dans le tuyau, s'il est petit ; sinon ferme.
