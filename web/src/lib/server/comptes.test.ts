@@ -1,5 +1,6 @@
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import { ouvrirBase } from './base.js';
+import { migrer, ouvrirBase } from './base.js';
 import { CompteExistant, Comptes, DELAI_CONFIRMATION_COMPTE_MS, HacheurMotDePasse } from './comptes.js';
 import { EMAIL_ADMIN, FauxHacheur, monter } from './outils-test.js';
 
@@ -15,15 +16,55 @@ describe('Comptes', () => {
 
 	it('crée un compte en attente, avec son brouillon, que la confirmation efface', async () => {
 		const { comptes } = monter();
+		const gabarit = {
+			metier: 'rssi',
+			libelle: 'RSSI',
+			securite: 'exploitant' as const,
+			axes: [{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives' }],
+			categories: ['Cybersécurité']
+		};
 		const cree = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe', {
 			profil: 'RSSI',
-			prenom: 'Adrien'
+			prenom: 'Adrien',
+			gabarit
 		});
 		expect(cree.confirme).toBe(false);
-		expect(comptes.brouillon(cree.id)).toEqual({ profil: 'RSSI', prenom: 'Adrien' });
+		expect(comptes.brouillon(cree.id)).toEqual({ profil: 'RSSI', prenom: 'Adrien', gabarit });
 		comptes.confirmer(cree.id);
 		expect(comptes.parId(cree.id)?.confirme).toBe(true);
-		expect(comptes.brouillon(cree.id)).toEqual({ profil: '', prenom: '' });
+		expect(comptes.brouillon(cree.id)).toEqual({ profil: '', prenom: '', gabarit: null });
+	});
+
+	it('confirmer ne vaut qu’une fois', async () => {
+		const { comptes } = monter();
+		const cree = await comptes.creer('moi@example.com', 'moi', 'une phrase de passe');
+		expect(comptes.confirmer(cree.id)).toBe(true);
+		expect(comptes.confirmer(cree.id)).toBe(false);
+		expect(comptes.parId(cree.id)?.confirme).toBe(true);
+	});
+
+	it('note la première connexion une seule fois', async () => {
+		const { creerConfirme, comptes } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		expect(comptes.noterPremiereConnexion(moi.id)).toBe(true);
+		expect(comptes.noterPremiereConnexion(moi.id)).toBe(false);
+	});
+
+	it('les comptes confirmés avant la migration ne sont pas une première connexion', async () => {
+		const base = new DatabaseSync(':memory:');
+		migrer(base, 2);
+		const inserer = base.prepare(
+			'INSERT INTO comptes (email, username, hash, cree_le, confirme_le) VALUES (?, ?, ?, ?, ?)'
+		);
+		const ancien = Number(inserer.run('ancien@example.com', 'ancien', 'x', '2026-01-01', '2026-01-01').lastInsertRowid);
+		const attente = Number(inserer.run('attente@example.com', 'attente', 'x', '2026-11-20', null).lastInsertRowid);
+		migrer(base);
+
+		const comptes = new Comptes(base, EMAIL_ADMIN, new FauxHacheur());
+		expect(comptes.noterPremiereConnexion(ancien)).toBe(false);
+		// Un compte encore en attente au déploiement aura bien sa première connexion.
+		comptes.confirmer(attente);
+		expect(comptes.noterPremiereConnexion(attente)).toBe(true);
 	});
 
 	it("signale l'email ou le username déjà pris, même par un compte en attente", async () => {
@@ -90,9 +131,9 @@ describe('Comptes', () => {
 		expect(comptes.conflit('abandon@example.com', 'abandon')).toBeNull();
 	});
 
-	it('monte le schéma jusqu’à la version de la vérification d’email', () => {
+	it('monte le schéma jusqu’à la version du métier et de la première connexion', () => {
 		const base = ouvrirBase(':memory:');
-		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
 	});
 });
 

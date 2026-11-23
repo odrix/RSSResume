@@ -28,3 +28,10 @@ export function destinationSure(suite: string | null, defaut = '/resumes'): stri
 	}
 	return suite;
 }
+
+/** Après la connexion : la première mène au profil, que la personne relise ce qui
+ * décidera de ses articles plutôt qu'une liste de résumés encore vide. Une page demandée
+ * explicitement l'emporte : on l'y renvoie, comme toujours. */
+export function destinationApresConnexion(suite: string | null, premiere: boolean): string {
+	return destinationSure(suite, premiere ? '/profil' : '/resumes');
+}

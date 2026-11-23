@@ -1,6 +1,6 @@
 import { isRedirect, isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import { destinationSure, exigerAdmin, exigerConnexion } from './garde.js';
+import { destinationApresConnexion, destinationSure, exigerAdmin, exigerConnexion } from './garde.js';
 import { EMAIL_ADMIN, monter } from './outils-test.js';
 
 function leve(fonction: () => unknown): unknown {
@@ -38,5 +38,17 @@ describe('gardes', () => {
 		['javascript:alert(1)', '/resumes']
 	])('ne suit que les destinations locales (%s)', (suite, attendu) => {
 		expect(destinationSure(suite)).toBe(attendu);
+	});
+
+	it('la première connexion mène au profil, les suivantes aux résumés, une suite explicite l’emporte', async () => {
+		const { creerConfirme, comptes } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		// L'enchaînement de la page de connexion : noter, puis choisir la destination.
+		expect(destinationApresConnexion(null, comptes.noterPremiereConnexion(moi.id))).toBe('/profil');
+		expect(destinationApresConnexion(null, comptes.noterPremiereConnexion(moi.id))).toBe('/resumes');
+
+		expect(destinationApresConnexion('/resumes/moi/2026-11-21', true)).toBe('/resumes/moi/2026-11-21');
+		// Une suite forgée ne fait pas perdre la règle de la première connexion.
+		expect(destinationApresConnexion('//ailleurs.example', true)).toBe('/profil');
 	});
 });

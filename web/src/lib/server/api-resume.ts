@@ -8,7 +8,7 @@
  */
 
 import type { ContenuJournee, Passage } from '#lib/journee.js';
-import type { Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
+import type { Gabarit, Profil, ProfilSaisi, ResumeProfil } from '#lib/profil.js';
 
 export interface AudioJournee {
 	nom: string;
@@ -40,15 +40,23 @@ export class ErreurApi extends Error {
 
 /** Les seuls champs qu'un corps POST/PUT porte. Recopiés un à un plutôt qu'étalés : un
  * `Profil` complet passé par erreur n'enverrait ni `id` ni `modifie_le`, que l'API seule
- * attribue. */
+ * attribue.
+ *
+ * `axes` et `categories` ne partent que s'ils sont définis : le PUT remplace tout le
+ * document, et une clé absente y vaut « réglage par défaut » — l'omettre quand on ne la
+ * connaît pas, c'est ne pas inventer un réglage, la recopier quand on la connaît, c'est
+ * ne pas effacer celui du gabarit. */
 function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
-	return {
+	const corps: ProfilSaisi = {
 		profil: saisie.profil,
 		stack: saisie.stack,
 		email: saisie.email,
 		prenom: saisie.prenom,
 		securite: saisie.securite
 	};
+	if (saisie.axes !== undefined) corps.axes = saisie.axes;
+	if (saisie.categories !== undefined) corps.categories = saisie.categories;
+	return corps;
 }
 
 export interface OptionsClient {
@@ -103,6 +111,10 @@ export class ClientApiResume {
 
 	lirePassage(): Promise<Passage> {
 		return this.#json('GET', '/api/v1/passage');
+	}
+
+	listerGabarits(): Promise<Gabarit[]> {
+		return this.#json('GET', '/api/v1/gabarits');
 	}
 
 	/** Le flux audio brut, statut et en-têtes compris : le relais les recopie.

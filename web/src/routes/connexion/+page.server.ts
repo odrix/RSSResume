@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { contexte } from '#lib/server/contexte.js';
 import { poserCookieSession } from '#lib/server/cookie.js';
-import { destinationSure } from '#lib/server/garde.js';
+import { destinationApresConnexion, destinationSure } from '#lib/server/garde.js';
 import { normaliserEmail } from '#lib/server/validation.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -52,6 +52,9 @@ export const actions: Actions = {
 		}
 		const { jeton, expireLe } = ctx.sessions.ouvrir(utilisateur.id);
 		poserCookieSession(cookies, jeton, expireLe);
-		redirect(303, destinationSure(url.searchParams.get('suite')));
+		redirect(
+			303,
+			destinationApresConnexion(url.searchParams.get('suite'), ctx.comptes.noterPremiereConnexion(utilisateur.id))
+		);
 	}
 };

@@ -8,6 +8,7 @@
 
 import { hash, verify } from '@node-rs/argon2';
 import type { DatabaseSync } from 'node:sqlite';
+import type { Axe, Securite } from '#lib/profil.js';
 import { normaliserEmail } from './validation.js';
 
 export type Role = 'membre' | 'admin';
@@ -54,10 +55,23 @@ export class Utilisateur {
 	}
 }
 
-/** Ce que la personne a écrit à l'inscription, gardé jusqu'à la création du profil. */
+/** Les réglages du gabarit choisi à l'inscription, copiés plutôt que désignés par leur
+ * `metier` : le profil créé à la confirmation reprend ce que la personne a vu, même si
+ * le catalogue des gabarits a changé entre-temps. Le texte, lui, est dans `profil`. */
+export interface ReglagesGabarit {
+	metier: string;
+	libelle: string;
+	securite: Securite;
+	axes: Axe[];
+	categories: string[];
+}
+
+/** Ce que la personne a écrit à l'inscription, gardé jusqu'à la création du profil.
+ * `gabarit` est nul pour « Autre » : le profil n'aura alors ni axes ni catégories. */
 export interface Brouillon {
 	profil: string;
 	prenom: string;
+	gabarit: ReglagesGabarit | null;
 }
 
 interface LigneCompte {
@@ -114,14 +128,14 @@ export class Comptes {
 		email: string,
 		username: string,
 		motDePasse: string,
-		brouillon: Brouillon = { profil: '', prenom: '' }
+		brouillon: Brouillon = { profil: '', prenom: '', gabarit: null }
 	): Promise<Utilisateur> {
 		const empreinte = await this.hacheur.hacher(motDePasse);
 		try {
 			const resultat = this.base
 				.prepare(
-					`INSERT INTO comptes (email, username, hash, cree_le, brouillon_profil, brouillon_prenom)
-					VALUES (?, ?, ?, ?, ?, ?)`
+					`INSERT INTO comptes (email, username, hash, cree_le, brouillon_profil, brouillon_prenom, brouillon_gabarit)
+					VALUES (?, ?, ?, ?, ?, ?, ?)`
 				)
 				.run(
 					normaliserEmail(email),
@@ -129,7 +143,8 @@ export class Comptes {
 					empreinte,
 					new Date(this.maintenant()).toISOString(),
 					brouillon.profil,
-					brouillon.prenom
+					brouillon.prenom,
+					brouillon.gabarit ? JSON.stringify(brouillon.gabarit) : null
 				);
 			return this.parId(Number(resultat.lastInsertRowid))!;
 		} catch (erreur) {
@@ -142,19 +157,39 @@ export class Comptes {
 
 	brouillon(id: number): Brouillon {
 		const ligne = this.base
-			.prepare('SELECT brouillon_profil, brouillon_prenom FROM comptes WHERE id = ?')
-			.get(id) as { brouillon_profil: string | null; brouillon_prenom: string | null } | undefined;
-		return { profil: ligne?.brouillon_profil ?? '', prenom: ligne?.brouillon_prenom ?? '' };
+			.prepare('SELECT brouillon_profil, brouillon_prenom, brouillon_gabarit FROM comptes WHERE id = ?')
+			.get(id) as
+			| { brouillon_profil: string | null; brouillon_prenom: string | null; brouillon_gabarit: string | null }
+			| undefined;
+		return {
+			profil: ligne?.brouillon_profil ?? '',
+			prenom: ligne?.brouillon_prenom ?? '',
+			gabarit: ligne?.brouillon_gabarit ? (JSON.parse(ligne.brouillon_gabarit) as ReglagesGabarit) : null
+		};
 	}
 
-	/** Le brouillon a servi à créer le profil : il n'a plus de raison d'être gardé. */
-	confirmer(id: number): void {
-		this.base
+	/** Le brouillon a servi à créer le profil : il n'a plus de raison d'être gardé.
+	 *
+	 * Rend vrai pour le seul appel qui a fait passer le compte de l'attente à la
+	 * confirmation : c'est à lui, et à lui seul, d'envoyer ce qui ne doit partir qu'une fois. */
+	confirmer(id: number): boolean {
+		const resultat = this.base
 			.prepare(
-				`UPDATE comptes SET confirme_le = ?, brouillon_profil = NULL, brouillon_prenom = NULL
+				`UPDATE comptes
+				SET confirme_le = ?, brouillon_profil = NULL, brouillon_prenom = NULL, brouillon_gabarit = NULL
 				WHERE id = ? AND confirme_le IS NULL`
 			)
 			.run(new Date(this.maintenant()).toISOString(), id);
+		return Number(resultat.changes) === 1;
+	}
+
+	/** Note la première connexion, et rend vrai si c'est elle : la première mène au profil,
+	 * pour que la personne relise ce qui décidera de ses articles avant le premier envoi. */
+	noterPremiereConnexion(id: number): boolean {
+		const resultat = this.base
+			.prepare('UPDATE comptes SET premiere_connexion_le = ? WHERE id = ? AND premiere_connexion_le IS NULL')
+			.run(new Date(this.maintenant()).toISOString(), id);
+		return Number(resultat.changes) === 1;
 	}
 
 	/** Vérifie le mot de passe, confirmé ou non : c'est à l'appelant de refuser un compte en

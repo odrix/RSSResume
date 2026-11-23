@@ -130,6 +130,24 @@ describe('Destinataires', () => {
 		expect(emailsApi()).toEqual([MOI]);
 	});
 
+	it('enregistrer Mon profil garde les axes et catégories du gabarit', async () => {
+		const axes = [{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives' }];
+		env.fausseApi.profils.delete('moi');
+		await env.api.creerProfil('moi', { ...saisie([MOI]), axes, categories: ['Cybersécurité'] });
+
+		// Le formulaire ne porte ni axes ni catégories.
+		await env.destinataires.enregistrerProfil(moi, { ...saisie([MOI, 'autre@example.com']), profil: 'RSSI' }, ORIGINE);
+		expect(env.fausseApi.profils.get('moi')).toMatchObject({ profil: 'RSSI', axes, categories: ['Cybersécurité'] });
+
+		// Confirmer une adresse réécrit aussi le profil entier : rien ne doit s'y perdre.
+		await env.destinataires.confirmer(jetonDuLien(env.courrier.envoyes.at(-1)!.texte));
+		expect(env.fausseApi.profils.get('moi')).toMatchObject({
+			email: [MOI, 'autre@example.com'],
+			axes,
+			categories: ['Cybersécurité']
+		});
+	});
+
 	it("refuse un jeton d'inscription ou inconnu", async () => {
 		await echec(env.destinataires.confirmer('inconnu'), ErreurConfirmation);
 		const jeton = env.jetons.emettre(moi.id, MOI, 'inscription');

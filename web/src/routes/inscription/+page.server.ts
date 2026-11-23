@@ -1,12 +1,35 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { PROFIL_PAR_DEFAUT } from '#lib/profil.js';
+import { ErreurApi } from '#lib/server/api-resume.js';
 import { contexte } from '#lib/server/contexte.js';
 import { ErreurInscription, type SaisieInscription } from '#lib/server/inscription.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	if (locals.utilisateur) redirect(303, '/resumes');
-	return { profilParDefaut: PROFIL_PAR_DEFAUT };
+	let gabarits: { metier: string; libelle: string; profil: string; categories: string[] }[] = [];
+	let indisponible = false;
+	try {
+		// Seul ce que la page montre : axes et régime restent côté serveur, qui les relira
+		// de l'API à l'envoi plutôt que de croire ce que le navigateur renverrait.
+		gabarits = (await contexte().api.listerGabarits()).map(({ metier, libelle, profil, categories }) => ({
+			metier,
+			libelle,
+			profil,
+			categories
+		}));
+	} catch (erreur) {
+		if (!(erreur instanceof ErreurApi)) throw erreur;
+		// L'inscription reste ouverte : la personne décrit alors son métier, comme avant.
+		indisponible = true;
+	}
+	const demande = url.searchParams.get('metier') ?? '';
+	return {
+		gabarits,
+		indisponible,
+		profilParDefaut: PROFIL_PAR_DEFAUT,
+		metier: gabarits.some((gabarit) => gabarit.metier === demande) ? demande : ''
+	};
 };
 
 export const actions: Actions = {
@@ -17,14 +40,16 @@ export const actions: Actions = {
 			username: String(donnees.get('username') ?? '').trim(),
 			motDePasse: String(donnees.get('motDePasse') ?? ''),
 			prenom: String(donnees.get('prenom') ?? ''),
-			profil: String(donnees.get('profil') ?? '')
+			profil: String(donnees.get('profil') ?? ''),
+			metier: String(donnees.get('metier') ?? '').trim()
 		};
 		// Le mot de passe ne revient jamais dans la page, même en cas d'erreur.
 		const valeurs = {
 			email: saisie.email,
 			username: saisie.username,
 			prenom: saisie.prenom,
-			profil: saisie.profil
+			profil: saisie.profil,
+			metier: saisie.metier
 		};
 
 		const ctx = contexte();
