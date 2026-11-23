@@ -54,8 +54,15 @@ en tient lieu renvoie aux tests qui couvrent le comportement. Les actions de dé
 ponctuelles restent dans `todo-dockploy.md`, gitignoré : ce sont des gestes sur une instance, pas
 des évolutions.
 
-BL-037 à BL-053 viennent de l'étude d'ouverture du 2026-11-22 : servir des personnes hors
-TransfertPro (CTO, dev, DSI, RSSI, chef de projet, QA, PO/PM, designer). Décisions prises :
+BL-037 à BL-053 viennent de l'étude d'ouverture du 2026-11-22 : servir des personnes extérieures
+à l'exploitant (CTO, dev, DSI, RSSI, chef de projet, QA, PO/PM, designer). Décisions prises :
 catégories FreshRSS regroupées par thématique métier, plus des catégories privées (veille
 concurrentielle, à développer plus tard) ; axes de veille portés par des gabarits métier ;
 régime CVE réglé dans le profil ; inscriptions ouvertes, sans validation.
+
+La revue du 2026-11-23 a repriorisé le backlog pour une bêta : une version testable par de
+premiers inscrits, pour recueillir leurs retours, avant toute préparation de l'ouverture à
+l'échelle. Ce qui sert l'expérience d'un inscrit et la collecte de ses retours passe devant ;
+budget, liste d'attente, parallélisme et rétention attendent. Inscription ouverte, sans plafond.
+BL-071 à BL-078 en viennent, dont BL-074 à BL-076 détachés de BL-043, BL-044 et BL-066 ; BL-073
+(inscription sur invitation) a été écarté avant d'être créé, son numéro reste libre de tout usage.
