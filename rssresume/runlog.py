@@ -1077,3 +1077,22 @@ def _lu(path: pathlib.Path) -> dict | None:
         return None
     return contenu if isinstance(contenu, dict) else None
 
+
+def couts_periode(racine_profil: pathlib.Path, debut: dt.date, fin: dt.date) -> dict:
+    """Additionne les appels relus des journaux d'une période, sans les rappeler ni les re-tarifer.
+
+    Chaque catégorie comme le journal global porte ses appels ; les parcourir tous donne
+    exactement le coût de la période et conserve le signal des modèles non tarifés.
+    """
+    appels: list[Call] = []
+    jour = debut
+    while jour <= fin:
+        dossier = racine_profil / jour.isoformat()
+        if dossier.is_dir():
+            bilan = lire_bilan(dossier, jour)
+            for journal in [*bilan.categories, bilan.journee]:
+                blocs = (journal.get("couts") or {}).get("appels") or []
+                appels.extend(Call.relu(entree) for entree in blocs)
+        jour += dt.timedelta(days=1)
+    return Comptes(appels).as_json()
+

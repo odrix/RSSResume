@@ -251,4 +251,26 @@ export class ClientApiResume {
 		}
 		return new ErreurApi(reponse.status, message, champ);
 	}
+
+	/**
+	 * Lit les coûts d’un profil sur 7 et 30 jours.
+	 *
+	 * Les clés sont en dur dans le code : pas de changement prévu, et le retour est déjà
+	 * documenté dans le contrat.
+	 */
+	lireCouts(username: string): Promise<CoutsProfil> {
+		return this.#json('GET', `${this.#profil(username)}/couts`);
+	}
+}
+
+export interface CoutsPeriode {
+	devise: string;
+	total: number | null;
+	tarification_complete: boolean;
+	modeles_sans_tarif: string[];
+}
+
+export interface CoutsProfil {
+	couts_7j: CoutsPeriode;
+	couts_30j: CoutsPeriode;
 }

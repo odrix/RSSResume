@@ -82,6 +82,7 @@ interface LigneCompte {
 	role: Role;
 	cree_le: string;
 	confirme_le: string | null;
+	derniere_connexion_le: string | null;
 }
 
 export interface CompteListe {
@@ -89,6 +90,7 @@ export interface CompteListe {
 	email: string;
 	username: string;
 	creeLe: string;
+	derniereConnexionLe: string | null;
 	confirme: boolean;
 	admin: boolean;
 }
@@ -99,7 +101,7 @@ export class CompteExistant extends Error {
 	}
 }
 
-const COLONNES = 'id, email, username, role, cree_le, confirme_le';
+const COLONNES = 'id, email, username, role, cree_le, confirme_le, derniere_connexion_le';
 
 export class Comptes {
 	/** Une empreinte jetable, vérifiée quand l'adresse est inconnue : la réponse prend alors
@@ -193,6 +195,14 @@ export class Comptes {
 		return Number(resultat.changes) === 1;
 	}
 
+	/** Note le moment d’une session valide : distinct de la première connexion,
+	 * qui garde sa valeur initiale pour mener la personne une seule fois au profil. */
+	noterDerniereConnexion(id: number): void {
+		this.base
+			.prepare('UPDATE comptes SET derniere_connexion_le = ? WHERE id = ? AND confirme_le IS NOT NULL')
+			.run(new Date(this.maintenant()).toISOString(), id);
+	}
+
 	/** Vérifie le mot de passe, confirmé ou non : c'est à l'appelant de refuser un compte en
 	 * attente, avec un message que seul le titulaire du mot de passe verra. */
 	async authentifier(email: string, motDePasse: string): Promise<Utilisateur | null> {
@@ -245,6 +255,7 @@ export class Comptes {
 			email: ligne.email,
 			username: ligne.username,
 			creeLe: ligne.cree_le,
+			derniereConnexionLe: ligne.derniere_connexion_le,
 			confirme: ligne.confirme_le !== null,
 			admin: this.#estAdmin(ligne)
 		}));
@@ -269,5 +280,13 @@ export class Comptes {
 			this.#estAdmin(ligne),
 			ligne.confirme_le !== null
 		);
+	}
+
+	consultationsSeptJours(id: number): number {
+		const debut = new Date(this.maintenant() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const ligne = this.base
+			.prepare('SELECT COUNT(*) AS nombre FROM consultations WHERE compte_id = ? AND jour >= ?')
+			.get(id, debut) as { nombre: number };
+		return ligne.nombre;
 	}
 }

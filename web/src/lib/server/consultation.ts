@@ -10,11 +10,16 @@ import { urlSure, type ContenuJournee, type LienArticle, type Passage } from '#l
 import { ErreurApi, type ClientApiResume } from './api-resume.js';
 import type { Utilisateur } from './comptes.js';
 import { MOTIF_USERNAME } from './validation.js';
+import type { DatabaseSync } from 'node:sqlite';
 
 const MOTIF_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class ConsultationResumes {
-	constructor(private readonly api: ClientApiResume) {}
+	constructor(
+		private readonly api: ClientApiResume,
+		private readonly base: DatabaseSync | null = null,
+		private readonly maintenant: () => number = Date.now
+	) {}
 
 	/** La journée, ou `null` — à rendre en 404 — si elle n'existe pas ou n'est pas à voir.
 	 *
@@ -50,6 +55,15 @@ export class ConsultationResumes {
 			if (!(erreur instanceof ErreurApi)) throw erreur;
 			return null;
 		}
+	}
+
+	/** Compte une journée consultée une fois par compte et par jour calendaire. */
+	noter(utilisateur: Utilisateur, date: string): void {
+		if (!this.base) return;
+		const jour = new Date(this.maintenant()).toISOString().slice(0, 10);
+		this.base
+			.prepare('INSERT OR IGNORE INTO consultations (compte_id, jour) VALUES (?, ?)')
+			.run(utilisateur.id, jour);
 	}
 }
 

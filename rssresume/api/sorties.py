@@ -223,6 +223,17 @@ class Sorties:
             return None
         return audio
 
+    def couts(self, id: str, aujourd_hui: dt.date) -> dict:
+        """Les coûts de sept et trente jours, relus des sorties du profil.
+
+        Les journaux restent la source de vérité : aucun appel fournisseur n'est rejoué
+        pour présenter l'administration, et chaque intervalle signe les modèles absents.
+        """
+        dossier = self.dossier(id)
+        couts_7 = runlog.couts_periode(dossier, aujourd_hui - dt.timedelta(days=6), aujourd_hui)
+        couts_30 = runlog.couts_periode(dossier, aujourd_hui - dt.timedelta(days=29), aujourd_hui)
+        return {"couts_7j": couts_7, "couts_30j": couts_30}
+
     @staticmethod
     def _audios(jour: pathlib.Path) -> list[Audio]:
         """Les fichiers audio d'une journée. Les liens symboliques n'en sont pas : ils

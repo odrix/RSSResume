@@ -369,6 +369,17 @@ class RouteCategoriesProposees(Route):
         )
 
 
+class RouteCoutsProfil(Route):
+    """`/api/v1/profils/{username}/couts` : les coûts relus des sorties sur sept et trente jours."""
+
+    motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)/couts")
+    methodes = ("GET",)
+
+    def get(self, requete, username):
+        fiche = self.fiche(username)
+        requete.repondre_json(200, self.sorties.couts(fiche.id, dt.date.today()))
+
+
 #: Les routes servies, dans l'ordre où elles sont essayées.
 ROUTES = (
     RouteDesabonnementLecture,
@@ -377,6 +388,7 @@ ROUTES = (
     RouteProfil,
     RouteJournees,
     RouteJournee,
+    RouteCoutsProfil,
     RouteAudio,
     RoutePassage,
     RouteGabarits,

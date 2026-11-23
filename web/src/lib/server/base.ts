@@ -54,7 +54,15 @@ const MIGRATIONS = [
 	// profil et ses résumés sous l'ancienne règle : le renvoyer au profil le dérouterait.
 	`ALTER TABLE comptes ADD COLUMN brouillon_gabarit TEXT;
 	ALTER TABLE comptes ADD COLUMN premiere_connexion_le TEXT;
-	UPDATE comptes SET premiere_connexion_le = confirme_le WHERE confirme_le IS NOT NULL;`
+	UPDATE comptes SET premiere_connexion_le = confirme_le WHERE confirme_le IS NOT NULL;`,
+	// L’usage du site : dernière connexion et consultations, une fois par profil et par jour.
+	`ALTER TABLE comptes ADD COLUMN derniere_connexion_le TEXT;
+	CREATE TABLE consultations (
+		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
+		jour TEXT NOT NULL,
+		PRIMARY KEY (compte_id, jour)
+	);
+	CREATE INDEX consultations_jour ON consultations (jour);`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */

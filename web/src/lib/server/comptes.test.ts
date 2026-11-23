@@ -132,9 +132,22 @@ describe('Comptes', () => {
 		expect(comptes.conflit('abandon@example.com', 'abandon')).toBeNull();
 	});
 
-	it('monte le schéma jusqu’à la version du métier et de la première connexion', () => {
+	it('monte le schéma jusqu’à la version des indicateurs d’usage', () => {
 		const base = ouvrirBase(':memory:');
-		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+	});
+
+	it('compte une consultation une fois par compte et par jour', () => {
+		const h = { t: Date.parse('2026-11-23T10:00:00Z') };
+		const { base, comptes, sessions } = monter(() => h.t);
+		const moi = { id: 1 } as never;
+		const insert = base.prepare('INSERT INTO comptes (email, username, hash, role, cree_le, confirme_le) VALUES (?, ?, ?, ?, ?, ?)');
+		insert.run('moi@example.test', 'moi', 'faux', 'membre', new Date(h.t).toISOString(), new Date(h.t).toISOString());
+		const id = 1;
+		base.prepare('INSERT OR IGNORE INTO consultations (compte_id, jour) VALUES (?, ?)').run(id, '2026-11-23');
+		base.prepare('INSERT OR IGNORE INTO consultations (compte_id, jour) VALUES (?, ?)').run(id, '2026-11-23');
+		expect(base.prepare('SELECT COUNT(*) AS nombre FROM consultations WHERE compte_id = ?').get(id)).toEqual({ nombre: 1 });
+		expect(comptes.consultationsSeptJours(id)).toBe(1);
 	});
 });
 
