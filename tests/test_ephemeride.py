@@ -22,9 +22,14 @@ CONNUE = dt.date(2026, 12, 9)  # Log4Shell
 INCONNUE = dt.date(2026, 3, 3)
 
 #: Ce qui signe une entrée de chronique sécurité. Bornes de mot des deux côtés : sans
-#: elles, « ver » attrape « version » et « verse ».
+#: elles, « ver » attrape « version » et « verse ». Les racines larges — sécurité,
+#: attaquant, compromission, espionnage, surveillance — rattrapent les incidents que le
+#: vocabulaire du logiciel malveillant ne nomme pas (PRISM, CrowdStrike, SolarWinds).
+#: EternalBlue : l'entrée WannaCry ne porte aucun autre mot du domaine.
 SECURITE = re.compile(
-    r"\b(failles?|ver|virus|attaques?|cyber\w*|rançongiciels?|CVE|fuites?|botnet)\b",
+    r"\b(failles?|ver|virus|attaques?|attaquants?|cyber\w*|rançon\w*|CVE|fuites?|botnet"
+    r"|sécurité|compromission|espionnage|surveillance|chiffrés?|PRISM|Snowden|CERT"
+    r"|EternalBlue)\b",
     re.IGNORECASE,
 )
 
@@ -205,8 +210,8 @@ class TableTests(unittest.TestCase):
     def test_the_table_is_not_a_security_chronicle(self):
         """Un dev ou un designer ne doit pas ouvrir sa lettre sur un ver un matin sur deux.
 
-        Un tiers et non la moitié : l'ancienne table, presque toute cyber, passait déjà
-        sous la moitié grâce à ses jalons d'informatique générale.
+        Un tiers et non la moitié : l'ancienne table, à peine plus qu'à moitié cyber,
+        aurait franchi un seuil de moitié en y ajoutant deux jalons à peine.
         """
         securite = [texte for texte in histoire.EVENEMENTS.values() if SECURITE.search(texte)]
 
