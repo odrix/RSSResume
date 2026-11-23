@@ -20,6 +20,7 @@ import unittest
 import uuid
 from unittest import mock
 
+from rssresume.axes import Axes, AxesParDefaut
 from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import LABEL_STREAM_PREFIX, Etiquettes, FreshRSSClient
@@ -52,11 +53,22 @@ from tests.support import (
     FakeEmailSender,
     FakeFreshRSSClient,
     FakeScorer,
+    empreinte,
     make_config,
 )
 
 JOUR = dt.date(2026, 8, 23)
 ID_BEA = "5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f"
+AXES_DEV = [
+    {"slug": "qualite", "libelle": "Qualité", "description": "tests et fiabilité"},
+    {"slug": "livraison", "libelle": "Livraison", "description": "outillage et déploiement"},
+    {"slug": "experience", "libelle": "Expérience", "description": "usage et conception"},
+]
+AXES_JURISTE = [
+    {"slug": "juridique", "libelle": "Juridique", "description": "jurisprudence et contrats"},
+    {"slug": "fiscal", "libelle": "Fiscal", "description": "impôts et déclarations"},
+    {"slug": "social", "libelle": "Social", "description": "droit du travail"},
+]
 
 
 def ecrire(dossier, nom, document):
@@ -335,6 +347,34 @@ class ConfigPourTests(unittest.TestCase):
             config = installation.pour(bea)
             self.assertEqual(config, dataclasses.replace(config, flux_exclus=FluxExclus(["nolimitsecu"])))
             self.assertNotEqual(config, dataclasses.replace(config, flux_exclus=FluxExclus()))
+
+    def test_pour_carries_the_axes_of_the_profile(self):
+        """Ceux d'un gabarit ou écrits à la main : sans eux, la tournée notait chacun sur
+        les axes de l'installation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installation = make_config(tmpdir)
+            bea = Lecteur("bea", profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B", "axes": AXES_DEV}))
+
+            config = installation.pour(bea)
+
+            self.assertIs(bea.profil.axes, config.axes)
+            self.assertEqual(AXES_DEV, config.axes.en_document())
+            self.assertIsInstance(installation.axes, AxesParDefaut)
+
+    def test_a_profile_without_axes_keeps_the_default_axes(self):
+        """Et la même empreinte : la correction ne renote pas qui n'a rien déclaré."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installation = make_config(tmpdir)
+            bea = Lecteur("bea", profil_depuis_dict({CLE_ID: ID_BEA, "profil": "B"}))
+
+            config = installation.pour(bea)
+
+            self.assertIsInstance(config.axes, AxesParDefaut)
+            self.assertFalse(config.axes.sont_declares)
+            self.assertEqual(Axes.par_defaut().en_document(), config.axes.en_document())
+            # Avant la correction, la tournée notait avec les axes de l'installation :
+            # c'est l'empreinte déjà en cache qu'il faut retrouver.
+            self.assertEqual(empreinte("B", installation.axes), empreinte("B", config.axes))
 
     def test_applying_twice_is_refused(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -682,6 +722,23 @@ class TourneeTests(unittest.TestCase):
 
             self.assertEqual(["item-2", "item-3"], self._notes("adrien"))
             self.assertEqual(["item-2", "item-3", "podcast"], self._notes("bea"))
+
+    def test_each_scoring_receives_the_axes_of_its_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            documents = {
+                "adrien": {"profil": "A", "axes": AXES_DEV},
+                "bea": {"profil": "B", "axes": AXES_JURISTE},
+            }
+            tournee, _ = self._tournee_notee(tmpdir, documents)
+
+            tournee.run(JOUR, send_email=False)
+
+            for nom, axes in (("adrien", AXES_DEV), ("bea", AXES_JURISTE)):
+                appels = self.noteurs[nom].score_articles.call_args_list
+                self.assertTrue(appels, nom)
+                attendus = [axe["slug"] for axe in axes]
+                for appel in appels:
+                    self.assertEqual(attendus, [axe.slug for axe in appel.kwargs["axes"]], nom)
 
 
 def article_de(categorie, item_id):
