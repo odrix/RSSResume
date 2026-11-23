@@ -951,7 +951,11 @@ salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle
 lancement, une salutation fautive ne se découvrant qu'à l'écoute. `securite` absente vaut
 `exploitant`, le régime d'avant la clé ; une valeur inconnue — casse comprise, `Decideur` n'est
 pas `decideur` — fait échouer le lancement plutôt que de retomber sur le défaut, qui rendrait les
-plages de versions à qui avait demandé de ne plus les entendre (voir « Le cas des CVE »). Le texte de pertinence est ce qui définit ce qu'est une information
+plages de versions à qui avait demandé de ne plus les entendre (voir « Le cas des CVE »).
+`categories` s'édite depuis la page « Mon profil » du site, qui ne propose que ce que
+`Catalogue.proposables` autorise et omet la clé quand tout est coché — la personne suit alors
+aussi les catégories ajoutées plus tard ; un `PUT` est vérifié contre le catalogue comme une
+création. Le texte de pertinence est ce qui définit ce qu'est une information
 pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
 sont personnelles au même titre, et c'est tout ce qui les réunit ici.
 
@@ -1217,6 +1221,10 @@ est décrit dans le [README](README.md#api-http).
   l'adresse, la méthode, le chemin sans chaîne de requête et le statut — jamais un en-tête.
 - **Corps** : `Content-Length` exigé, 64 Kio au plus — refusé (413) avant d'être lu —,
   `Content-Type: application/json` exigé.
+- **Erreurs** : `{"erreur": "…"}`, et `"champ"` en plus quand le refus tient à une clé du
+  document. La validation lève alors `profil.ChampInvalide`, une `ValueError` au message
+  inchangé — la tournée et la CLI n'y voient rien — dont le champ permet au site d'afficher le
+  refus sous la case fautive au lieu de le deviner d'après le texte.
 - **Audios** : lus dans `output/<id>/<date>/`, envoyés par blocs de 64 Kio, jamais chargés en
   mémoire. `Range` est servi sous ses trois formes (`a-b`, `a-`, `-n`) en 206 ; une plage hors du
   fichier donne 416 ; un en-tête illisible ou multiple, le fichier entier (ce que la RFC permet).

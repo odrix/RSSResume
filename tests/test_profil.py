@@ -19,9 +19,12 @@ from rssresume.axes import Axes, CLE_AXES
 from rssresume.llm.prompts import article_system, scoring_system
 from tests.support import empreinte
 from rssresume.models import Article
+from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.profil import (
+    CLE_CATEGORIES,
     CLE_EMAIL,
     CLE_FLUX_EXCLUS,
+    CLE_ID,
     CLE_PRENOM,
     CLE_PROFIL,
     CLE_SECURITE,
@@ -29,6 +32,7 @@ from rssresume.profil import (
     DEFAULT_PROFIL,
     ENV_PROFIL,
     ENV_PROFIL_FILE,
+    ChampInvalide,
     FluxExclus,
     Securite,
     load_profil,
@@ -349,6 +353,47 @@ class FluxExclusTests(unittest.TestCase):
                     profil_depuis_dict({CLE_PROFIL: "x", CLE_FLUX_EXCLUS: valeur}, origine="bea")
                 self.assertIn("bea", str(leve.exception))
                 self.assertIn(CLE_FLUX_EXCLUS, str(leve.exception))
+
+
+class ChampInvalideTests(unittest.TestCase):
+    """Le refus nomme la clé fautive : le site l'affiche sous le champ concerné.
+
+    Il reste une `ValueError` au message inchangé : la tournée et la CLI ne voient rien.
+    """
+
+    def test_each_faulty_key_names_its_field(self):
+        catalogue = Catalogue([
+            CategorieCatalogue("Tech", "Tech.", ["cto"]),
+            CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["adrien"]),
+        ])
+        fautes = {
+            CLE_PROFIL: {CLE_PROFIL: "  "},
+            CLE_STACK: {CLE_STACK: "Traefik"},
+            CLE_AXES: {CLE_AXES: [{"slug": "a", "libelle": "A", "description": "a"}]},
+            CLE_ID: {CLE_ID: "PAS-UN-UUID"},
+            CLE_EMAIL: {CLE_EMAIL: "pas-une-adresse"},
+            CLE_PRENOM: {CLE_PRENOM: 3},
+            CLE_SECURITE: {CLE_SECURITE: "expert"},
+            CLE_FLUX_EXCLUS: {CLE_FLUX_EXCLUS: [""]},
+            CLE_CATEGORIES: {CLE_CATEGORIES: []},
+        }
+        for champ, faute in fautes.items():
+            with self.subTest(champ=champ):
+                with self.assertRaises(ChampInvalide) as leve:
+                    profil_depuis_dict({CLE_PROFIL: "x", **faute}, origine="bea")
+                self.assertEqual(champ, leve.exception.champ)
+                self.assertIsInstance(leve.exception, ValueError)
+                self.assertIn("bea", str(leve.exception))
+
+        # Refusée par le catalogue — inconnue ou privée d'un autre : même champ.
+        for categorie in ("Inconnue", "Veille marché"):
+            with self.subTest(categorie=categorie):
+                with self.assertRaises(ChampInvalide) as leve:
+                    profil_depuis_dict(
+                        {CLE_PROFIL: "x", CLE_CATEGORIES: [categorie]}, "bea", catalogue, "bea"
+                    )
+                self.assertEqual(CLE_CATEGORIES, leve.exception.champ)
+                self.assertIn("inconnue du catalogue", str(leve.exception))
 
 
 class InjectedProfileTests(unittest.TestCase):

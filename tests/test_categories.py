@@ -149,6 +149,27 @@ class CatalogueServiesTests(unittest.TestCase):
         self.assertEqual(["Nouvelle"], self.catalogue.hors_catalogue(categories))
         self.assertFalse(self.catalogue.servie_a("Nouvelle", ["adrien", "bea"]))
 
+    def test_proposables_are_public_ones_and_own_private_ones(self):
+        catalogue = Catalogue(
+            [
+                CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
+                CategorieCatalogue("Veille marché", "Veille.", ["cto"], ["adrien"]),
+                CategorieCatalogue("Veille interne", "Interne.", ["cto"], ["bea"]),
+            ]
+        )
+
+        self.assertEqual(["Tech", "Veille marché"], [e.libelle for e in catalogue.proposables("adrien")])
+        self.assertEqual(["Tech", "Veille interne"], [e.libelle for e in catalogue.proposables("bea")])
+        self.assertEqual(
+            {"libelle": "Veille marché", "description": "Veille.", "privee": True},
+            catalogue.entree("Veille marché").proposition_json(),
+        )
+        # Le refus cite la même liste que la page propose, jamais la privée d'un autre.
+        with self.assertRaises(ValueError) as leve:
+            catalogue.abonnement(["Veille interne"], "adrien", "adrien")
+        self.assertTrue(str(leve.exception).endswith("Catégories proposées : Tech, Veille marché."))
+        self.assertEqual([], CatalogueOuvert().proposables("adrien"))
+
     def test_an_open_catalogue_serves_everything_to_everyone(self):
         ouvert = CatalogueOuvert()
 

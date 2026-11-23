@@ -310,7 +310,13 @@ class AnnuaireSqlite(Annuaire):
         return Fiche(id, username, document, horodatage, horodatage)
 
     def modifier(self, username: str, saisie: object) -> Fiche:
-        """Remplace le document de `username`, son id et son nom gardés. Absent : `ProfilInconnu`."""
+        """Remplace le document de `username`, son id et son nom gardés. Absent : `ProfilInconnu`.
+
+        Le catalogue est vérifié comme à la création : sans lui, un PUT ferait suivre une
+        catégorie inconnue ou la catégorie privée d'un autre, ce que `creer` refuse. Il est lu
+        avant la transaction, pour ne pas ouvrir une lecture sous le verrou d'écriture.
+        """
+        catalogue = self.catalogue()
         with self._ecriture() as connexion:
             ligne = connexion.execute(
                 "SELECT id, cree_le FROM profils WHERE username = ?", (username,)
@@ -318,7 +324,7 @@ class AnnuaireSqlite(Annuaire):
             if ligne is None:
                 raise ProfilInconnu(f"Profil inconnu : « {username} ».")
             id, cree_le = ligne
-            document = document_normalise(saisie, id, username)
+            document = document_normalise(saisie, id, username, catalogue)
             horodatage = _maintenant()
             connexion.execute(
                 "UPDATE profils SET document = ?, modifie_le = ? WHERE id = ?",

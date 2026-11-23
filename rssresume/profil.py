@@ -108,6 +108,20 @@ CLE_CATEGORIES = "categories"
 CLE_FLUX_EXCLUS = "flux_exclus"
 
 
+class ChampInvalide(ValueError):
+    """Un document refusé à cause d'une clé précise, que l'erreur nomme.
+
+    Une `ValueError` au message inchangé : la tournée, la CLI et l'import n'attrapent
+    toujours qu'une exception et lisent le même texte. Le champ ne sert qu'au site, qui
+    affiche le refus sous la case fautive — sans lui, il devait deviner la clé d'après le
+    message, et se tromper dès que le message changeait de tournure.
+    """
+
+    def __init__(self, champ: str, message: str):
+        super().__init__(message)
+        self.champ = champ
+
+
 class FluxExclus:
     """Les flux qu'une personne retire du scoring et du résumé, nommés par leur titre.
 
@@ -138,22 +152,25 @@ class FluxExclus:
         if valeur is None:
             return cls()
         if not isinstance(valeur, list):
-            raise ValueError(
+            raise ChampInvalide(
+                CLE_FLUX_EXCLUS,
                 f"{origine} : « {CLE_FLUX_EXCLUS} » est une liste de titres de flux, "
-                f"pas {type(valeur).__name__}."
+                f"pas {type(valeur).__name__}.",
             )
         vus: dict[str, str] = {}
         for titre in valeur:
             if not isinstance(titre, str) or not titre.strip():
-                raise ValueError(
+                raise ChampInvalide(
+                    CLE_FLUX_EXCLUS,
                     f"{origine} : « {CLE_FLUX_EXCLUS} » ne contient que des titres de flux "
-                    f"non vides, pas « {titre} »."
+                    f"non vides, pas « {titre} ».",
                 )
             cle = casefold_ascii(titre.strip())
             if cle in vus:
-                raise ValueError(
+                raise ChampInvalide(
+                    CLE_FLUX_EXCLUS,
                     f"{origine} : « {CLE_FLUX_EXCLUS} » nomme deux fois le même flux "
-                    f"(« {vus[cle]} » et « {titre.strip()} »)."
+                    f"(« {vus[cle]} » et « {titre.strip()} »).",
                 )
             vus[cle] = titre.strip()
         return cls(vus.values())
@@ -215,8 +232,9 @@ class Securite(enum.Enum):
         for regime in cls:
             if isinstance(valeur, str) and valeur == regime.value:
                 return regime
-        raise ValueError(
-            f"{origine} : « {CLE_SECURITE} » vaut exploitant, decideur ou curieux, pas « {valeur} »."
+        raise ChampInvalide(
+            CLE_SECURITE,
+            f"{origine} : « {CLE_SECURITE} » vaut exploitant, decideur ou curieux, pas « {valeur} ».",
         )
 
 
@@ -360,30 +378,37 @@ def profil_depuis_dict(
 
     Une stack fautive lève aussi `ValueError`, et non l'erreur propre à la stack :
     l'appelant n'a qu'une exception à attraper pour dire « ce document est refusé ».
+    Quand la faute tient à une clé, c'est `ChampInvalide`, qui la nomme : le site place
+    le refus sous le champ concerné. Le refus d'une catégorie par le catalogue y est
+    rattaché à `categories`, au même titre qu'une liste mal formée.
     """
     if not isinstance(document, dict):
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(document).__name__}.")
 
     texte = document.get(CLE_PROFIL)
     if not isinstance(texte, str) or not texte.strip():
-        raise ValueError(f"{origine} : objet JSON sans texte à la clé « {CLE_PROFIL} ».")
+        raise ChampInvalide(CLE_PROFIL, f"{origine} : objet JSON sans texte à la clé « {CLE_PROFIL} ».")
     try:
         stack = Stack.declaree(document.get(CLE_STACK))
     except StackError as exc:
-        raise ValueError(f"{origine} : {exc}") from exc
+        raise ChampInvalide(CLE_STACK, f"{origine} : {exc}") from exc
     try:
         axes = Axes.declares(document.get(CLE_AXES))
     except AxesError as exc:
-        raise ValueError(f"{origine} : {exc}") from exc
+        raise ChampInvalide(CLE_AXES, f"{origine} : {exc}") from exc
     identifiant = document.get(CLE_ID)
     if identifiant is not None and not id_valide(identifiant):
-        raise ValueError(
+        raise ChampInvalide(
+            CLE_ID,
             f"{origine} : « {CLE_ID} » doit être un UUID sous sa forme canonique en "
-            f"minuscules (par exemple {nouvel_id()}), pas « {identifiant} »."
+            f"minuscules (par exemple {nouvel_id()}), pas « {identifiant} ».",
         )
     categories = _categories(document.get(CLE_CATEGORIES), origine)
     if categories is not None and catalogue is not None:
-        categories = catalogue.abonnement(categories, username, origine)
+        try:
+            categories = catalogue.abonnement(categories, username, origine)
+        except ValueError as exc:
+            raise ChampInvalide(CLE_CATEGORIES, str(exc)) from exc
     return Profil(
         texte.strip(),
         stack,
@@ -445,9 +470,10 @@ def _prenom(valeur: object, origine: str) -> str:
     if valeur is None:
         return ""
     if not isinstance(valeur, str):
-        raise ValueError(
+        raise ChampInvalide(
+            CLE_PRENOM,
             f"{origine} : la clé « {CLE_PRENOM} » attend un prénom écrit en "
-            f"toutes lettres, pas {type(valeur).__name__}."
+            f"toutes lettres, pas {type(valeur).__name__}.",
         )
     return valeur.strip()
 
@@ -463,22 +489,25 @@ def _categories(valeur: object, origine: str) -> tuple[str, ...] | None:
     if valeur is None:
         return None
     if not isinstance(valeur, list) or not valeur:
-        raise ValueError(
+        raise ChampInvalide(
+            CLE_CATEGORIES,
             f"{origine} : « {CLE_CATEGORIES} » est une liste non vide de libellés de "
-            "catégorie. Retirer la clé pour recevoir tout ce que le catalogue autorise."
+            "catégorie. Retirer la clé pour recevoir tout ce que le catalogue autorise.",
         )
     vues: dict[str, str] = {}
     for libelle in valeur:
         if not isinstance(libelle, str) or not libelle.strip():
-            raise ValueError(
+            raise ChampInvalide(
+                CLE_CATEGORIES,
                 f"{origine} : « {CLE_CATEGORIES} » ne contient que des libellés non vides, "
-                f"pas « {libelle} »."
+                f"pas « {libelle} ».",
             )
         cle = casefold_ascii(libelle.strip())
         if cle in vues:
-            raise ValueError(
+            raise ChampInvalide(
+                CLE_CATEGORIES,
                 f"{origine} : « {CLE_CATEGORIES} » nomme deux fois la même catégorie "
-                f"(« {vues[cle]} » et « {libelle.strip()} »)."
+                f"(« {vues[cle]} » et « {libelle.strip()} »).",
             )
         vues[cle] = libelle.strip()
     return tuple(vues.values())
@@ -496,12 +525,12 @@ def _emails(valeur: object, origine: str) -> tuple[str, ...]:
         return ()
     adresses = [valeur] if isinstance(valeur, str) else valeur
     if not isinstance(adresses, list) or not adresses:
-        raise ValueError(
-            f"{origine} : « {CLE_EMAIL} » est une adresse, ou une liste d'adresses."
+        raise ChampInvalide(
+            CLE_EMAIL, f"{origine} : « {CLE_EMAIL} » est une adresse, ou une liste d'adresses."
         )
     for adresse in adresses:
         if not isinstance(adresse, str) or "@" not in adresse:
-            raise ValueError(f"{origine} : « {adresse} » n'est pas une adresse email.")
+            raise ChampInvalide(CLE_EMAIL, f"{origine} : « {adresse} » n'est pas une adresse email.")
     return tuple(adresse.strip() for adresse in adresses)
 
 
