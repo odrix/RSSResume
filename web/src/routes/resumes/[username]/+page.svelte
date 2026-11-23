@@ -64,27 +64,35 @@
 	<title>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`} — RSSResume</title>
 </svelte:head>
 
-<h1>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</h1>
+<header class="titre-page">
+	<p class="eyebrow">Lecture · veille quotidienne</p>
+	<h1>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</h1>
+</header>
 
 {#if data.erreur}
 	<p class="message erreur" role="alert">{data.erreur}</p>
 {:else if !data.journees.length}
-	<p class="attenue">
-		{#if prochainPassage}
-			Aucun résumé pour l'instant. {data.proprietaire
-				? 'Votre premier résumé'
-				: `Le premier résumé de ${data.username}`} arrivera après le passage du {prochainPassage}.
-		{:else}
-			Aucun résumé pour l'instant. Le premier arrivera après le prochain passage quotidien.
-		{/if}
-	</p>
+	<div class="carte">
+		<p class="attenue">
+			{#if prochainPassage}
+				Aucun résumé pour l'instant. {data.proprietaire
+					? 'Votre premier résumé'
+					: `Le premier résumé de ${data.username}`} arrivera après le passage du {prochainPassage}.
+			{:else}
+				Aucun résumé pour l'instant. Le premier arrivera après le prochain passage quotidien.
+			{/if}
+		</p>
+	</div>
 {/if}
 
 <ul class="journees">
 	{#each data.journees as journee (journee.date)}
-		<li class="carte">
-			<h2>{dateLisible(journee.date)}</h2>
-			<p><a href={urlJournee(journee.date)}>Lire la veille</a></p>
+		<li class="carte journee">
+			<div class="entete-journee">
+				<p class="date">{dateLisible(journee.date)}</p>
+				<span class="nombre">{journee.audios.length} audio{journee.audios.length > 1 ? 's' : ''}</span>
+			</div>
+			<a class="bouton lire" href={urlJournee(journee.date)}>Lire la veille</a>
 			{#each journee.audios as audio (audio.nom)}
 				<div class="audio">
 					<span>{libelle(audio.nom)} <span class="attenue">· {taille(audio.taille)}</span></span>
@@ -98,7 +106,53 @@
 </ul>
 
 <style>
-	h2 {
-		margin-top: 0;
+	.titre-page {
+		margin-bottom: 1.5rem;
+	}
+
+	.eyebrow {
+		display: inline-block;
+		margin: 0 0 1rem;
+		padding: 0.35rem 0.65rem;
+		background: var(--texte);
+		color: var(--accent);
+		text-transform: uppercase;
+	}
+
+	.journee {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.entete-journee {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		align-items: flex-start;
+		border-bottom: 2px solid var(--bord);
+	}
+
+	.date {
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 1.45rem;
+		line-height: 1;
+		text-transform: uppercase;
+		margin: 0 0 0.75rem;
+	}
+
+	.nombre {
+		background: var(--accent);
+		border: 2px solid var(--bord);
+		padding: 0.15rem 0.4rem;
+		white-space: nowrap;
+		font-size: 0.8rem;
+	}
+
+	.lire {
+		justify-self: start;
+	}
+
+	h1 {
+		margin-bottom: 0;
 	}
 </style>
