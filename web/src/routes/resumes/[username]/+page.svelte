@@ -89,8 +89,8 @@
 {/if}
 
 <ul class="journees">
-	{#each data.journees as journee (journee.date)}
-		<li class="carte journee">
+	{#each data.journees as journee, rang (journee.date)}
+		<li class="carte journee" class:journee-premiere={rang === 0}>
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
 				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
@@ -103,9 +103,9 @@
 				<div class="actions">
 					<button type="button" class="lecture" onclick={() => lire(journee.date, audio.nom)}>
 						<span class="icone-lecture" aria-hidden="true">▶</span>
-						Lecture
+						<span class="texte-lecture">Lecture</span>
 					</button>
-					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
+					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé textuel</a>
 				</div>
 			{:else}
 				<div class="titre-carte">
