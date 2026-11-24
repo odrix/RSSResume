@@ -117,6 +117,23 @@ class AuthentificationTests(ServeurTestCase):
             with self.assertRaises(ValueError):
                 ApplicationApi.from_env()
 
+    def test_a_startup_failure_is_reported_on_both_streams(self):
+        """Le refus de démarrer s'écrit sur stderr et sur stdout.
+
+        Les agrégateurs classent par flux, et celui du déploiement peut ne montrer que la
+        sortie standard : une erreur demeurée sur stderr se lit comme un conteneur qui
+        boucle sans raison.
+        """
+        env = {ENV_API_TOKEN: "court", ENV_PROFILES_DB: str(self.tmpdir / "p.sqlite3")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(api_main, "console") as suiveur:
+                self.assertEqual(2, api_main.main([]))
+        sur_stderr = suiveur.error.call_args.args[-1]
+        sur_stdout = suiveur.log.call_args.args[-1]
+        self.assertEqual(sur_stderr, sur_stdout)
+        self.assertIn("démarrage impossible", sur_stderr)
+        self.assertIn(ENV_API_TOKEN, sur_stderr)
+
 
 class ProfilsTests(ServeurTestCase):
     BEA = {"username": "bea", "profil": "Veille", "stack": ["Traefik"], "email": ["b@example.com"], "prenom": "Bea"}

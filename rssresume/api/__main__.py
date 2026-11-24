@@ -33,11 +33,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def signaler_echec(exc: Exception) -> None:
+    """Un démarrage impossible, dit sur les deux flux.
+
+    `console.error` écrit sur l'erreur standard, `console.log` sur la sortie standard :
+    les agrégateurs classent par flux, et celui de Dokploy peut ne montrer que l'un des
+    deux — une erreur demeurée sur stderr se lit comme un conteneur qui boucle sans
+    raison. Le doublon coûte une ligne ; son absence, un débogage à l'aveugle.
+    """
+    message = f"API RSSResume : démarrage impossible : {type(exc).__name__}: {exc}"
+    console.error(message)
+    console.log(message)
+
+
 def servir() -> int:
     """Lit toute la configuration avant d'ouvrir le port : un jeton absent ou une base non
     déclarée font échouer le conteneur au déploiement, pas la première requête du site."""
-    application = ApplicationApi.from_env()
-    hote, port = adresse_depuis_env()
+    try:
+        application = ApplicationApi.from_env()
+        hote, port = adresse_depuis_env()
+    except Exception as exc:  # un conteneur qui meurt au lancement doit dire pourquoi
+        signaler_echec(exc)
+        return 2
     serveur = ServeurApi((hote, port), application)
     console.log(f"API RSSResume : écoute sur {hote}:{serveur.server_address[1]}")
     try:
@@ -87,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             return importer_catalogue(args.chemin)
         return servir()
     except ValueError as exc:
-        console.error(f"API RSSResume : {exc}")
+        signaler_echec(exc)
         return 2
 
 
