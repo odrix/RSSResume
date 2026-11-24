@@ -20,12 +20,48 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	}
 	// L'API les rend déjà ainsi ; retrié ici pour que la page n'en dépende pas.
 	journees.sort((a, b) => b.date.localeCompare(a.date));
+	const indicateursJournees: Record<string, { ecoute: string | null; categories: number; articles: number }> = {};
+	if (!erreur && journees.length) {
+		const details = await Promise.all(
+			journees.map(async (journee) => {
+				try {
+					const detail = await contexte().api.lireJournee(params.username, journee.date);
+					const totaux = detail.categories.reduce(
+						(cumul, categorie) => {
+							const articles = categorie.articles.length + categorie.a_surveiller.length;
+							return {
+								categories: cumul.categories + (articles > 0 ? 1 : 0),
+								articles: cumul.articles + articles
+							};
+						},
+						{ categories: 0, articles: 0 }
+					);
+					return {
+						date: journee.date,
+						ecoute: detail.ecoute ?? detail.montage?.ecoute ?? null,
+						...totaux
+					};
+				} catch (cause) {
+					if (!(cause instanceof ErreurApi)) throw cause;
+					return { date: journee.date, ecoute: null, categories: 0, articles: 0 };
+				}
+			})
+		);
+		for (const detail of details) {
+			indicateursJournees[detail.date] = {
+				ecoute: detail.ecoute,
+				categories: detail.categories,
+				articles: detail.articles
+			};
+		}
+	}
 	// Demandé seulement quand il sert : dire à qui n'a encore rien quand arrive son premier résumé.
 	const passage = !erreur && !journees.length ? await contexte().consultation.passage() : null;
 	return {
 		username: params.username,
 		proprietaire: params.username === utilisateur.username,
 		journees,
+		indicateursJournees,
 		passage,
 		erreur
 	};

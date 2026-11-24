@@ -4,9 +4,9 @@
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
-	let stylePage = $state<'actuel' | 'maquette'>('actuel');
+	let stylePage = $state<'brutal' | 'minimaliste'>('brutal');
 
-	function appliquerStyle(style: 'actuel' | 'maquette'): void {
+	function appliquerStyle(style: 'brutal' | 'minimaliste'): void {
 		stylePage = style;
 		document.documentElement.dataset.stylePage = style;
 		localStorage.setItem('rssresume-style-page', style);
@@ -14,16 +14,20 @@
 
 	function changerStyle(evenement: Event): void {
 		const select = evenement.currentTarget as HTMLSelectElement;
-		appliquerStyle(select.value === 'maquette' ? 'maquette' : 'actuel');
+		appliquerStyle(select.value === 'minimaliste' ? 'minimaliste' : 'brutal');
 	}
 
 	onMount(() => {
 		if (!data.utilisateur?.admin) {
-			appliquerStyle('actuel');
+			appliquerStyle('brutal');
 			return;
 		}
 		const enregistre = localStorage.getItem('rssresume-style-page');
-		appliquerStyle(enregistre === 'maquette' ? 'maquette' : 'actuel');
+		if (enregistre === 'minimaliste' || enregistre === 'maquette') {
+			appliquerStyle('minimaliste');
+			return;
+		}
+		appliquerStyle('brutal');
 	});
 </script>
 
@@ -41,8 +45,8 @@
 				<label class="choix-style">
 					<span>Style de page</span>
 					<select value={stylePage} onchange={changerStyle}>
-						<option value="actuel">Actuel</option>
-						<option value="maquette">Maquette</option>
+						<option value="brutal">Brutal</option>
+						<option value="minimaliste">Minimaliste</option>
 					</select>
 				</label>
 			{/if}

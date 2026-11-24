@@ -3,7 +3,7 @@
  *
  *     npm run mock          # http://localhost:8080, jeton « dev »
  *
- * Chaque profil créé reçoit deux journées d'audio silencieux, pour essayer le lecteur.
+ * Chaque profil créé reçoit sept journées d'audio silencieux, pour essayer le lecteur.
  * Tout est en mémoire : un redémarrage vide les profils, pas les comptes du site.
  */
 
