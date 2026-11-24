@@ -33,4 +33,16 @@ describe('page des résumés, état vide', () => {
 		const html = rendre({ journees: [{ date: '2026-11-21', audios: [] }] });
 		expect(html).toContain('href="/resumes/moi/2026-11-21"');
 	});
+
+	it('affiche durée, catégories et articles pour une carte', () => {
+		const html = rendre({
+			journees: [{ date: '2026-11-21', audios: [{ nom: 'jour.mp3', taille: 2048 }] }],
+			indicateursJournees: {
+				'2026-11-21': { ecoute: '8 min', categories: 4, articles: 5 }
+			}
+		});
+		expect(html).toContain('8 MIN');
+		expect(html).toContain('4 catégories');
+		expect(html).toContain('5 articles');
+	});
 });

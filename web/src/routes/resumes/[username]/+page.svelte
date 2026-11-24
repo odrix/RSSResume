@@ -21,6 +21,16 @@
 		return texte.charAt(0).toUpperCase() + texte.slice(1);
 	}
 
+	function datePieces(iso: string): { jourEtNumero: string; moisAnnee: string } {
+		const texte = dateLisible(iso);
+		const parties = texte.split(' ');
+		if (parties.length < 4) return { jourEtNumero: texte, moisAnnee: '' };
+		return {
+			jourEtNumero: parties.slice(0, 2).join(' '),
+			moisAnnee: parties.slice(2).join(' ')
+		};
+	}
+
 	function cleAudio(date: string, nom: string): string {
 		return `${date}/${nom}`;
 	}
@@ -29,6 +39,10 @@
 		if (!Number.isFinite(secondes)) return '';
 		const minutes = Math.max(1, Math.round(secondes / 60));
 		return `${minutes} min`;
+	}
+
+	function pluriel(nombre: number, singulier: string, plurielTexte: string): string {
+		return `${nombre} ${nombre > 1 ? plurielTexte : singulier}`;
 	}
 
 	function lireMeta(date: string, nom: string, evenements: Event): void {
@@ -66,6 +80,7 @@
 			return null;
 		}
 	});
+
 </script>
 
 <svelte:head>
@@ -89,28 +104,51 @@
 {/if}
 
 <ul class="journees">
-	{#each data.journees as journee, rang (journee.date)}
-		<li class="carte journee" class:journee-premiere={rang === 0}>
+	{#each data.journees as journee (journee.date)}
+		{@const indicateurs = data.indicateursJournees?.[journee.date]}
+		{@const date = datePieces(journee.date)}
+		<li class="carte journee">
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
 				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
 				<div class="titre-carte">
-					<span class="duree-principale">
-						{durees[cleAudio(journee.date, audio.nom)] ?? '…'}
-					</span>
-					<h2>{dateLisible(journee.date)}</h2>
+					<h2>
+						<span class="date-ligne">
+							<span class="date-principale">{date.jourEtNumero}</span>
+						</span>
+						{#if date.moisAnnee}
+							<span class="date-secondaire">{date.moisAnnee}</span>
+						{/if}
+					</h2>
+					<span class="duree-principale">{(indicateurs?.ecoute ?? durees[cleAudio(journee.date, audio.nom)] ?? '...').toUpperCase()}</span>
 				</div>
+				<ul class="stats-journee">
+					<li>{pluriel(indicateurs?.categories ?? 0, 'catégorie', 'catégories')}</li>
+					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
+				</ul>
 				<div class="actions">
 					<button type="button" class="lecture" onclick={() => lire(journee.date, audio.nom)}>
 						<span class="icone-lecture" aria-hidden="true">▶</span>
 						<span class="texte-lecture">Lecture</span>
 					</button>
-					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé textuel</a>
+					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
 				</div>
 			{:else}
 				<div class="titre-carte">
-					<h2>{dateLisible(journee.date)}</h2>
+					<h2>
+						<span class="date-ligne">
+							<span class="date-principale">{date.jourEtNumero}</span>
+							<span class="duree-principale">{(indicateurs?.ecoute ?? '...').toUpperCase()}</span>
+						</span>
+						{#if date.moisAnnee}
+							<span class="date-secondaire">{date.moisAnnee}</span>
+						{/if}
+					</h2>
 				</div>
+				<ul class="stats-journee">
+					<li>{pluriel(indicateurs?.categories ?? 0, 'catégorie', 'catégories')}</li>
+					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
+				</ul>
 				<div class="actions">
 					<a class="resume-secondaire seul" href={urlJournee(journee.date)}>Lire le résumé</a>
 				</div>
@@ -130,49 +168,98 @@
 {/if}
 
 <style>
+	:global(main) {
+		max-width: 76rem;
+	}
+
 	.journees {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.75rem;
+		display: flex;
+		flex-wrap: wrap;
+		direction: row;
 	}
 
 	.journee {
-		aspect-ratio: 1 / 0.82;
-		padding: 0.85rem;
+		min-height: 18.5rem;
+		padding: 1rem;
 		margin-bottom: 0;
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
+		justify-content: flex-start;
+		overflow: hidden;
+		width: 28%;
 	}
 
 	.titre-carte {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 0.95rem;
+	}
+
+	.stats-journee {
+		margin: 0 0 1rem;
+		padding: 0;
+		list-style: none;
 		display: grid;
-		gap: 0.55rem;
-		justify-items: start;
+		gap: 0.2rem;
+		font-size: 1.1rem;
+		font-weight: 600;
+		line-height: 1.2;
+		font-family: Arial, Helvetica, sans-serif;
+		text-transform: uppercase;
+	}
+
+	.stats-journee li::before {
+		content: '• ';
+		font-weight: 700;
 	}
 
 	.duree-principale {
-		display: inline-flex;
-		align-items: center;
-		min-height: 2.25rem;
-		padding: 0.25rem 0.55rem;
 		background: var(--texte);
-		color: var(--accent);
-		font-family: Impact, 'Arial Black', Arial, sans-serif;
-		font-size: 1.15rem;
-		line-height: 1;
-		font-variant-numeric: tabular-nums;
+  min-height: 1.25rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  align-items: center;
+  padding: .25rem .75rem;
+  font-family: Impact,Arial Black,Arial,sans-serif;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  height: 70%;
 	}
 
 	.journee h2 {
-		font-size: clamp(1.05rem, 1.6vw, 1.35rem);
-		line-height: 1.05;
+		display: grid;
+		gap: 0.1rem;
+		font-size: clamp(1.25rem, 2.2vw, 2.2rem);
+		line-height: 0.98;
 		margin: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+	}
+
+	.date-principale {
+		display: inline-block;
+		font-size: 1.1em;
+	}
+
+	.date-ligne {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		width: 100%;
+
+	}
+
+	.date-secondaire {
+		display: block;
+		font-size: 0.7em;
+		line-height: 1;
 	}
 
 	.actions {
 		display: grid;
 		gap: 0.55rem;
+		margin-top: auto;
 	}
 
 	.lecture {
@@ -181,8 +268,10 @@
 		justify-content: center;
 		align-items: center;
 		gap: 0.55rem;
-		min-height: 3.25rem;
+		min-height: 3rem;
 		font-size: 1.05rem;
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		text-transform: uppercase;
 	}
 
 	.icone-lecture {
@@ -197,14 +286,21 @@
 	}
 
 	.resume-secondaire {
-		justify-self: start;
-		font-size: 0.88rem;
-		text-decoration-thickness: 1px;
+		display: inline-flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 2.45rem;
+		border: 3px solid var(--bord);
+		background: var(--surface);
+		box-shadow: 5px 5px 0 var(--bord);
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 1rem;
+		text-decoration: none;
 		text-transform: uppercase;
 	}
 
 	.resume-secondaire.seul {
-		align-self: end;
+		margin-top: auto;
 	}
 
 	.meta-audio {
@@ -243,6 +339,16 @@
 		.journees {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+
+		.journee {
+			min-height: 16.5rem;
+		}
+	}
+
+	@media (max-width: 1500px) {
+		.journees {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
 
 	@media (max-width: 900px) {
@@ -257,8 +363,21 @@
 		}
 
 		.journee {
-			aspect-ratio: auto;
-			min-height: 11.5rem;
+			min-height: 15rem;
+		}
+
+		.lecture,
+		.resume-secondaire {
+			border-width: 3px;
+			box-shadow: 4px 4px 0 var(--bord);
+		}
+
+		.journee h2 {
+			font-size: clamp(1.2rem, 8vw, 1.85rem);
+		}
+
+		.stats-journee {
+			font-size: 0.95rem;
 		}
 	}
 </style>

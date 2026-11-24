@@ -242,7 +242,10 @@ export class FausseApi {
 			if (methode === 'PUT') return this.#enregistrerRetour(username, date, await lireJson(requete));
 			return erreur(405, 'méthode non prise en charge');
 		} else if (sous === 'journees' && methode === 'GET') {
-			if (!this.profils.has(username)) return erreur(404, `profil inconnu : ${username}`);
+			if (!this.profils.has(username)) {
+				if (this.journeesDeDemo && MOTIF_USERNAME.test(username)) this.#semerProfilDemo(username);
+				else return erreur(404, `profil inconnu : ${username}`);
+			}
 			const journees = this.journees.get(username) ?? [];
 			if (date === undefined) {
 				return json(
@@ -390,18 +393,35 @@ export class FausseApi {
 			modifie_le: new Date().toISOString()
 		};
 		this.profils.set(profil.username, profil);
-		if (this.journeesDeDemo) {
-			const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-			const avantHier = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-			const troisJours = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
-			this.ajouterAudio(profil.username, avantHier, 'cyber.mp3', mp3Silencieux(20));
-			this.ajouterAudio(profil.username, avantHier, 'stack.mp3', mp3Silencieux(15));
-			this.ajouterContenu(profil.username, avantHier, CONTENU_DEMO_CATEGORIES);
-			this.ajouterAudio(profil.username, hier, 'journee.mp3', mp3Silencieux(60));
-			this.ajouterContenu(profil.username, hier, CONTENU_DEMO_JOURNEE);
-			this.ajouterContenu(profil.username, troisJours, {});
-		}
+		if (this.journeesDeDemo) this.#ajouterJourneesDemo(profil.username);
 		return json(201, profil);
+	}
+
+	/** @param {string} username */
+	#semerProfilDemo(username) {
+		/** @type {ProfilStocke} */
+		const profil = {
+			id: crypto.randomUUID(),
+			username,
+			profil: "Profil de démonstration généré automatiquement pour les maquettes du site.",
+			stack: [],
+			email: [`${username}@example.com`],
+			prenom: '',
+			securite: 'exploitant',
+			modifie_le: new Date().toISOString()
+		};
+		this.profils.set(username, profil);
+		this.#ajouterJourneesDemo(username);
+	}
+
+	/** @param {string} username */
+	#ajouterJourneesDemo(username) {
+		if ((this.journees.get(username) ?? []).length) return;
+		for (let index = 0; index < 7; index++) {
+			const date = new Date(Date.now() - (index + 1) * 86_400_000).toISOString().slice(0, 10);
+			this.ajouterAudio(username, date, 'journee.mp3', mp3Silencieux(24 + (index % 3) * 6));
+			this.ajouterContenu(username, date, contenuDemoJournee(index));
+		}
 	}
 
 	/** @param {ProfilStocke} profil @param {any} corps */
@@ -521,54 +541,49 @@ function decalageMinutes(instant) {
 	return Math.round((local - Math.floor(instant.getTime() / 60_000) * 60_000) / 60_000);
 }
 
-/** @type {ContenuStocke} */
-const CONTENU_DEMO_CATEGORIES = {
-	ecoute: '1 min',
-	racontees: 2,
-	categories: [
-		{
-			categorie: 'Cybersécurité',
-			racontee: true,
-			resume:
-				"Une faille critique touche un reverse proxy très répandu : la mise à jour corrige une élévation de privilèges.\n\nLes éditeurs recommandent de l'appliquer sans attendre la prochaine fenêtre de maintenance.",
-			audio: 'cyber.mp3',
-			ecoute: "moins d'1 min",
-			articles: [
-				{ titre: 'Faille critique dans un reverse proxy', source: 'CERT-FR', url: 'https://www.cert.ssi.gouv.fr/' }
-			],
-			a_surveiller: [
-				{ titre: 'Un correctif attendu pour un IdP', source: 'Flux sécurité', url: 'https://example.com/idp' }
-			]
-		},
-		{
-			categorie: 'Stack',
-			racontee: true,
-			resume: 'Une version majeure sort, avec une rupture de compatibilité sur la configuration.',
-			audio: 'stack.mp3',
-			ecoute: "moins d'1 min",
-			articles: [{ titre: 'Version 4.0 publiée', source: 'Blog du projet', url: 'https://example.com/v4' }],
-			a_surveiller: []
-		}
-	]
-};
+const DUREES_DEMO = ['8 min', '7 min', '6 min', '10 min', '9 min', '5 min', '11 min'];
+const CATEGORIES_DEMO = ['Cybersécurité', 'Cloud & infra', 'Réglementaire', 'Tech généraliste', 'Souveraineté numérique'];
+const JOURNEES_DEMO = [
+	{ ecoute: '8 min', categories: 4, articles: 5 },
+	{ ecoute: '7 min', categories: 3, articles: 4 },
+	{ ecoute: '6 min', categories: 2, articles: 3 },
+	{ ecoute: '10 min', categories: 4, articles: 6 },
+	{ ecoute: '9 min', categories: 3, articles: 5 },
+	{ ecoute: '5 min', categories: 2, articles: 2 },
+	{ ecoute: '11 min', categories: 4, articles: 7 }
+];
 
-/** @type {ContenuStocke} */
-const CONTENU_DEMO_JOURNEE = {
-	ecoute: '1 min',
-	racontees: 1,
-	montage: { audio: 'journee.mp3', ecoute: '1 min' },
-	categories: [
-		{
-			categorie: 'Réglementaire',
+/** @param {number} index @returns {ContenuStocke} */
+function contenuDemoJournee(index) {
+	const fiche = JOURNEES_DEMO[index % JOURNEES_DEMO.length];
+	const nombreCategories = fiche.categories;
+	const ecoute = fiche.ecoute;
+	const baseArticles = Math.floor(fiche.articles / nombreCategories);
+	let resteArticles = fiche.articles % nombreCategories;
+	const categories = Array.from({ length: nombreCategories }, (_, rang) => {
+		const articlesAvoir = baseArticles + (resteArticles > 0 ? 1 : 0);
+		resteArticles = Math.max(0, resteArticles - 1);
+		return {
+			categorie: CATEGORIES_DEMO[(index + rang) % CATEGORIES_DEMO.length],
 			racontee: true,
-			resume: "Un nouveau texte encadre la conservation des journaux d'accès.",
+			resume: 'Résumé de démonstration pour la maquette du tableau de bord.',
 			audio: null,
 			ecoute: null,
-			articles: [{ titre: 'Le texte au Journal officiel', source: 'Légifrance', url: 'https://www.legifrance.gouv.fr/' }],
+			articles: Array.from({ length: articlesAvoir }, (_, article) => ({
+				titre: `Article ${article + 1}`,
+				source: 'Flux demo',
+				url: 'https://example.com/article'
+			})),
 			a_surveiller: []
-		}
-	]
-};
+		};
+	});
+	return {
+		ecoute,
+		racontees: nombreCategories,
+		montage: { audio: 'journee.mp3', ecoute },
+		categories
+	};
+}
 
 /** Le retour tel que l'API le rend, sans le rang qui ne sert qu'à départager deux votes de
  * la même milliseconde. @param {RetourStocke & { rang: number }} retour @returns {RetourStocke} */
