@@ -10,20 +10,20 @@
       {"slug": "organisation", "libelle": "Organisation", "description": "management technique, recrutement, conduite du changement et organisation des équipes"},
       {"slug": "strategie", "libelle": "Stratégie", "description": "marché, budgets, investissements, partenaires et évolutions du SI"}
     ],
-    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité", "Réglementaire"]
+    "categories": ["6 - Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "2 - Cybersecurite technique et menaces", "3 - Conformite, reglementation et gouvernance"]
   },
   "developpeur": {
     "libelle": "Développeur",
     "profil": "Développeur qui conçoit, teste et maintient des logiciels. Veille sur les langages, frameworks, outils, pratiques d'ingénierie, qualité du code, sécurité des dépendances, plateformes de livraison et changements de compatibilité.",
     "stack": [],
-    "securite": "exploitant",
+    "securite": "curieux",
     "axes": [
       {"slug": "langages", "libelle": "Langages", "description": "langages, bibliothèques, frameworks et évolutions de compatibilité"},
       {"slug": "architecture", "libelle": "Architecture", "description": "conception logicielle, API, données, performance et fiabilité"},
       {"slug": "qualite", "libelle": "Qualité", "description": "tests, revue de code, automatisation, dette technique et pratiques d'ingénierie"},
       {"slug": "livraison", "libelle": "Livraison", "description": "outillage, intégration continue, déploiement, conteneurs et exploitation"}
     ],
-    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "11 - Qualite logicielle et tests"]
+    "categories": ["6 - Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "11 - Qualite logicielle et tests"]
   },
   "ops": {
     "libelle": "Ops, SRE, exploitation",
@@ -36,7 +36,7 @@
       {"slug": "observabilite", "libelle": "Observabilité", "description": "supervision, journaux, métriques, alertes et diagnostic"},
       {"slug": "cyber", "libelle": "Cybersécurité opérationnelle", "description": "vulnérabilités, durcissement, correctifs et incidents à exploiter"}
     ],
-    "categories": ["Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité"]
+    "categories": ["6 - Tech generaliste", "1 - Alertes et avis CERT-FR ANSSI", "2 - Cybersecurite technique et menaces"]
   },
   "dsi": {
     "libelle": "DSI, pilotage du SI",
@@ -49,7 +49,7 @@
       {"slug": "risques", "libelle": "Risques", "description": "cybersécurité, continuité, conformité et pilotage des risques"},
       {"slug": "organisation", "libelle": "Organisation", "description": "équipes SI, compétences, conduite du changement et partenariats"}
     ],
-    "categories": ["15 - Pilotage DSI", "Réglementaire", "Cybersécurité"]
+    "categories": ["15 - Pilotage DSI", "3 - Conformite, reglementation et gouvernance", "2 - Cybersecurite technique et menaces"]
   },
   "rssi": {
     "libelle": "RSSI",
@@ -62,7 +62,7 @@
       {"slug": "conformite", "libelle": "Conformité", "description": "réglementation, référentiels, obligations et audits"},
       {"slug": "defense", "libelle": "Défense", "description": "détection, réponse aux incidents, durcissement et chaîne d'approvisionnement"}
     ],
-    "categories": ["1 - Alertes et avis CERT-FR ANSSI", "Cybersécurité", "Réglementaire"]
+    "categories": ["1 - Alertes et avis CERT-FR ANSSI", "2 - Cybersecurite technique et menaces", "3 - Conformite, reglementation et gouvernance"]
   },
   "chef-de-projet": {
     "libelle": "Chef de projet",
@@ -88,7 +88,7 @@
       {"slug": "livraison", "libelle": "Livraison", "description": "intégration continue, déploiement, environnements et automatisation"},
       {"slug": "experience", "libelle": "Expérience", "description": "accessibilité, ergonomie, usages et qualité perçue"}
     ],
-    "categories": ["11 - Qualite logicielle et tests", "Tech generaliste"]
+    "categories": ["11 - Qualite logicielle et tests", "6 - Tech generaliste"]
   },
   "po-pm": {
     "libelle": "Product Owner, Product Manager",
