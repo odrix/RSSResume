@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from rssresume import ancres
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
+from rssresume.liens import lien_sur
 from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
 from rssresume.retours import OBJET_RETOUR, Avis, LienRetour
 from rssresume.tools import duration
@@ -581,7 +582,7 @@ class Lettre:
         for entete, liens in (("À lire :", section.links), ("À surveiller :", section.watchlist)):
             if liens:
                 lignes.extend(["", entete])
-                lignes.extend(f"- {lien.title} ({lien.source})\n  {lien.url}" for lien in liens)
+                lignes.extend(_lien_texte(lien) for lien in liens)
         if section.audio_name:
             # En dernier : c'est une référence, pas du contenu. Elle ferme la section.
             lignes.extend(["", f"{PIECE_JOINTE} {section.audio_name}"])
@@ -694,10 +695,7 @@ class Lettre:
         """
         if not liens:
             return ""
-        items = "".join(
-            _LIEN.format(url=_e(lien.url), titre=_e(lien.title), source=_e(lien.source), couleur=couleur)
-            for lien in liens
-        )
+        items = "".join(_lien_html(lien, couleur) for lien in liens)
         return _LISTE.format(entete=_e(entete), items=items, couleur=couleur)
 
 
@@ -712,6 +710,30 @@ class Lettre:
 def _e(value: str) -> str:
     """Échappement HTML. Titres et sources viennent des flux : ils sont hostiles par défaut."""
     return html.escape(value or "", quote=True)
+
+
+def _lien_texte(lien: Link) -> str:
+    """Un article de la version texte : son URL en dessous, si elle mène à une page web.
+
+    Un client mail rend cliquable une URL nue aussi bien qu'un `href` : la version texte
+    passe par le même filtre que le HTML, sinon elle resterait la porte de derrière.
+    """
+    ligne = f"- {lien.title} ({lien.source})"
+    url = lien_sur(lien.url)
+    return f"{ligne}\n  {url}" if url else ligne
+
+
+def _lien_html(lien: Link, couleur: str) -> str:
+    """Un article de liste ; son titre seul quand son URL n'est pas une page web.
+
+    Le titre reste : l'article a été retenu, le lecteur doit savoir qu'il existe. Seul
+    le lien saute — un `javascript:` venu d'un flux traverse l'échappement HTML intact.
+    """
+    url = lien_sur(lien.url)
+    gabarit = _LIEN if url else _LIEN_SANS_URL
+    return gabarit.format(
+        url=_e(url or ""), titre=_e(lien.title), source=_e(lien.source), couleur=couleur
+    )
 
 
 def _lien_pied_html(lien: LienPied) -> str:
@@ -777,10 +799,13 @@ def _segment_html(segment: ancres.Segment) -> str:
     ce qui lui évite d'avoir à reconnaître une entité HTML au milieu d'un nom propre.
     """
     corps = _e(segment.texte).replace(chr(10), "<br>")
-    if not segment.url:
+    # L'URL d'une ancre est celle de l'article : un flux hostile la choisit. Refusée, le
+    # groupe de mots reste du texte — le résumé se lit pareil, sans le piège.
+    url = lien_sur(segment.url) if segment.url else None
+    if not url:
         return corps
     return (
-        f'<a href="{_e(segment.url)}" '
+        f'<a href="{_e(url)}" '
         f'style="color:#1a4fa0;text-decoration:underline;'
         f'text-underline-offset:2px;text-decoration-thickness:1px;">{corps}</a>'
     )
@@ -808,6 +833,13 @@ _BADGE = (
 _LIEN = (
     '<li style="margin:0 0 9px;">'
     '<a href="{url}" style="color:{couleur};text-decoration:none;font-weight:500;">{titre}</a>'
+    '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
+    "</li>"
+)
+
+_LIEN_SANS_URL = (
+    '<li style="margin:0 0 9px;">'
+    '<span style="color:{couleur};font-weight:500;">{titre}</span>'
     '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
     "</li>"
 )

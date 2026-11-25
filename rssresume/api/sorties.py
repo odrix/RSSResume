@@ -13,9 +13,9 @@ import datetime as dt
 import json
 import pathlib
 import re
-import urllib.parse
 
 from rssresume import newsletter, runlog
+from rssresume.liens import lien_sur
 from rssresume.models import Link
 from rssresume.newsletter import Lettre
 
@@ -50,28 +50,6 @@ class Journee:
 
     def en_json(self) -> dict:
         return {"date": self.date.isoformat(), "audios": [audio.en_json() for audio in self.audios]}
-
-
-#: Les seuls schémas qu'un lien d'article peut porter jusqu'au site.
-SCHEMAS_LIENS = {"http", "https"}
-
-
-def lien_sur(url: str) -> str | None:
-    """L'URL si elle mène à une page web, `None` sinon.
-
-    Les URL viennent des flux, que n'importe qui écrit : un `javascript:` posé dans un
-    `href` s'exécuterait au clic, et Svelte n'assainit pas les attributs. Le site refait
-    le même contrôle, mais l'API ne doit pas compter sur son client pour être propre — ce
-    qu'elle rend, elle le rend sûr.
-    """
-    texte = (url or "").strip()
-    try:
-        morceaux = urllib.parse.urlsplit(texte)
-    except ValueError:
-        return None
-    if morceaux.scheme.lower() not in SCHEMAS_LIENS or not morceaux.netloc:
-        return None
-    return texte
 
 
 class ContenuJournee:

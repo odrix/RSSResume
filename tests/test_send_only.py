@@ -153,6 +153,28 @@ class SendOnlyTests(unittest.TestCase):
             self.assertEqual([day_dir / "1-tech.mp3"], envoi["attachments"])
             self.assertIn("<html", envoi["html"])
 
+    def test_a_hostile_url_read_from_the_logs_is_not_a_link(self):
+        """Le journal garde l'URL telle que le flux l'a donnée : le renvoi filtre comme le jour."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            day_dir = ecrire_journee(tmpdir, resume="Le résumé parle du Premier article.")
+            chemin = day_dir / "1-tech.log.json"
+            journal = json.loads(chemin.read_text(encoding="utf-8"))
+            journal["articles"][1]["url"] = "javascript:alert(1)"
+            chemin.write_text(json.dumps(journal, ensure_ascii=False), encoding="utf-8")
+            config = AppConfig(**{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)})
+            sender = FakeSender()
+
+            with mock.patch.object(cli.mail, "sender", return_value=sender):
+                code = cli.send_only(config, JOUR)
+
+            self.assertEqual(0, code)
+            envoi, = sender.envois
+            for rendu in (envoi["body"], envoi["html"]):
+                self.assertNotIn("javascript:", rendu)
+                self.assertIn("Premier", rendu)
+                # Le voisin sain garde son lien.
+                self.assertIn("https://exemple.test/b", rendu)
+
     def test_a_day_without_logs_sends_nothing_and_says_so(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig(**{**make_config(tmpdir).__dict__, "output_dir": pathlib.Path(tmpdir)})

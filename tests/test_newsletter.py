@@ -350,6 +350,57 @@ class SectionTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", lettre.html)
 
 
+class LienSurTests(unittest.TestCase):
+    """Un flux choisit l'URL de ses articles : seule une page web devient un lien."""
+
+    RESUME = "Une faille critique touche Traefik ce matin."
+
+    def _lettre(self, url):
+        return Lettre.compose(
+            JOUR,
+            [
+                digest(
+                    resume=self.RESUME,
+                    retenus=[("Multiples vulnérabilités dans Traefik", url)],
+                    veille=[("Rapport de tendances", url)],
+                )
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+    def test_a_hostile_or_hostless_url_leaves_the_title_without_a_link(self):
+        """En HTML comme en texte : un client mail rend cliquable une URL nue aussi."""
+        for url in (
+            "javascript:alert(1)",
+            " JavaScript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "https:///sans-hote",
+            "//exemple.test/sans-schema",
+        ):
+            with self.subTest(url=url):
+                lettre = self._lettre(url)
+
+                for rendu in (lettre.html, lettre.text):
+                    self.assertNotIn(url.strip(), rendu)
+                    self.assertNotIn(url.strip().replace("<", "&lt;").replace(">", "&gt;"), rendu)
+                    self.assertIn("Multiples vulnérabilités dans Traefik", rendu)
+                    self.assertIn("Rapport de tendances", rendu)
+                self.assertNotIn("<a href", lettre.html)
+                # L'ancre du résumé saute aussi : le groupe de mots reste, sans lien.
+                self.assertIn(self.RESUME, lettre.html)
+                self.assertIn("- Multiples vulnérabilités dans Traefik (Flux A)\n", lettre.text)
+
+    def test_a_web_url_keeps_its_link(self):
+        for url in ("https://x.test/a", "http://x.test/a"):
+            with self.subTest(url=url):
+                lettre = self._lettre(url)
+
+                self.assertIn(f'<a href="{url}"', lettre.html)
+                self.assertIn(">Traefik</a>", lettre.html)
+                self.assertIn(f"- Multiples vulnérabilités dans Traefik (Flux A)\n  {url}", lettre.text)
+                self.assertIn(f"- Rapport de tendances (Flux A)\n  {url}", lettre.text)
+
+
 class PiedTests(unittest.TestCase):
     def test_the_footer_counts_what_the_letter_carries(self):
         with tempfile.TemporaryDirectory() as tmpdir:
