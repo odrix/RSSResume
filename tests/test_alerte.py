@@ -83,9 +83,7 @@ class TourneeAlerteTests(unittest.TestCase):
     def test_a_failing_run_sends_one_email_naming_the_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             expediteur = FakeEmailSender()
-            tournee, _ = self._tournee(
-                tmpdir, AlerteEchecs(expediteur, ADMIN), echoue=("adrien",)
-            )
+            tournee, _ = self._tournee(tmpdir, AlerteEchecs(expediteur), echoue=("adrien",))
 
             echecs = tournee.run(JOUR)
 
@@ -103,13 +101,31 @@ class TourneeAlerteTests(unittest.TestCase):
     def test_a_clean_run_sends_nothing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             expediteur = FakeEmailSender()
-            tournee, client = self._tournee(tmpdir, AlerteEchecs(expediteur, ADMIN))
+            tournee, client = self._tournee(tmpdir, AlerteEchecs(expediteur))
 
             echecs = tournee.run(JOUR)
 
             self.assertEqual([], echecs)
             self.assertEqual([], expediteur.messages)
             self.assertEqual(1, client.appels_marquage)
+
+    def test_two_failed_profiles_get_one_email_with_both_names(self):
+        """Deux échecs, un seul email : les deux profils nommés, chacun avec son rejeu."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            expediteur = FakeEmailSender()
+            tournee, _ = self._tournee(
+                tmpdir, AlerteEchecs(expediteur), echoue=("adrien", "bea")
+            )
+
+            echecs = tournee.run(JOUR)
+
+            self.assertEqual(["adrien", "bea"], echecs)
+            (sujet, corps, _, _), = expediteur.messages
+            self.assertIn("2 profil(s) en échec", sujet)
+            self.assertIn("adrien", corps)
+            self.assertIn("bea", corps)
+            self.assertIn("--profil adrien", corps)
+            self.assertIn("--profil bea", corps)
 
     def test_a_failed_alert_neither_stops_the_run_nor_the_marking(self):
         """Un SMTP mort au pire moment ne doit pas transformer une tournée finie en échec.
@@ -120,7 +136,7 @@ class TourneeAlerteTests(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             tournee, client = self._tournee(
-                tmpdir, AlerteEchecs(ExpediteurQuiLeve(), ADMIN), echoue=("adrien",)
+                tmpdir, AlerteEchecs(ExpediteurQuiLeve()), echoue=("adrien",)
             )
 
             with mock.patch("rssresume.tournee.console.log") as log, \
@@ -148,7 +164,7 @@ class AlerteSeuleTests(unittest.TestCase):
             def is_configured(self):
                 return False
 
-        alerte = AlerteEchecs(SansTransport(), ADMIN)
+        alerte = AlerteEchecs(SansTransport())
 
         with mock.patch("rssresume.alerte.console.error") as erreur:
             alerte.notifier(JOUR, [EchecProfil(PROFIL, "RuntimeError('fournisseur en panne')")])

@@ -49,23 +49,22 @@ class AlerteEchecs:
     installation sans courrier inchangé : les logs seulement.
     """
 
-    def __init__(self, expediteur: EmailSenderProtocol, destinataire: str):
+    def __init__(self, expediteur: EmailSenderProtocol):
         self._expediteur = expediteur
-        self._destinataire = destinataire
 
     @classmethod
     def depuis_config(cls, config: AppConfig) -> "AlerteEchecs":
         """L'alerte que `config` institue : le transport du digest, l'adresse de l'exploitant.
 
         Le transport est celui déjà configuré — SMTP ou Resend, même appel, même
-        expéditeur `SMTP_FROM`. Seul le destinataire est dérivé : réglage de
-        l'installation, l'adresse ne passe pas par le document d'une personne.
+        expéditeur `SMTP_FROM` — construit sur la configuration dérivée, aux seuls
+        destinataires changés : l'adresse de l'exploitant, réglage de l'installation,
+        vit dans la configuration et n'a pas besoin d'aller nulle part ailleurs.
         `config.admin_email` doit être renseigné ; `cli.main` ne construit pas
         l'alerte dans le cas contraire, et ne l'invoque jamais comme collaborateur.
         """
         return cls(
             expediteur=mail.sender(dataclasses.replace(config, smtp_to=[config.admin_email])),
-            destinataire=config.admin_email,
         )
 
     def notifier(self, day: dt.date, echecs: list[EchecProfil]) -> None:
@@ -87,9 +86,9 @@ class AlerteEchecs:
         ]
         sujet = f"Tournée du {jour} : {len(echecs)} profil(s) en échec"
         corps = (
-            f"La tournée du {jour} a échoué pour {len(echecs)} profil(s) ; rien n'a été "
-            "marqué comme lu, ils pourront rejouer leur journée. Les autres profils ont "
-            "été servis normalement.\n\n" + "\n".join(lignes)
+            f"La tournée du {jour} a échoué pour {len(echecs)} profil(s) ci-dessous ; "
+            "rien n'a été marqué comme lu, ils pourront rejouer leur journée.\n\n"
+            + "\n".join(lignes)
         )
         if not self._expediteur.is_configured():
             console.error(

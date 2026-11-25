@@ -8,7 +8,7 @@ from typing import Iterable, Protocol
 
 from rssresume.axes import Axes
 from rssresume.certfr import Revue, Stack
-from rssresume.models import Article, CategoryDigest, Ephemeride, Montage, Note
+from rssresume.models import Article, CategoryDigest, EchecProfil, Ephemeride, Montage, Note
 
 
 class FreshRSSClientProtocol(Protocol):
