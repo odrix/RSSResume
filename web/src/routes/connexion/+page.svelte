@@ -13,6 +13,9 @@
 {#if data.confirme && !form}
 	<p class="message succes" role="status">Votre adresse est confirmée. Vous pouvez vous connecter.</p>
 {/if}
+{#if data.reinitialise && !form}
+	<p class="message succes" role="status">Votre mot de passe est changé. Connectez-vous avec le nouveau.</p>
+{/if}
 {#if form?.message}
 	<p class="message erreur" role="alert">
 		{form.message}
@@ -31,6 +34,7 @@
 		Mot de passe
 		<input type="password" name="motDePasse" autocomplete="current-password" required />
 	</label>
+	<p class="attenue"><a href="/mot-de-passe-oublie">Mot de passe oublié ?</a></p>
 	<button type="submit">Se connecter</button>
 	<p class="attenue">
 		Pas encore de compte ? <a href="/inscription">Créer un compte</a> ·

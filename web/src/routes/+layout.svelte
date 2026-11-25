@@ -41,6 +41,7 @@
 		{#if data.utilisateur}
 			<a href="/resumes">Mes résumés</a>
 			<a href="/profil">Mon profil</a>
+			<a href="/profil/compte">Mon compte</a>
 			{#if data.utilisateur.admin}
 				<label class="choix-style">
 					<span>Style de page</span>
@@ -67,3 +68,7 @@
 <main>
 	{@render children()}
 </main>
+
+<footer class="pied">
+	<a href="/confidentialite">Confidentialité</a>
+</footer>

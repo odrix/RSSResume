@@ -64,6 +64,18 @@ main {
 	padding: 2.25rem 2.25rem 5rem;
 }
 
+/* Le pied suit la marge de `main` : la navigation fixe le cacherait sinon. */
+.pied {
+	margin: 0 0 0 15.5rem;
+	padding: 1rem 2.25rem 2rem;
+	border-top: 2px solid var(--bord);
+	font-size: 0.9rem;
+}
+
+:root[data-style-page='minimaliste'] .pied {
+	margin-left: 13.5rem;
+}
+
 h1,
 h2,
 h3,
@@ -655,6 +667,12 @@ th {
 	main {
 		margin: 0;
 		padding: 1.5rem 1rem 4rem;
+	}
+
+	.pied,
+	:root[data-style-page='minimaliste'] .pied {
+		margin: 0;
+		padding: 1rem;
 	}
 
 	.journees {

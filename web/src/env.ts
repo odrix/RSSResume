@@ -23,6 +23,11 @@ export const variables = defineEnvVars({
 			"Adresse de l'administrateur : alertée à chaque compte confirmé, et admin du site une fois son propre compte confirmé.",
 		schema: facultative()
 	},
+	CONTACT_EMAIL: {
+		description:
+			"Adresse publiée sur la page de confidentialité, pour exercer ses droits (suppression du compte comprise). Vide : celle d'ADMIN_EMAIL.",
+		schema: facultative()
+	},
 	RESEND_API_KEY: {
 		description:
 			"Clé de l'API Resend. Absente : en développement les emails vont dans la console, en production les inscriptions sont fermées.",

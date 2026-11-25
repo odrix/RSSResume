@@ -132,9 +132,9 @@ describe('Comptes', () => {
 		expect(comptes.conflit('abandon@example.com', 'abandon')).toBeNull();
 	});
 
-	it('monte le schéma jusqu’à la version des indicateurs d’usage', () => {
+	it('monte le schéma jusqu’à la version des liens de réinitialisation et d’adresse', () => {
 		const base = ouvrirBase(':memory:');
-		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
 	});
 
 	it('compte une consultation une fois par compte et par jour', () => {

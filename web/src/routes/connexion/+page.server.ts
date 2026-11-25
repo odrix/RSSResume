@@ -7,7 +7,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.utilisateur) redirect(303, destinationSure(url.searchParams.get('suite')));
-	return { confirme: url.searchParams.has('confirme') };
+	return { confirme: url.searchParams.has('confirme'), reinitialise: url.searchParams.has('reinitialise') };
 };
 
 export const actions: Actions = {

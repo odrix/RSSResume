@@ -10,9 +10,13 @@ import type { DatabaseSync } from 'node:sqlite';
 
 export const DUREE_JETON_EMAIL_MS = 24 * 60 * 60 * 1000;
 
-/** Ce qu'un lien confirme : l'adresse d'un compte qui s'inscrit, ou un destinataire
- * ajouté dans « Mon profil ». */
-export type ObjetJeton = 'inscription' | 'destinataire';
+/** Un lien de réinitialisation ouvre le compte à qui le détient : il vit une heure, le
+ * temps de lire son email, pas une journée comme une simple confirmation d'adresse. */
+export const DUREE_REINITIALISATION_MS = 60 * 60 * 1000;
+
+/** Ce qu'un lien confirme : l'adresse d'un compte qui s'inscrit, un destinataire ajouté
+ * dans « Mon profil », une demande de nouveau mot de passe, ou la nouvelle adresse du compte. */
+export type ObjetJeton = 'inscription' | 'destinataire' | 'reinitialisation' | 'adresse';
 
 export interface JetonLu {
 	compteId: number;
@@ -32,6 +36,12 @@ export function lienConfirmation(origine: string, jeton: string): string {
 	return `${origine.replace(/\/+$/, '')}/confirmer/${jeton}`;
 }
 
+/** Même parti que la confirmation : la page demande le nouveau mot de passe, l'ouvrir ne
+ * consomme rien. */
+export function lienReinitialisation(origine: string, jeton: string): string {
+	return `${origine.replace(/\/+$/, '')}/reinitialiser/${jeton}`;
+}
+
 export class JetonsEmail {
 	constructor(
 		private readonly base: DatabaseSync,
@@ -40,7 +50,7 @@ export class JetonsEmail {
 
 	/** Un nouveau lien remplace le précédent pour la même adresse et le même objet : seul le
 	 * dernier email reçu fonctionne. */
-	emettre(compteId: number, email: string, objet: ObjetJeton): string {
+	emettre(compteId: number, email: string, objet: ObjetJeton, dureeMs = DUREE_JETON_EMAIL_MS): string {
 		const jeton = randomBytes(32).toString('base64url');
 		this.base
 			.prepare('DELETE FROM jetons_email WHERE compte_id = ? AND email = ? AND objet = ?')
@@ -49,7 +59,7 @@ export class JetonsEmail {
 			.prepare(
 				'INSERT INTO jetons_email (id, compte_id, email, objet, expire_le) VALUES (?, ?, ?, ?, ?)'
 			)
-			.run(empreinte(jeton), compteId, email, objet, this.maintenant() + DUREE_JETON_EMAIL_MS);
+			.run(empreinte(jeton), compteId, email, objet, this.maintenant() + dureeMs);
 		return jeton;
 	}
 
@@ -65,8 +75,11 @@ export class JetonsEmail {
 		return { compteId: ligne.compte_id, email: ligne.email, objet: ligne.objet };
 	}
 
-	consommer(jeton: string): void {
-		this.base.prepare('DELETE FROM jetons_email WHERE id = ?').run(empreinte(jeton));
+	/** Rend vrai pour le seul appel qui a effacé le jeton : deux envois simultanés du même
+	 * lien ne doivent pas valoir deux fois. */
+	consommer(jeton: string): boolean {
+		const resultat = this.base.prepare('DELETE FROM jetons_email WHERE id = ?').run(empreinte(jeton));
+		return Number(resultat.changes) === 1;
 	}
 
 	/** Les jetons d'une adresse qui n'est plus en attente : un lien reçu plus tôt ne doit
@@ -75,6 +88,13 @@ export class JetonsEmail {
 		this.base
 			.prepare('DELETE FROM jetons_email WHERE compte_id = ? AND email = ? AND objet = ?')
 			.run(compteId, email, objet);
+	}
+
+	/** Tous les liens d'un objet pour le compte, quelle que soit l'adresse : un lien envoyé
+	 * à une adresse mal tapée ne doit pas survivre à la demande qui la corrige. */
+	revoquerTous(compteId: number, ...objets: ObjetJeton[]): void {
+		const requete = this.base.prepare('DELETE FROM jetons_email WHERE compte_id = ? AND objet = ?');
+		for (const objet of objets) requete.run(compteId, objet);
 	}
 
 	purgerExpires(): void {

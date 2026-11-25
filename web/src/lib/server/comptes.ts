@@ -218,6 +218,22 @@ export class Comptes {
 		return this.parId(ligne.id);
 	}
 
+	async changerMotDePasse(id: number, motDePasse: string): Promise<void> {
+		const empreinte = await this.hacheur.hacher(motDePasse);
+		this.base.prepare('UPDATE comptes SET hash = ? WHERE id = ?').run(empreinte, id);
+	}
+
+	/** L'adresse ne change qu'une fois la nouvelle prouvée : c'est à l'appelant d'avoir
+	 * consommé le lien. La contrainte UNIQUE tranche une course avec une inscription. */
+	changerEmail(id: number, email: string): void {
+		try {
+			this.base.prepare('UPDATE comptes SET email = ? WHERE id = ?').run(normaliserEmail(email), id);
+		} catch (erreur) {
+			if (this.parEmail(email)) throw new CompteExistant('email');
+			throw erreur;
+		}
+	}
+
 	parId(id: number): Utilisateur | null {
 		const ligne = this.base.prepare(`SELECT ${COLONNES} FROM comptes WHERE id = ?`).get(id) as
 			| LigneCompte
