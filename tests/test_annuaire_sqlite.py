@@ -177,6 +177,60 @@ class AnnuaireSqliteTests(Base):
         self.assertFalse(self.annuaire.profil("bea").flux_exclus)
 
 
+class TestModifier(Base):
+    """Le PUT fusionne : un réglage déclaré par une autre voie survit à une édition partielle."""
+
+    def test_modifier_fusionne_les_cles_absentes(self):
+        """Un `flux_exclus` écrit par une autre voie — l'API, un gabarit — survit à un PUT
+        partiel ; un `[]` explicite reste lui l'effacement (axes ici)."""
+        self.annuaire.creer(
+            "bea",
+            {
+                "profil": "B",
+                "flux_exclus": ["NoLimitSecu"],
+                "categories": ["Tech"],
+                "axes": [
+                    {"slug": "cyber", "libelle": "Cybersécurité", "description": "failles"},
+                    {"slug": "qualite", "libelle": "Qualité", "description": "tests"},
+                    {"slug": "livraison", "libelle": "Livraison", "description": "déploiement"},
+                ],
+            },
+        )
+
+        fiche = self.annuaire.modifier(
+            "bea", {"profil": "B2", "email": ["b@example.com"], "axes": []}
+        )
+
+        self.assertEqual("B2", fiche.document["profil"])
+        self.assertEqual(["NoLimitSecu"], fiche.document["flux_exclus"])
+        self.assertEqual(["Tech"], fiche.document["categories"])
+        self.assertNotIn("axes", fiche.document)
+
+    def test_modifier_efface_par_null_explicite(self):
+        """Chaque `null` du corps remet sa clé à son défaut : `flux_exclus` et `axes`
+        disparaissent du document, comme une liste vide les en retire."""
+        self.annuaire.creer(
+            "bea",
+            {
+                "profil": "B",
+                "flux_exclus": ["NoLimitSecu"],
+                "axes": [
+                    {"slug": "cyber", "libelle": "Cybersécurité", "description": "failles"},
+                    {"slug": "qualite", "libelle": "Qualité", "description": "tests"},
+                    {"slug": "livraison", "libelle": "Livraison", "description": "déploiement"},
+                ],
+            },
+        )
+
+        fiche = self.annuaire.modifier(
+            "bea", {"profil": "B", "flux_exclus": None, "axes": None}
+        )
+
+        self.assertNotIn("flux_exclus", fiche.document)
+        self.assertNotIn("axes", fiche.document)
+
+
+
 class DesabonnerTests(Base):
     """Le lien de désabonnement vide les destinataires, une fois, et seulement les siens."""
 

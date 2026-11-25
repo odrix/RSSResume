@@ -166,7 +166,7 @@ describe('Destinataires', () => {
 		});
 	});
 
-	it('tout coché : la clé categories disparaît, et une liste d’axes vide revient au défaut', async () => {
+	it('tout coché : le corps porte categories null, et une liste d’axes vide revient au défaut', async () => {
 		const axes = [{ slug: 'menaces', libelle: 'Menaces', description: 'campagnes actives' }];
 		env.fausseApi.profils.delete('moi');
 		await env.api.creerProfil('moi', { ...saisie([MOI]), axes, categories: ['Cybersécurité'] });
@@ -176,7 +176,9 @@ describe('Destinataires', () => {
 		expect(profil).not.toHaveProperty('categories');
 		expect(profil).not.toHaveProperty('axes');
 		const corps = await env.fausseApi.requetes.at(-1)!.json();
-		expect(corps).not.toHaveProperty('categories');
+		// La fusion garde les clés absentes du PUT : « tout le catalogue » part en null
+		// explicite, omettre la clé ne veut plus dire cela.
+		expect(corps).toHaveProperty('categories', null);
 	});
 
 	it("rattache au champ des adresses le refus d'une adresse", async () => {

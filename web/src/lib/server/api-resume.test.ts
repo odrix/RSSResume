@@ -144,9 +144,28 @@ describe('ClientApiResume', () => {
 			fausseApi.requetes.filter((r) => r.method !== 'GET').map((r) => r.json())
 		);
 		expect(creation).toEqual({ username: 'moi', ...SAISIE, axes, categories: ['Cybersécurité'] });
-		// Une clé absente vaut « réglage par défaut » côté API : aucune n'est inventée.
+		// La fusion garde les clés absentes du PUT : le client n'envoie que ce qu'il édite.
 		expect(modification).not.toHaveProperty('axes');
 		expect(modification).not.toHaveProperty('categories');
+	});
+
+	it("modifierProfil envoie categories null et n'envoie jamais les clés qu'il n'édite pas", async () => {
+		const { api, fausseApi } = monter();
+		await api.creerProfil('moi', SAISIE);
+		// Tout est coché → `null` explicite : omettre la clé ne veut plus dire « tout le
+		// catalogue » mais « garder l'abonnement actuel », que la fusion préserve.
+		await api.modifierProfil('moi', { ...SAISIE, categories: null });
+		// Une clé que le site n'édite pas ne part pas, même passée par erreur dans la saisie.
+		await api.modifierProfil('moi', { ...SAISIE, flux_exclus: ['NoLimitSecu'] } as typeof SAISIE);
+		await api.creerProfil('nouveau', { ...SAISIE, categories: null });
+
+		const [, toutCoche, sansCategories, creation] = await Promise.all(
+			fausseApi.requetes.filter((r) => r.method !== 'GET').map((r) => r.json())
+		);
+		expect(toutCoche).toHaveProperty('categories', null);
+		expect(sansCategories).not.toHaveProperty('flux_exclus');
+		// En POST, absent vaut défaut : le `null` reste omis, comme avant.
+		expect(creation).not.toHaveProperty('categories');
 	});
 
 	it("rend le message de l'API avec son statut : 409, 422, 404", async () => {

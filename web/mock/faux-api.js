@@ -428,17 +428,23 @@ export class FausseApi {
 	#modifier(profil, corps) {
 		const invalide = this.#valider(corps, profil.username);
 		if (invalide) return erreur(422, invalide.message, invalide.champ);
-		// Remplacement complet, comme l'API : des axes ou catégories absents du corps
-		// disparaissent du profil.
-		delete profil.axes;
-		delete profil.categories;
+		// Fusion, comme l'API : une clé absente du corps garde sa valeur stockée, un
+		// `null` ou une liste vide la remet au défaut — ôtée du profil. Le site n'envoie
+		// axes et categories que lorsqu'il les édite.
+		const applique = (/** @type {'axes' | 'categories'} */ cle) => {
+			const valeur = corps[cle];
+			if (valeur === undefined) return;
+			if (Array.isArray(valeur) && valeur.length) profil[cle] = valeur;
+			else delete profil[cle];
+		};
+		applique('axes');
+		applique('categories');
 		Object.assign(profil, {
 			profil: corps.profil,
 			stack: corps.stack ?? [],
 			email: corps.email ?? [],
 			prenom: corps.prenom ?? '',
 			securite: corps.securite ?? 'exploitant',
-			...reglages(corps),
 			modifie_le: new Date().toISOString()
 		});
 		return json(200, profil);
