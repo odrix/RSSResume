@@ -15,8 +15,11 @@ export const DUREE_JETON_EMAIL_MS = 24 * 60 * 60 * 1000;
 export const DUREE_REINITIALISATION_MS = 60 * 60 * 1000;
 
 /** Ce qu'un lien confirme : l'adresse d'un compte qui s'inscrit, un destinataire ajouté
- * dans « Mon profil », une demande de nouveau mot de passe, ou la nouvelle adresse du compte. */
-export type ObjetJeton = 'inscription' | 'destinataire' | 'reinitialisation' | 'adresse';
+ * dans « Mon profil », une demande de nouveau mot de passe, une nouvelle adresse, ou un lien magique. */
+export type ObjetJeton = 'inscription' | 'destinataire' | 'reinitialisation' | 'adresse' | 'magic-link';
+
+/** Durée spécifique pour les liens magiques : 15 minutes, contre 24h pour les confirmations. */
+export const DUREE_MAGIC_LINK_MS = 15 * 60 * 1000;
 
 export interface JetonLu {
 	compteId: number;
@@ -40,6 +43,12 @@ export function lienConfirmation(origine: string, jeton: string): string {
  * consomme rien. */
 export function lienReinitialisation(origine: string, jeton: string): string {
 	return `${origine.replace(/\/+$/, '')}/reinitialiser/${jeton}`;
+}
+
+/** Le lien magique mène à une page de confirmation : ouvrir le lien (GET) ne doit pas
+ * consommer le jeton, pour résister aux préchargements des clients mail. */
+export function lienMagicLink(origine: string, jeton: string): string {
+	return `${origine.replace(/\/+$/, '')}/magic-link/${jeton}`;
 }
 
 export class JetonsEmail {

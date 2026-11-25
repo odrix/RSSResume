@@ -14,6 +14,7 @@ import { Identifiants } from './identifiants.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
 import { LimiteurTentatives } from './limiteur.js';
+import { MagicLink } from './magic-link.js';
 import { Reinitialisation } from './reinitialisation.js';
 import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
@@ -70,6 +71,7 @@ export function monter(maintenant: () => number = Date.now) {
 	const retours = new Retours(api);
 	const reinitialisation = new Reinitialisation(comptes, jetons, sessions, courrier);
 	const identifiants = new Identifiants(comptes, jetons, sessions, courrier);
+	const magicLink = new MagicLink(comptes, jetons, courrier, base, maintenant);
 
 	/** Un compte confirmé, sans passer par l'API : pour les tests qui ne portent pas sur
 	 * l'inscription. */
@@ -93,6 +95,7 @@ export function monter(maintenant: () => number = Date.now) {
 		retours,
 		reinitialisation,
 		identifiants,
+		magicLink,
 		creerConfirme
 	};
 }

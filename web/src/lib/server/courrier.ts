@@ -91,6 +91,18 @@ export abstract class Courrier {
 		);
 	}
 
+	envoyerLienMagique(email: string, lien: string): Promise<boolean> {
+		return this.transmettre(
+			email,
+			'RSSResume : votre lien de connexion',
+			`Bonjour,\n\n` +
+				`Vous avez demandé un lien pour vous connecter à RSSResume.\n` +
+				`Ouvrez ce lien dans les 15 minutes :\n\n${lien}\n\n` +
+				`Ce lien est à usage unique et expirera automatiquement.\n` +
+				`Si vous n'avez pas demandé ce lien, ignorez ce message.\n`
+		);
+	}
+
 	/** Part à l'ancienne adresse : si le changement n'est pas de son fait, c'est le seul
 	 * signal que la personne recevra encore. */
 	signalerChangementAdresse(username: string, ancienne: string, nouvelle: string): Promise<boolean> {

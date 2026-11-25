@@ -40,4 +40,7 @@
 		Pas encore de compte ? <a href="/inscription">Créer un compte</a> ·
 		<a href="/renvoyer-lien">Renvoyer le lien de confirmation</a>
 	</p>
+	<p class="attenue">
+		<a href="/demander-lien">Se connecter avec un lien magique</a>
+	</p>
 </form>
