@@ -18,9 +18,9 @@ class GabaritsTests(unittest.TestCase):
     def catalogue(self):
         return Catalogue.depuis_document(
             {
-                "Tech generaliste": {"description": "Tech.", "metiers": [], "visibilite": "publique"},
-                "Cybersécurité": {"description": "Cyber.", "metiers": [], "visibilite": "publique"},
-                "Réglementaire": {"description": "Règles.", "metiers": [], "visibilite": "publique"},
+                "6 - Tech generaliste": {"description": "Tech.", "metiers": [], "visibilite": "publique"},
+                "2 - Cybersecurite technique et menaces": {"description": "Cyber.", "metiers": [], "visibilite": "publique"},
+                "3 - Conformite, reglementation et gouvernance": {"description": "Règles.", "metiers": [], "visibilite": "publique"},
                 "1 - Alertes et avis CERT-FR ANSSI": {"description": "CERT.", "metiers": [], "visibilite": "publique"},
                 "11 - Qualite logicielle et tests": {"description": "QA.", "metiers": [], "visibilite": "publique"},
                 "12 - Gestion de produit": {"description": "Produit.", "metiers": [], "visibilite": "publique"},
