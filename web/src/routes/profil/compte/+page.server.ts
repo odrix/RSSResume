@@ -1,0 +1,89 @@
+import { fail } from '@sveltejs/kit';
+import { contexte } from '#lib/server/contexte.js';
+import { exigerConnexion } from '#lib/server/garde.js';
+import { ErreurIdentifiants, MOT_DE_PASSE_ACTUEL_INCORRECT } from '#lib/server/identifiants.js';
+import { COOKIE_SESSION } from '#lib/server/sessions.js';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals, url }) => {
+	const utilisateur = exigerConnexion(locals.utilisateur, url);
+	return { email: utilisateur.email };
+};
+
+/** Le refus d'un formulaire, rangé sous son nom : la page porte deux formulaires et ne
+ * doit afficher le message que sous celui qui a été envoyé. */
+function refus(
+	formulaire: 'motDePasse' | 'adresse',
+	erreur: ErreurIdentifiants,
+	valeurs: { email?: string } = {},
+	statut = erreur.champ === 'motDePasseActuel' ? 403 : erreur.champ === 'general' ? 503 : 422
+) {
+	return fail(statut, { formulaire, champ: erreur.champ, message: erreur.message, ...valeurs });
+}
+
+/** Le mot de passe actuel se devine aussi par ici : les échecs comptent dans la même
+ * limite, par adresse du compte, que ceux de la page de connexion. */
+function limiteAtteinte(email: string) {
+	const ctx = contexte();
+	if (ctx.limiteParEmail.autorise(email)) return null;
+	const minutes = Math.ceil(ctx.limiteParEmail.attenteSecondes(email) / 60);
+	return new ErreurIdentifiants('motDePasseActuel', `Trop de tentatives. Réessayez dans ${minutes} minute(s).`);
+}
+
+function noterEchec(email: string, erreur: ErreurIdentifiants): void {
+	if (erreur.message === MOT_DE_PASSE_ACTUEL_INCORRECT) contexte().limiteParEmail.noter(email);
+}
+
+export const actions: Actions = {
+	motDePasse: async ({ locals, request, url, cookies }) => {
+		const utilisateur = exigerConnexion(locals.utilisateur, url);
+		const donnees = await request.formData();
+		const bloque = limiteAtteinte(utilisateur.email);
+		if (bloque) return refus('motDePasse', bloque, {}, 429);
+		try {
+			await contexte().identifiants.changerMotDePasse(
+				utilisateur,
+				String(donnees.get('motDePasseActuel') ?? ''),
+				String(donnees.get('nouveauMotDePasse') ?? ''),
+				cookies.get(COOKIE_SESSION)
+			);
+		} catch (erreur) {
+			if (!(erreur instanceof ErreurIdentifiants)) throw erreur;
+			noterEchec(utilisateur.email, erreur);
+			return refus('motDePasse', erreur);
+		}
+		return { formulaire: 'motDePasse', succes: 'Mot de passe changé. Vos autres sessions sont fermées.' };
+	},
+
+	adresse: async ({ locals, request, url }) => {
+		const utilisateur = exigerConnexion(locals.utilisateur, url);
+		const donnees = await request.formData();
+		const email = String(donnees.get('email') ?? '');
+		const bloque = limiteAtteinte(utilisateur.email);
+		if (bloque) return refus('adresse', bloque, { email }, 429);
+		// Chaque demande écrit à une boîte choisie par l'appelant : plafonnée comme les renvois.
+		const ctx = contexte();
+		const cle = `adresse:${utilisateur.id}`;
+		if (!ctx.limiteRenvoisParEmail.autorise(cle)) {
+			const trop = new ErreurIdentifiants('general', 'Trop de demandes. Réessayez dans une heure.');
+			return refus('adresse', trop, { email }, 429);
+		}
+		try {
+			const nouvelle = await ctx.identifiants.demanderChangementAdresse(
+				utilisateur,
+				String(donnees.get('motDePasse') ?? ''),
+				email,
+				url.origin
+			);
+			ctx.limiteRenvoisParEmail.noter(cle);
+			return {
+				formulaire: 'adresse',
+				succes: `Un lien vient d'être envoyé à ${nouvelle}. Votre adresse ne changera qu'une fois ce lien ouvert, dans les 24 heures.`
+			};
+		} catch (erreur) {
+			if (!(erreur instanceof ErreurIdentifiants)) throw erreur;
+			noterEchec(utilisateur.email, erreur);
+			return refus('adresse', erreur, { email });
+		}
+	}
+};

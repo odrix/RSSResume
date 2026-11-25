@@ -70,6 +70,18 @@ export class Sessions {
 		this.base.prepare('DELETE FROM sessions WHERE id = ?').run(empreinte(jeton));
 	}
 
+	/** Après un changement de mot de passe : une session volée ne doit pas survivre à ce que
+	 * la personne fait justement pour reprendre la main. `sauf` garde celle d'où elle agit. */
+	fermerToutes(compteId: number, sauf?: string): void {
+		if (sauf) {
+			this.base
+				.prepare('DELETE FROM sessions WHERE compte_id = ? AND id <> ?')
+				.run(compteId, empreinte(sauf));
+		} else {
+			this.base.prepare('DELETE FROM sessions WHERE compte_id = ?').run(compteId);
+		}
+	}
+
 	purgerExpirees(): void {
 		this.base.prepare('DELETE FROM sessions WHERE expire_le <= ?').run(this.maintenant());
 	}

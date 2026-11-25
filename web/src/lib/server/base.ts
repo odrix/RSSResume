@@ -62,7 +62,20 @@ const MIGRATIONS = [
 		jour TEXT NOT NULL,
 		PRIMARY KEY (compte_id, jour)
 	);
-	CREATE INDEX consultations_jour ON consultations (jour);`
+	CREATE INDEX consultations_jour ON consultations (jour);`,
+	// Deux nouveaux objets de lien : le mot de passe oublié et le changement d'adresse du
+	// compte. SQLite ne sait pas modifier une contrainte CHECK : la table est recopiée.
+	`CREATE TABLE jetons_email_v5 (
+		id TEXT PRIMARY KEY,
+		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
+		email TEXT NOT NULL,
+		objet TEXT NOT NULL CHECK (objet IN ('inscription', 'destinataire', 'reinitialisation', 'adresse')),
+		expire_le INTEGER NOT NULL
+	);
+	INSERT INTO jetons_email_v5 SELECT id, compte_id, email, objet, expire_le FROM jetons_email;
+	DROP TABLE jetons_email;
+	ALTER TABLE jetons_email_v5 RENAME TO jetons_email;
+	CREATE INDEX jetons_email_compte ON jetons_email (compte_id);`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */

@@ -22,6 +22,8 @@
 		<p>
 			{#if data.objet === 'inscription'}
 				Confirmez que <strong>{data.email}</strong> est bien votre adresse pour activer votre compte.
+			{:else if data.objet === 'adresse'}
+				Confirmez que <strong>{data.email}</strong> devient l'adresse de connexion de votre compte.
 			{:else}
 				Confirmez que <strong>{data.email}</strong> accepte de recevoir le résumé quotidien RSSResume.
 			{/if}

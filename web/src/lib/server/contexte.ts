@@ -9,6 +9,7 @@
 
 import {
 	ADMIN_EMAIL,
+	CONTACT_EMAIL,
 	DATABASE_PATH,
 	MAIL_FROM,
 	RESEND_API_KEY,
@@ -22,9 +23,11 @@ import { ConsultationResumes } from './consultation.js';
 import { CourrierAbsent, CourrierJournal, CourrierResend, type Courrier } from './courrier.js';
 import { Desabonnement } from './desabonnement.js';
 import { Destinataires } from './destinataires.js';
+import { Identifiants } from './identifiants.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
 import { LimiteurTentatives } from './limiteur.js';
+import { Reinitialisation } from './reinitialisation.js';
 import { RelaisAudio } from './relais-audio.js';
 import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
@@ -42,6 +45,10 @@ export class Contexte {
 	readonly consultation: ConsultationResumes;
 	readonly desabonnement: Desabonnement;
 	readonly retours: Retours;
+	readonly reinitialisation: Reinitialisation;
+	readonly identifiants: Identifiants;
+	/** L'adresse publiée sur la page de confidentialité ; vide si aucune n'est configurée. */
+	readonly contact: string = CONTACT_EMAIL || ADMIN_EMAIL;
 	/** Par adresse visée : freine qui s'acharne sur un compte, d'où qu'il vienne. */
 	readonly limiteParEmail = new LimiteurTentatives(5, 15 * MINUTE_MS);
 	/** Par IP : freine qui balaie les adresses. Plus large, une IP pouvant être partagée. */
@@ -51,6 +58,10 @@ export class Contexte {
 	/** Les renvois de lien par adresse et par IP : chacun fait partir un email. */
 	readonly limiteRenvoisParEmail = new LimiteurTentatives(3, 60 * MINUTE_MS);
 	readonly limiteRenvoisParIp = new LimiteurTentatives(10, 60 * MINUTE_MS);
+	/** Les demandes de mot de passe oublié, aux mêmes seuils que les renvois : chacune fait
+	 * aussi partir un email, mais leurs compteurs sont distincts. */
+	readonly limiteOublisParEmail = new LimiteurTentatives(3, 60 * MINUTE_MS);
+	readonly limiteOublisParIp = new LimiteurTentatives(10, 60 * MINUTE_MS);
 
 	constructor() {
 		const base = ouvrirBase(DATABASE_PATH);
@@ -72,6 +83,8 @@ export class Contexte {
 		this.consultation = new ConsultationResumes(this.api, base);
 		this.desabonnement = new Desabonnement(this.api);
 		this.retours = new Retours(this.api);
+		this.reinitialisation = new Reinitialisation(this.comptes, this.jetons, this.sessions, courrier);
+		this.identifiants = new Identifiants(this.comptes, this.jetons, this.sessions, courrier);
 
 		this.sessions.purgerExpirees();
 		this.jetons.purgerExpires();

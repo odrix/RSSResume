@@ -10,9 +10,11 @@ import { Comptes, HacheurMotDePasse, type Utilisateur } from './comptes.js';
 import { CourrierJournal } from './courrier.js';
 import { Desabonnement } from './desabonnement.js';
 import { Destinataires } from './destinataires.js';
+import { Identifiants } from './identifiants.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
 import { LimiteurTentatives } from './limiteur.js';
+import { Reinitialisation } from './reinitialisation.js';
 import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
 
@@ -31,9 +33,9 @@ export class FauxHacheur extends HacheurMotDePasse {
 	}
 }
 
-/** Le jeton d'un lien envoyé, relu dans le texte du message. */
+/** Le jeton d'un lien envoyé — confirmation ou réinitialisation —, relu dans le texte du message. */
 export function jetonDuLien(texte: string): string {
-	const trouve = /\/confirmer\/([A-Za-z0-9_-]+)/.exec(texte);
+	const trouve = /\/(?:confirmer|reinitialiser)\/([A-Za-z0-9_-]+)/.exec(texte);
 	if (!trouve) throw new Error(`pas de lien dans : ${texte}`);
 	return trouve[1];
 }
@@ -61,6 +63,8 @@ export function monter(maintenant: () => number = Date.now) {
 	);
 	const desabonnement = new Desabonnement(api);
 	const retours = new Retours(api);
+	const reinitialisation = new Reinitialisation(comptes, jetons, sessions, courrier);
+	const identifiants = new Identifiants(comptes, jetons, sessions, courrier);
 
 	/** Un compte confirmé, sans passer par l'API : pour les tests qui ne portent pas sur
 	 * l'inscription. */
@@ -82,6 +86,8 @@ export function monter(maintenant: () => number = Date.now) {
 		destinataires,
 		desabonnement,
 		retours,
+		reinitialisation,
+		identifiants,
 		creerConfirme
 	};
 }

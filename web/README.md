@@ -73,6 +73,8 @@ src/
     sessions.ts              sessions par jeton aléatoire
     jetons-email.ts          jetons des liens de confirmation
     inscription.ts           compte en attente (métier choisi), puis profil + alerte + bienvenue
+    reinitialisation.ts      mot de passe oublié : lien d'une heure, à usage unique
+    identifiants.ts          changement de mot de passe et d'adresse du compte
     destinataires.ts         adresses de réception : confirmées avant d'atteindre l'API
     courrier.ts              emails du site ; transports Resend, console, absent
     relais-audio.ts          contrôle d'accès et relais du MP3 avec Range
@@ -81,6 +83,8 @@ src/
   routes/
     inscription, connexion, deconnexion, profil, resumes/[username], admin
     confirmer/[jeton], renvoyer-lien   la vérification d'email
+    mot-de-passe-oublie, reinitialiser/[jeton], profil/compte   les identifiants
+    confidentialite          page publique : données, durées, sous-traitants, contact
     audio/[username]/[date]/[nom]   le relais audio (GET)
 mock/                        fausse API (tests et développement)
 ```
@@ -145,6 +149,17 @@ Ce qui n'est **pas** là, volontairement :
     inscription : son adresse et son username sont alors libérés ;
   - sans `RESEND_API_KEY` ou `MAIL_FROM` en production, les inscriptions sont refusées
     (« inscriptions momentanément fermées ») et l'erreur est journalisée.
+- **Mot de passe oublié** : la page répond la même chose quelle que soit l'adresse, et
+  l'email part sans être attendu (le temps de réponse ne trahit rien) ; seul un compte
+  confirmé reçoit un lien. Lien d'une heure, à usage unique, caduc si l'adresse du compte a
+  changé ; l'ouvrir ne consomme rien. Le nouveau mot de passe ferme toutes les sessions.
+  3 demandes par adresse et 10 par IP et par heure.
+- **Mon compte** (`/profil/compte`) : changer de mot de passe ou d'adresse exige le mot de
+  passe actuel (échecs comptés avec ceux de la connexion). Le nouveau mot de passe ferme les
+  autres sessions ; la nouvelle adresse ne s'applique qu'au clic sur le lien qu'elle reçoit,
+  et l'ancienne en est prévenue. Les destinataires du digest, eux, restent ceux du profil.
+- **Confidentialité** (`/confidentialite`, sans connexion, lien en pied de page) : l'adresse
+  publiée est `CONTACT_EMAIL`, à défaut `ADMIN_EMAIL`.
 - **Mon profil** : le texte de veille avec une aide en trois rubriques (mon métier, ce que je
   veux suivre, ce qui ne m'intéresse pas) et le texte d'un gabarit en exemple ; « Repartir
   d'un gabarit », qui pré-remplit sans rien enregistrer ; les catégories à cocher, celles que
@@ -191,6 +206,8 @@ Dans Dokploy, une application de type **Application** :
    - `RSSRESUME_API_URL=http://rssresume-api:8080`
    - `RSSRESUME_API_TOKEN` : le même que celui du compose de l'appli de résumé
    - `ADMIN_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM` (domaine vérifié chez Resend)
+   - `CONTACT_EMAIL` (facultative) : le contact de la page de confidentialité ; à défaut,
+     `ADMIN_EMAIL` y est publiée
    - `ORIGIN=https://<le domaine du site>`
    - `ADDRESS_HEADER=X-Forwarded-For` et `XFF_DEPTH=1` (derrière Traefik : l'IP du client
      pour la limitation des tentatives)

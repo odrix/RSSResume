@@ -68,6 +68,42 @@ export abstract class Courrier {
 		);
 	}
 
+	reinitialiserMotDePasse(inscrit: Inscrit, lien: string): Promise<boolean> {
+		return this.transmettre(
+			inscrit.email,
+			'RSSResume : choisir un nouveau mot de passe',
+			`Bonjour,\n\n` +
+				`Un nouveau mot de passe a été demandé pour le compte RSSResume « ${inscrit.username} ».\n` +
+				`Pour le choisir, ouvrez ce lien dans l'heure :\n\n${lien}\n\n` +
+				`Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : ` +
+				`votre mot de passe actuel reste valable.\n`
+		);
+	}
+
+	confirmerAdresse(username: string, email: string, lien: string): Promise<boolean> {
+		return this.transmettre(
+			email,
+			'RSSResume : confirmez votre nouvelle adresse',
+			`Bonjour,\n\n` +
+				`Le compte RSSResume « ${username} » souhaite utiliser cette adresse pour se connecter.\n` +
+				`Pour l'accepter, ouvrez ce lien dans les 24 heures :\n\n${lien}\n\n` +
+				`Sans confirmation, le compte garde son adresse actuelle.\n`
+		);
+	}
+
+	/** Part à l'ancienne adresse : si le changement n'est pas de son fait, c'est le seul
+	 * signal que la personne recevra encore. */
+	signalerChangementAdresse(username: string, ancienne: string, nouvelle: string): Promise<boolean> {
+		return this.transmettre(
+			ancienne,
+			'RSSResume : adresse du compte modifiée',
+			`Bonjour,\n\n` +
+				`Le compte RSSResume « ${username} » se connecte désormais avec l'adresse ${nouvelle}.\n\n` +
+				`Si vous n'êtes pas à l'origine de ce changement, écrivez au contact indiqué ` +
+				`sur la page de confidentialité du site.\n`
+		);
+	}
+
 	/** Part à la confirmation, pas à l'inscription : l'administrateur n'apprend que les
 	 * comptes dont l'adresse est réelle. */
 	async alerterAdmin(inscrit: Inscrit): Promise<boolean> {
