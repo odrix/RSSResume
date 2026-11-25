@@ -208,12 +208,14 @@ class TestModifier(Base):
 
     def test_modifier_efface_par_null_explicite(self):
         """Chaque `null` du corps remet sa clé à son défaut : `flux_exclus` et `axes`
-        disparaissent du document, comme une liste vide les en retire."""
+        disparaissent du document, comme une liste vide les en retire ; `categories`
+        revient à « tout le catalogue », donc n'est pas écrite non plus."""
         self.annuaire.creer(
             "bea",
             {
                 "profil": "B",
                 "flux_exclus": ["NoLimitSecu"],
+                "categories": ["Tech"],
                 "axes": [
                     {"slug": "cyber", "libelle": "Cybersécurité", "description": "failles"},
                     {"slug": "qualite", "libelle": "Qualité", "description": "tests"},
@@ -223,12 +225,13 @@ class TestModifier(Base):
         )
 
         fiche = self.annuaire.modifier(
-            "bea", {"profil": "B", "flux_exclus": None, "axes": None}
+            "bea", {"profil": "B", "flux_exclus": None, "axes": None, "categories": None}
         )
 
         self.assertNotIn("flux_exclus", fiche.document)
         self.assertNotIn("axes", fiche.document)
-
+        self.assertNotIn("categories", fiche.document)
+        self.assertIsNone(self.annuaire.profil("bea").categories)
 
 
 class DesabonnerTests(Base):

@@ -353,7 +353,7 @@ class RouteProfils(Route):
 
 
 class RouteProfil(Route):
-    """`/api/v1/profils/{username}` : lire, remplacer, supprimer."""
+    """`/api/v1/profils/{username}` : lire, modifier (fusion), supprimer."""
 
     motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)")
     methodes = ("GET", "PUT", "DELETE")
