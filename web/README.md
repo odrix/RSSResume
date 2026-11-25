@@ -204,7 +204,7 @@ Dans Dokploy, une application de type **Application** :
 
 1. **Source** : le dépôt, branche `main` ; **Build Type** `Dockerfile`, **Docker File**
    `Dockerfile`, **Docker Context Path** `web` (le contexte est le dossier `web/`, pas la
-   racine) ;
+   racine) ; **Watch Paths** `web/**` — tout ce que l'image emporte est dans le contexte ;
 2. onglet **Environment** :
    - `RSSRESUME_API_URL=http://rssresume-api:8080`
    - `RSSRESUME_API_TOKEN` : le même que celui du compose de l'appli de résumé

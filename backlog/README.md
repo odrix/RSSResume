@@ -66,3 +66,7 @@ l'échelle. Ce qui sert l'expérience d'un inscrit et la collecte de ses retours
 budget, liste d'attente, parallélisme et rétention attendent. Inscription ouverte, sans plafond.
 BL-071 à BL-078 en viennent, dont BL-074 à BL-076 détachés de BL-043, BL-044 et BL-066 ; BL-073
 (inscription sur invitation) a été écarté avant d'être créé, son numéro reste libre de tout usage.
+
+Les retours d'usage de la revue du 2026-11-26 donnent BL-085 à BL-096 : lecture (pagination des
+résumés, animation et persistance du lecteur, journées lues, audio dans l'email), lisibilité du
+profil et des catégories, charte des emails, lieu de vérité des données.

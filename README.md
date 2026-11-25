@@ -826,7 +826,11 @@ L'ajouter, si besoin : `apk add --no-cache espeak`.
 2. Onglet **Environment** : y coller le contenu de son `.env` local — clés FreshRSS,
    clés d'API, SMTP, seuils, `RSSRESUME_SCHEDULE`. C'est le seul endroit où les secrets
    sont saisis, et ils ne passent jamais par le dépôt.
-3. **Deploy**. Aucun domaine à déclarer : le service n'expose rien.
+3. Onglet **General → Watch Paths**, une entrée par motif :
+   `rssresume/**`, `Dockerfile`, `docker-compose.yml`, `.dockerignore`. Ce sont les seuls
+   fichiers qui entrent dans l'image ou en règlent le lancement : un push qui ne touche que
+   `web/`, `tests/`, `docs/` ou `backlog/` ne redéploie pas le travailleur.
+4. **Deploy**. Aucun domaine à déclarer : le service n'expose rien.
 
 Le chemin d'une variable, de Dokploy jusqu'à `AppConfig.from_env()` :
 
