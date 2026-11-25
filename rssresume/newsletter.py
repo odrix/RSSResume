@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from rssresume import ancres
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
+from rssresume.liens import lien_sur
 from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
 from rssresume.retours import OBJET_RETOUR, Avis, LienRetour
 from rssresume.tools import duration
@@ -581,7 +582,7 @@ class Lettre:
         for entete, liens in (("À lire :", section.links), ("À surveiller :", section.watchlist)):
             if liens:
                 lignes.extend(["", entete])
-                lignes.extend(f"- {lien.title} ({lien.source})\n  {lien.url}" for lien in liens)
+                lignes.extend(_lien_texte(lien) for lien in liens)
         if section.audio_name:
             # En dernier : c'est une référence, pas du contenu. Elle ferme la section.
             lignes.extend(["", f"{PIECE_JOINTE} {section.audio_name}"])
@@ -694,10 +695,7 @@ class Lettre:
         """
         if not liens:
             return ""
-        items = "".join(
-            _LIEN.format(url=_e(lien.url), titre=_e(lien.title), source=_e(lien.source), couleur=couleur)
-            for lien in liens
-        )
+        items = "".join(_lien_html(lien, couleur) for lien in liens)
         return _LISTE.format(entete=_e(entete), items=items, couleur=couleur)
 
 
@@ -712,6 +710,36 @@ class Lettre:
 def _e(value: str) -> str:
     """Échappement HTML. Titres et sources viennent des flux : ils sont hostiles par défaut."""
     return html.escape(value or "", quote=True)
+
+
+def _lien_texte(lien: Link) -> str:
+    """Un article de la version texte : son URL en dessous, si elle mène à une page web.
+
+    Un client mail rend cliquable une URL nue aussi bien qu'un `href` : la version texte
+    passe par le même filtre que le HTML, sinon elle resterait la porte de derrière.
+    Titre et source sont ramenés à une ligne pour la même raison : un saut de ligne venu
+    du flux y glisserait une URL nue, que le client rendrait cliquable.
+    """
+    ligne = f"- {_une_ligne(lien.title)} ({_une_ligne(lien.source)})"
+    url = lien_sur(lien.url)
+    return f"{ligne}\n  {url}" if url else ligne
+
+
+def _une_ligne(texte: str) -> str:
+    return " ".join((texte or "").split())
+
+
+def _lien_html(lien: Link, couleur: str) -> str:
+    """Un article de liste ; son titre seul quand son URL n'est pas une page web.
+
+    Le titre reste : l'article a été retenu, le lecteur doit savoir qu'il existe. Seul
+    le lien saute — un `javascript:` venu d'un flux traverse l'échappement HTML intact.
+    """
+    url = lien_sur(lien.url)
+    gabarit = _LIEN if url else _LIEN_SANS_URL
+    return gabarit.format(
+        url=_e(url or ""), titre=_e(lien.title), source=_e(lien.source), couleur=couleur
+    )
 
 
 def _lien_pied_html(lien: LienPied) -> str:
@@ -732,8 +760,13 @@ def _resume_html(texte: str, liens: list[Link] | None = None) -> str:
     qui rappelle leur titre (`ancres.py`). Le texte n'est pas modifié d'un caractère —
     la voix lit le même — et l'URL vient de la sélection : un lien mal placé reste un
     lien juste. Ceux qui ne trouvent pas où se poser restent dans la liste « À lire ».
+
+    Les articles à URL refusée sont écartés avant l'ancrage et non au rendu : sinon l'un
+    d'eux pourrait prendre le groupe de mots qu'un article sain aurait obtenu, et le
+    résumé perdrait un lien juste pour ne rien poser à la place.
     """
-    segments = ancres.ancrer((texte or "").strip(), liens or [])
+    surs = [lien for lien in liens or [] if lien_sur(lien.url)]
+    segments = ancres.ancrer((texte or "").strip(), surs)
     return "".join(
         f'<p style="margin:0 0 14px;font-size:15px;line-height:1.62;color:#1f2937;">'
         f"{''.join(_segment_html(segment) for segment in bloc)}</p>"
@@ -808,6 +841,13 @@ _BADGE = (
 _LIEN = (
     '<li style="margin:0 0 9px;">'
     '<a href="{url}" style="color:{couleur};text-decoration:none;font-weight:500;">{titre}</a>'
+    '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
+    "</li>"
+)
+
+_LIEN_SANS_URL = (
+    '<li style="margin:0 0 9px;">'
+    '<span style="color:{couleur};font-weight:500;">{titre}</span>'
     '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
     "</li>"
 )
