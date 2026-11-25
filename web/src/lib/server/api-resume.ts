@@ -68,12 +68,13 @@ export class ErreurApi extends Error {
  * `Profil` complet passé par erreur n'enverrait ni `id` ni `modifie_le`, que l'API seule
  * attribue.
  *
- * `axes` et `categories` ne partent que s'ils sont définis : le PUT remplace tout le
- * document, et une clé absente y vaut « réglage par défaut » — l'omettre quand on ne la
- * connaît pas, c'est ne pas inventer un réglage, la recopier quand on la connaît, c'est
- * ne pas effacer celui du gabarit. `categories: null` (tout coché) part aussi sans la clé :
- * c'est précisément « tout le catalogue ». */
-function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
+ * En `PUT` (`fusion`), le serveur n'applique que les clés présentes dans le corps — une
+ * clé absente garde sa valeur stockée, un `null` explicite remet à son défaut (web/API.md).
+ * Le client n'envoie donc que ce qu'il édite : `axes` absent garde ceux du profil, et le
+ * `categories: null` de « tout est coché » part tel quel, car omettre la clé ne veut plus
+ * dire « tout le catalogue » mais « garder l'abonnement actuel ». En `POST`, `null` reste
+ * omis : absent y vaut défaut, comme avant. */
+function corpsProfil(saisie: ProfilSaisi, fusion: boolean): ProfilSaisi {
 	const corps: ProfilSaisi = {
 		profil: saisie.profil,
 		stack: saisie.stack,
@@ -82,7 +83,11 @@ function corpsProfil(saisie: ProfilSaisi): ProfilSaisi {
 		securite: saisie.securite
 	};
 	if (saisie.axes !== undefined) corps.axes = saisie.axes;
-	if (saisie.categories != null) corps.categories = saisie.categories;
+	if (fusion) {
+		if (saisie.categories !== undefined) corps.categories = saisie.categories;
+	} else if (saisie.categories != null) {
+		corps.categories = saisie.categories;
+	}
 	return corps;
 }
 
@@ -122,7 +127,7 @@ export class ClientApiResume {
 	}
 
 	creerProfil(username: string, saisie: ProfilSaisi): Promise<Profil> {
-		return this.#json('POST', '/api/v1/profils', { username, ...corpsProfil(saisie) });
+		return this.#json('POST', '/api/v1/profils', { username, ...corpsProfil(saisie, false) });
 	}
 
 	lireProfil(username: string): Promise<Profil> {
@@ -130,7 +135,7 @@ export class ClientApiResume {
 	}
 
 	modifierProfil(username: string, saisie: ProfilSaisi): Promise<Profil> {
-		return this.#json('PUT', this.#profil(username), corpsProfil(saisie));
+		return this.#json('PUT', this.#profil(username), corpsProfil(saisie, true));
 	}
 
 	async supprimerProfil(username: string): Promise<void> {

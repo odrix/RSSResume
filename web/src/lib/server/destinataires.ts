@@ -95,16 +95,11 @@ export class Destinataires {
 			throw new ErreurDestinataire("Trop d'adresses ajoutées récemment. Réessayez dans une heure.");
 		}
 
-		// Axes ou catégories que la page n'a pas montrés (`undefined`) sont recopiés du profil
-		// lu : le PUT remplaçant tout le document, les omettre effacerait ceux du gabarit.
-		// `categories: null` (tout coché) reste `null` et part sans la clé : le profil suit
-		// alors tout le catalogue, futures catégories comprises.
-		const corps = {
-			...saisie,
-			axes: saisie.axes ?? actuel?.axes,
-			categories: saisie.categories === undefined ? actuel?.categories : saisie.categories,
-			email: directes
-		};
+		// La fusion du PUT garde les clés absentes du corps : axes et catégories que la
+		// page n'a pas montrés partent `undefined` et l'API préserve ceux du profil
+		// stocké. `categories: null` (tout coché) part tel quel : l'API retire la clé,
+		// le profil suit alors tout le catalogue, futures catégories comprises.
+		const corps: ProfilSaisi = { ...saisie, email: directes };
 		const profil = actuel
 			? await this.api.modifierProfil(utilisateur.username, corps)
 			: await this.api.creerProfil(utilisateur.username, corps);

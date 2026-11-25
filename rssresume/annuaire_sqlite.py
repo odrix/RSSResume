@@ -176,6 +176,48 @@ class Fiche:
         return corps
 
 
+#: Les clés du format que la fusion considère, hors `id` : c'est tout ce qu'un corps
+#: de POST ou PUT peut porter, validé ensuite par `profil_depuis_dict`.
+CLEFS_DU_FORMAT = (
+    CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES, CLE_CATEGORIES,
+    CLE_FLUX_EXCLUS,
+)
+
+
+def fusionner(stocke: dict | None, saisie: dict) -> dict:
+    """Le document de base d'un `PUT` : clés du format absentes du corps prises du stocké,
+    clés présentes remplacées, un `null` explicitement remis au défaut.
+
+    Fusion et non remplacement : le site n'envoie dans son `PUT` que les clés qu'il édite,
+    remplacer le document entier effacerait donc en silence un réglage déclaré par l'API ou
+    par un gabarit — `flux_exclus`, et toute clé à venir. Le `null` — présent dans le corps
+    — remet la clé à son défaut, c'est-à-dire à l'absence dans le document : c'est ce que le
+    site envoie pour « tout le catalogue ». Seules les clés du format voyagent : une clé
+    étrangère du corps reste ignorée, comme avant la fusion.
+    """
+    fusion = {}
+    for cle in CLEFS_DU_FORMAT:
+        if cle in saisie:
+            if saisie[cle] is not None:
+                fusion[cle] = saisie[cle]
+        elif stocke is not None and cle in stocke:
+            fusion[cle] = stocke[cle]
+    return fusion
+
+
+def _document_stocke(stocke: str) -> dict | None:
+    """Le document stocké décodé, ou `None` s'il ne se relit plus.
+
+    Un document illisible n'a rien qu'on puisse garder : la saisie est alors validée
+    entière, comme une création.
+    """
+    try:
+        document = json.loads(stocke)
+    except json.JSONDecodeError:
+        return None
+    return document if isinstance(document, dict) else None
+
+
 def document_normalise(
     saisie: object,
     id: str,
@@ -186,20 +228,21 @@ def document_normalise(
     """Le document à écrire, validé : `ValueError` avec le message de `profil_depuis_dict`.
 
     Seules les clés du format sont gardées : une clé de plus ne serait lue par personne,
-    et un document qui ne se relit pas tel qu'on l'a écrit trompe celui qui l'édite. Les
-    adresses sont rangées en liste et le texte rogné — ce que la lecture ferait de toute
-    façon —, pour que le site relise ce que la tournée servira. `acquises` : les catégories
-    que le document stocké suit déjà, que le catalogue ne revérifie pas (voir `modifier`).
+    et un document qui ne se relit pas tel qu'on l'a écrit trompe celui qui l'édite. Une
+    valeur `null` pour une clé du format est traitée comme une remise au défaut — les
+    lecteurs servent absence et `null` pareil, la retirer avant la validation le dit à
+    la validation aussi, et un texte exigé (le profil) reste refusé au même message
+    qu'une clé absente. Les adresses sont rangées en liste et le texte rogné — ce que
+    la lecture ferait de toute façon —, pour que le site relise ce que la tournée servira.
+    `acquises` : les catégories que le document stocké suit déjà, que le catalogue ne
+    revérifie pas (voir `modifier`).
     """
     if not isinstance(saisie, dict):
         raise ValueError(f"{origine} : un profil est un objet JSON, pas {type(saisie).__name__}.")
     brut = {
         cle: saisie[cle]
-        for cle in (
-            CLE_PROFIL, CLE_STACK, CLE_EMAIL, CLE_PRENOM, CLE_SECURITE, CLE_AXES, CLE_CATEGORIES,
-            CLE_FLUX_EXCLUS,
-        )
-        if cle in saisie
+        for cle in CLEFS_DU_FORMAT
+        if cle in saisie and saisie[cle] is not None
     }
     # Un formulaire vidé envoie une liste vide là où un fichier omettait la clé : c'est
     # le même « aucun destinataire », et le document écrit omet la clé comme le fichier.
@@ -348,7 +391,16 @@ class AnnuaireSqlite(Annuaire):
         return Fiche(id, username, document, horodatage, horodatage)
 
     def modifier(self, username: str, saisie: object) -> Fiche:
-        """Remplace le document de `username`, son id et son nom gardés. Absent : `ProfilInconnu`.
+        """Fusionne le corps dans le document de `username`, son id et son nom gardés.
+        Absent : `ProfilInconnu`.
+
+        Fusion, pas remplacement : le site n'envoie que les clés qu'il édite, remplacer
+        le document entier effacerait donc en silence un réglage déclaré ailleurs — un
+        `flux_exclus` posé par l'API ou par un gabarit. `fusionner` donne le document de
+        base (clés absentes du corps prises du stocké, un `null` remis au défaut), que la
+        normalisation valide et écrit ensuite comme toujours. La fusion se fait dans la
+        transaction d'écriture : un enregistrement du site ne peut pas se glisser entre
+        la lecture du stocké et l'écriture.
 
         Le catalogue est vérifié pour les catégories **ajoutées** : sans lui, un PUT ferait
         suivre une catégorie inconnue ou la catégorie privée d'un autre, ce que `creer`
@@ -369,7 +421,10 @@ class AnnuaireSqlite(Annuaire):
             if ligne is None:
                 raise ProfilInconnu(f"Profil inconnu : « {username} ».")
             id, cree_le, stocke = ligne
-            document = document_normalise(saisie, id, username, catalogue, _categories_suivies(stocke))
+            # Une saisie qui n'est pas un objet passe telle quelle : la normalisation
+            # la refuse au même message qu'avant.
+            corps = fusionner(_document_stocke(stocke), saisie) if isinstance(saisie, dict) else saisie
+            document = document_normalise(corps, id, username, catalogue, _categories_suivies(stocke))
             horodatage = _maintenant()
             connexion.execute(
                 "UPDATE profils SET document = ?, modifie_le = ? WHERE id = ?",
@@ -534,11 +589,8 @@ def _categories_suivies(stocke: str) -> list[str]:
     Un document illisible n'a rien d'acquis : sa saisie est alors vérifiée entière, comme
     une création.
     """
-    try:
-        document = json.loads(stocke)
-    except json.JSONDecodeError:
-        return []
-    categories = document.get(CLE_CATEGORIES) if isinstance(document, dict) else None
+    document = _document_stocke(stocke)
+    categories = document.get(CLE_CATEGORIES) if document is not None else None
     if not isinstance(categories, list):
         return []
     return [categorie for categorie in categories if isinstance(categorie, str)]

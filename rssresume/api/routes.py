@@ -353,7 +353,7 @@ class RouteProfils(Route):
 
 
 class RouteProfil(Route):
-    """`/api/v1/profils/{username}` : lire, remplacer, supprimer."""
+    """`/api/v1/profils/{username}` : lire, modifier (fusion), supprimer."""
 
     motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)")
     methodes = ("GET", "PUT", "DELETE")
@@ -362,8 +362,9 @@ class RouteProfil(Route):
         requete.repondre_json(200, self.fiche(username).complet_json())
 
     def put(self, requete, username):
-        """Remplace le document. L'id et le nom ne changent pas : les envoyer différents
-        est refusé plutôt qu'ignoré, pour que le site ne croie pas avoir renommé."""
+        """Fusionne le corps dans le document stocké (`annuaire_sqlite.modifier`) : une clé
+        absente garde sa valeur, un `null` remet à son défaut. L'id et le nom ne changent
+        pas : les envoyer différents est refusé plutôt qu'ignoré."""
         actuelle = self.fiche(username)
         saisie = requete.corps_json()
         if not isinstance(saisie, dict):

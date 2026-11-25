@@ -349,6 +349,36 @@ class ProfilsTests(ServeurTestCase):
         self.assertEqual(422, statut)
         self.assertIn("flux_exclus", corps["erreur"])
 
+    def test_put_conserve_flux_exclus(self):
+        """Un réglage venu d'un gabarit survit à un enregistrement « Mon profil » qui ne
+        connaît pas la clé : le PUT fusionne, il ne remplace plus."""
+        self.json("POST", "/api/v1/profils", {**self.BEA, "flux_exclus": ["NoLimitSecu"]})
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Veille", "stack": [], "email": [], "prenom": ""
+        })
+
+        self.assertEqual(200, statut)
+        self.assertEqual(["NoLimitSecu"], modifie["flux_exclus"])
+        self.assertEqual(
+            ["NoLimitSecu"], self.json("GET", "/api/v1/profils/bea")[1]["flux_exclus"]
+        )
+
+    def test_put_conserve_une_cle_non_editee_par_le_site(self):
+        """La fusion préserve ce que le site n'édite pas ; une clé hors format, même
+        renvoyée dans le corps, reste hors document — pas de fuite."""
+        self.json("POST", "/api/v1/profils", self.BEA)
+        self.json("PUT", "/api/v1/profils/bea", {**self.BEA, "flux_exclus": ["NoLimitSecu"]})
+
+        statut, modifie = self.json("PUT", "/api/v1/profils/bea", {
+            "profil": "Autre", "stack": [], "email": [], "prenom": "", "inconnue": 1
+        })
+
+        self.assertEqual(200, statut)
+        self.assertEqual(["NoLimitSecu"], modifie["flux_exclus"])
+        self.assertEqual(200, self.appel("GET", "/api/v1/profils/bea")[0])
+        self.assertNotIn("inconnue", self.json("GET", "/api/v1/profils/bea")[1])
+
     def test_unknown_profiles_are_not_found(self):
         self.assertEqual(404, self.appel("GET", "/api/v1/profils/absent")[0])
         self.assertEqual(404, self.appel("PUT", "/api/v1/profils/absent", {"profil": "x"})[0])

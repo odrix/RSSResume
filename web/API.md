@@ -64,7 +64,7 @@ Le document de la personne, au format de `rssresume/profil.py` :
 
 | `flux_exclus` | liste de titres de flux FreshRSS            | ni notés ni résumés, marqués lus quand même ; titre exact, casse et accents ignorés ; absente de la réponse quand vide ; entrée vide ou doublon → `422` |
 | `axes`   | liste de `{"slug", "libelle", "description"}`  | facultatif ; absent ou `[]` = les rubriques par défaut ; 3 à 6 axes, slug `^[a-z][a-z0-9-]{1,23}$` |
-| `categories` | liste de noms de catégories                 | facultatif ; absent ou `[]` = tout ce que le catalogue autorise, futures comprises ; une catégorie inconnue ou privée d'autrui → `422` (`champ: "categories"`) ; en `PUT`, seules les catégories **ajoutées** sont vérifiées, celles déjà suivies passent même retirées du catalogue depuis (la tournée les refiltre) |
+| `categories` | liste de noms de catégories                 | facultatif ; absent ou `[]` = tout ce que le catalogue autorise, futures comprises ; une catégorie inconnue ou privée d'autrui → `422` (`champ: "categories"`) ; en `PUT`, absent = l'abonnement stocké est gardé (fusion), un `null` explicite remet à « tout » ; seules les catégories **ajoutées** sont vérifiées, celles déjà suivies passent même retirées du catalogue depuis (la tournée les refiltre) |
 
 
 En sortie, `email` est toujours une liste et `prenom` toujours une chaîne, même si le
@@ -75,11 +75,11 @@ Le site les recopie d'un gabarit à la confirmation du compte, et « Mon profil 
 des cases pour les catégories proposées (voir `GET …/categories`), six lignes libellé +
 description pour les axes. Un axe existant garde son slug, un nouveau en reçoit un tiré de
 son libellé ; toutes les lignes vides envoient `axes: []`. Toutes les catégories cochées
-n'envoient **pas** la clé : le profil suit alors aussi celles ajoutées plus tard. Aucune
-cochée est refusé par le site avant l'appel, l'API lisant `[]` comme « tout ». Une section
-que la page n'a pas pu montrer (catalogue injoignable ou ouvert) garde la valeur lue : comme
-un `PUT` remplace tout le document, le site renvoie ce qu'il vient de lire, à chaque
-enregistrement et à chaque adresse confirmée, et ne l'envoie pas quand le profil n'en a pas.
+envoient `categories: null` : l'API retire la clé, pour que le profil suive aussi celles
+ajoutées plus tard. Aucune cochée est refusé par le site avant l'appel, l'API lisant `[]`
+comme « tout » — en `PUT`, un `null` dit la même chose. Une section que la page n'a pas pu
+montrer (catalogue injoignable ou ouvert) garde la valeur lue : le `PUT` fusionne, la clé
+que le site n'envoie pas n'est pas touchée par l'enregistrement.
 
 `id` figure dans toutes les réponses qui portent un profil (la liste, `GET`, `POST`, `PUT`).
 Les URL restent adressées par **username** ; le site n'envoie jamais `id` (ni `modifie_le`)
@@ -98,7 +98,8 @@ dans un corps `POST` ou `PUT`, et l'API ignore ces clés si elles y figurent.
 ### `POST /api/v1/profils`
 
 Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom", "securite"}`, et
-`"axes"`, `"categories"` quand le profil part d'un gabarit.
+`"axes"`, `"categories"` quand le profil part d'un gabarit. La création ne fusionne rien :
+absent et liste vide y valent tous deux le défaut.
 
 - `201` → le profil complet (forme ci-dessus)
 - `409` → username déjà pris
@@ -112,8 +113,13 @@ Corps : `{"username", "profil", "stack": [...], "email": [...], "prenom", "secur
 
 ### `PUT /api/v1/profils/{username}`
 
-Corps : `{"profil", "stack", "email", "prenom", "securite"}`, plus `axes` et `categories`
-s'il en a — remplacement complet, pas de fusion : une clé omise revient à son défaut.
+Corps : les clés à changer — `{"profil", "stack", "email", "prenom", "securite"}`, et
+`"axes"`, `"categories"`, `"flux_exclus"` quand le client les édite. Fusion, pas
+remplacement : une clé absente du corps garde sa valeur stockée, une clé présente la
+remplace, un `null` explicite la remet à son défaut (absente du document — pour `email`,
+`axes`, `categories` et `flux_exclus`, « aucun réglage » / « tout le catalogue »). Le site
+n'envoie que les clés qu'il édite : un réglage déclaré par l'API ou par un gabarit survit
+ainsi à un enregistrement qui ne le connaît pas.
 
 - `200` → le profil complet, `modifie_le` mis à jour, `id` inchangé
 - `404`, `422` (avec `champ` quand une clé est en cause)
