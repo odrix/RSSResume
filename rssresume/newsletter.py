@@ -717,10 +717,16 @@ def _lien_texte(lien: Link) -> str:
 
     Un client mail rend cliquable une URL nue aussi bien qu'un `href` : la version texte
     passe par le même filtre que le HTML, sinon elle resterait la porte de derrière.
+    Titre et source sont ramenés à une ligne pour la même raison : un saut de ligne venu
+    du flux y glisserait une URL nue, que le client rendrait cliquable.
     """
-    ligne = f"- {lien.title} ({lien.source})"
+    ligne = f"- {_une_ligne(lien.title)} ({_une_ligne(lien.source)})"
     url = lien_sur(lien.url)
     return f"{ligne}\n  {url}" if url else ligne
+
+
+def _une_ligne(texte: str) -> str:
+    return " ".join((texte or "").split())
 
 
 def _lien_html(lien: Link, couleur: str) -> str:
@@ -754,8 +760,13 @@ def _resume_html(texte: str, liens: list[Link] | None = None) -> str:
     qui rappelle leur titre (`ancres.py`). Le texte n'est pas modifié d'un caractère —
     la voix lit le même — et l'URL vient de la sélection : un lien mal placé reste un
     lien juste. Ceux qui ne trouvent pas où se poser restent dans la liste « À lire ».
+
+    Les articles à URL refusée sont écartés avant l'ancrage et non au rendu : sinon l'un
+    d'eux pourrait prendre le groupe de mots qu'un article sain aurait obtenu, et le
+    résumé perdrait un lien juste pour ne rien poser à la place.
     """
-    segments = ancres.ancrer((texte or "").strip(), liens or [])
+    surs = [lien for lien in liens or [] if lien_sur(lien.url)]
+    segments = ancres.ancrer((texte or "").strip(), surs)
     return "".join(
         f'<p style="margin:0 0 14px;font-size:15px;line-height:1.62;color:#1f2937;">'
         f"{''.join(_segment_html(segment) for segment in bloc)}</p>"
@@ -799,13 +810,10 @@ def _segment_html(segment: ancres.Segment) -> str:
     ce qui lui évite d'avoir à reconnaître une entité HTML au milieu d'un nom propre.
     """
     corps = _e(segment.texte).replace(chr(10), "<br>")
-    # L'URL d'une ancre est celle de l'article : un flux hostile la choisit. Refusée, le
-    # groupe de mots reste du texte — le résumé se lit pareil, sans le piège.
-    url = lien_sur(segment.url) if segment.url else None
-    if not url:
+    if not segment.url:
         return corps
     return (
-        f'<a href="{_e(url)}" '
+        f'<a href="{_e(segment.url)}" '
         f'style="color:#1a4fa0;text-decoration:underline;'
         f'text-underline-offset:2px;text-decoration-thickness:1px;">{corps}</a>'
     )

@@ -20,8 +20,15 @@ def lien_sur(url: str) -> str | None:
     `href` s'exécuterait au clic, et ni Svelte ni l'échappement HTML n'assainissent un
     schéma. Chaque sortie — l'API, l'email — refait le contrôle elle-même plutôt que de
     compter sur celle d'à côté : ce qu'elle rend, elle le rend sûr.
+
+    Une espace ou un caractère de contrôle à l'intérieur suffit à refuser : `urlsplit`
+    retire tabulations et sauts de ligne avant d'analyser, alors que c'est le texte brut
+    qui est rendu — `https://a.test/x\\n javascript:…` passerait l'analyse et poserait
+    une seconde ligne dans la version texte de l'email.
     """
     texte = (url or "").strip()
+    if any(caractere.isspace() or not caractere.isprintable() for caractere in texte):
+        return None
     try:
         morceaux = urllib.parse.urlsplit(texte)
     except ValueError:

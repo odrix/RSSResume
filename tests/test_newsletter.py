@@ -390,6 +390,63 @@ class LienSurTests(unittest.TestCase):
                 self.assertIn(self.RESUME, lettre.html)
                 self.assertIn("- Multiples vulnérabilités dans Traefik (Flux A)\n", lettre.text)
 
+    def test_a_refused_article_cannot_steal_the_anchor_of_a_sound_one(self):
+        """Écarté avant l'ancrage : le premier servi ne doit pas être un lien qui saute."""
+        lettre = Lettre.compose(
+            JOUR,
+            [
+                digest(
+                    resume=self.RESUME,
+                    retenus=[
+                        ("Faille dans Traefik", "javascript:alert(1)"),
+                        ("Mise à jour de Traefik", "https://x.test/sain"),
+                    ],
+                )
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+        self.assertIn('<a href="https://x.test/sain" ', lettre.html)
+        self.assertIn(">Traefik</a>", lettre.html)
+        self.assertNotIn("javascript:", lettre.html)
+
+    def test_an_url_hiding_a_second_line_is_refused(self):
+        """`urlsplit` ignore le saut de ligne ; le texte rendu, lui, le garderait."""
+        url = "https://a.test/x\n  javascript:alert(1)"
+        lettre = self._lettre(url)
+
+        for rendu in (lettre.html, lettre.text):
+            self.assertNotIn("javascript:", rendu)
+            self.assertNotIn("https://a.test/x", rendu)
+            self.assertIn("Multiples vulnérabilités dans Traefik", rendu)
+
+    def test_a_title_or_source_cannot_add_a_line_to_the_text_version(self):
+        lettre = Lettre.compose(
+            JOUR,
+            [
+                CategoryDigest(
+                    category="Cyber",
+                    articles=[],
+                    summary_text="Le résumé.",
+                    selected=[
+                        dataclasses.replace(
+                            article("Titre\nhttps://piege.test/titre", "https://x.test/a"),
+                            feed_title="Flux\r\n  https://piege.test/source",
+                        )
+                    ],
+                    watchlist=[],
+                )
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+        self.assertIn(
+            "- Titre https://piege.test/titre (Flux https://piege.test/source)\n  https://x.test/a",
+            lettre.text,
+        )
+        for ligne in lettre.text.splitlines():
+            self.assertFalse(ligne.strip().startswith("https://piege.test"), ligne)
+
     def test_a_web_url_keeps_its_link(self):
         for url in ("https://x.test/a", "http://x.test/a"):
             with self.subTest(url=url):

@@ -32,9 +32,10 @@ from rssresume.api.serveur import (
     ServeurApi,
     valider_jeton,
 )
-from rssresume.api.sorties import Sorties, lien_sur
+from rssresume.api.sorties import Sorties
 from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.desabonnement import OBJET_DESABONNEMENT, Desabonnement, Signataire
+from rssresume.liens import lien_sur
 from rssresume.newsletter import Lettre
 from rssresume.profil import ENV_PROFILES_DB
 from rssresume.retours import LONGUEUR_MAX_COMMENTAIRE, OBJET_RETOUR, LienRetour
@@ -519,6 +520,18 @@ class LienSurTests(unittest.TestCase):
             "",
         ):
             self.assertIsNone(lien_sur(url), url)
+
+    def test_an_inner_blank_or_control_character_is_refused(self):
+        """`urlsplit` les retire avant d'analyser : l'URL passerait, le texte brut avec."""
+        for url in (
+            "https://a.test/x\n  javascript:alert(1)",
+            "https://a.test/x\r\njavascript:alert(1)",
+            "https://a.test/x\tjavascript:alert(1)",
+            "https://a.test/x y",
+            "https://a.test/x\x00",
+            "https://a.test/ x",
+        ):
+            self.assertIsNone(lien_sur(url), repr(url))
 
 
 class ContenuJourneeTests(ServeurTestCase):
