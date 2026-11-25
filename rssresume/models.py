@@ -272,3 +272,17 @@ class CategoryDigest:
             for article in self.watchlist
             if article.url
         ]
+
+
+@dataclasses.dataclass(frozen=True)
+class EchecProfil:
+    """Un profil dont le digest a échoué, et pour quoi.
+
+    Les échecs de la tournée traversent les modules — vers l'alerte à l'exploitant, vers
+    l'utilisateur — portés par un objet nommé, pas par un tuple nu : un jour la cause
+    gagne un champ, et la tournée n'a pas à être repassée bout à bout.
+    """
+
+    nom: str
+    #: La cause, résumée par `alerte.resumer_cause` : ce qui a levé, pas la pile entière.
+    cause: str

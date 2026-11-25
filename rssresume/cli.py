@@ -7,6 +7,7 @@ import dataclasses
 import datetime as dt
 
 from rssresume import certfr, ephemeride, llm, runlog
+from rssresume.alerte import AlerteEchecs
 from rssresume.audio import AudioGenerator
 from rssresume.config import AUDIO_MODES, AppConfig, _split_categories
 from rssresume.digest import DigestService
@@ -276,6 +277,9 @@ def main(argv: list[str] | None = None) -> int:
     mark_read = not (args.dry_run or args.no_mark_read)
     if args.dry_run:
         console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
+    # Le filtrage des drapeaux vit ici, au seul endroit qui les connaît : sans adresse
+    # réglée, ou sans email du passage, la tournée tourne sans alerte — les logs seulement.
+    alerte = AlerteEchecs.depuis_config(config) if config.admin_email and send_email else None
 
     client_freshrss = FreshRSSClient(config, include_read=args.include_read)
     if args.categories:
@@ -294,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         annuaire,
         client_freshrss,
         lambda profil, client: build_service(profil, freshrss_client=client),
+        alerte=alerte,
     )
     try:
         echecs = tournee.run(

@@ -27,6 +27,7 @@ from rssresume.config import (
     ENV_SITE_URL,
     ENV_SMTP_TO,
     ENV_TIMEZONE,
+    ENV_ADMIN_EMAIL,
     MAIL_TRANSPORT_RESEND,
     MAIL_TRANSPORT_SMTP,
     AppConfig,
@@ -462,6 +463,40 @@ class CategoriesServiesTests(unittest.TestCase):
             ["Produit", "Tech"],
             config.categories_servies(["Veille", "Produit", "Tech", "News", "Nouvelle"]),
         )
+
+
+class AdminEmailTests(unittest.TestCase):
+    """L'adresse de l'exploitant : réglage de l'installation, pas une donnée de la personne."""
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_without_the_variable_nobody_is_alerted(self):
+        """Sans adresse réglée, la tournée ne dit ses échecs que dans les logs, comme avant."""
+        self.assertIsNone(AppConfig.from_env().admin_email)
+
+    @mock.patch.dict(
+        os.environ, {**BASE_ENV, ENV_ADMIN_EMAIL: " exploitant@example.com "}, clear=True
+    )
+    def test_the_address_is_read_whatever_its_padding(self):
+        self.assertEqual("exploitant@example.com", AppConfig.from_env().admin_email)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_ADMIN_EMAIL: "exploitant"}, clear=True)
+    def test_an_address_without_at_sign_fails_at_startup(self):
+        """Une adresse injoignable se découvrirait le matin où il faut justement prévenir."""
+        with self.assertRaises(ValueError) as raised:
+            AppConfig.from_env()
+
+        self.assertIn(ENV_ADMIN_EMAIL, str(raised.exception))
+
+    def test_pour_keeps_the_admin_email_of_the_installation(self):
+        """`pour` ne sert que la personne : l'exploitant ne s'y déclare pas, il s'y conserve."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir), admin_email="exploitant@example.com"
+            )
+
+            config = config.pour(Lecteur("bea", Profil("B", identifiant=nouvel_id())))
+
+            self.assertEqual("exploitant@example.com", config.admin_email)
 
 
 if __name__ == "__main__":

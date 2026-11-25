@@ -1122,6 +1122,22 @@ passage `--profil` ne marque rien non plus tant que d'autres profils existent. U
 non lu ne revient dans aucune autre journée — la lecture est bornée au jour —, il ne coûte
 qu'un compteur dans FreshRSS.
 
+**L'alerte à l'exploitant.** Un profil en échec n'était dit que dans les logs du conteneur :
+celui qui s'en apercevait le premier est l'inscrit, en ne recevant rien. En fin de tournée,
+donc, s'il y a eu des échecs, un seul email part à `RSSRESUME_ADMIN_EMAIL`
+(`alerte.AlerteEchecs`, construit dans `cli.main` comme les autres fournisseurs et reçu par
+la tournée via `protocols.py`) : un sujet qui compte les échecs, puis une ligne par profil —
+nom, cause résumée — et la commande `--journal --date … --profil …` à lancer pour chacun.
+L'email emprunte le transport déjà configuré (`RSSRESUME_MAIL_TRANSPORT`), avec le même
+`SMTP_FROM` : seul le destinataire change. L'adresse est un **réglage de l'installation**,
+comme `SMTP_FROM` — la règle de `profil.py` protège la personne servie, pas qui l'exploite —,
+et ne se déclare donc pas dans son document. Ce qui n'envoie pas l'email du jour n'envoie pas
+l'alerte : sans l'adresse réglée, en `--dry-run` ou `--no-email`, la tournée tourne sans
+collaborateur d'alerte, les logs seulement. Un transport non configuré ne lève pas — message
+dans les logs, tournée finie normalement — et l'échec de l'alerte elle-même n'arrête ni la
+tournée ni le marquage : elle est enveloppée et journalisée, les échecs restant dans le rendu
+de la tournée.
+
 Le client FreshRSS est partagé par la tournée et décliné par personne (`FreshRSSClient.pour`) :
 catégories et articles du jour ne sont lus qu'une fois, jetons compris, et chacun tague sous son
 propre préfixe. Rendre la même lecture à tous est juste parce que rien n'est marqué lu entre deux.
