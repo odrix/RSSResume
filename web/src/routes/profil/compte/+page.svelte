@@ -29,13 +29,23 @@
 	<a href="/profil">Mon profil</a>.
 </p>
 
-<h2>Mot de passe</h2>
+{#if data.aMotDePasse}
+	<h2>Mot de passe</h2>
 
-{#if succes('motDePasse')}
-	<p class="message succes" role="status">{succes('motDePasse')}</p>
+	{#if succes('motDePasse')}
+		<p class="message succes" role="status">{succes('motDePasse')}</p>
+	{/if}
+
+	<form method="POST" action="?/motDePasse" class="formulaire carte">
+{:else}
+	<h2>Définir un mot de passe</h2>
+
+	{#if succes('definirMotDePasse')}
+		<p class="message succes" role="status">{succes('definirMotDePasse')}</p>
+	{/if}
+
+	<form method="POST" action="?/definirMotDePasse" class="formulaire carte">
 {/if}
-
-<form method="POST" action="?/motDePasse" class="formulaire carte">
 	<label>
 		Mot de passe actuel
 		<input
@@ -64,10 +74,23 @@
 			<span class="erreur-champ">{erreur('motDePasse', 'nouveauMotDePasse')}</span>
 		{/if}
 	</label>
-	<button type="submit">Changer le mot de passe</button>
-</form>
+		<button type="submit">
+			{#if data.aMotDePasse}
+				Changer le mot de passe
+			{:else}
+				Définir un mot de passe
+			{/if}
+		</button>
+	</form>
 
-<h2>Adresse de connexion</h2>
+	{#if data.aMotDePasse}
+		<h2>Adresse de connexion</h2>
+	{:else}
+		<p class="attenue">
+			Une fois un mot de passe défini, vous pourrez vous connecter avec un mot de passe ou avec un lien magique.
+		</p>
+		<h2>Adresse de connexion</h2>
+	{/if}
 
 {#if succes('adresse')}
 	<p class="message succes" role="status">{succes('adresse')}</p>

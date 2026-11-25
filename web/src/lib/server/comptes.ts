@@ -126,14 +126,15 @@ export class Comptes {
 		return new CompteExistant(ligne.username === username ? 'username' : 'email');
 	}
 
-	/** Crée un compte en attente de confirmation. */
+	/** Crée un compte en attente de confirmation. `motDePasse` peut être null pour un compte
+	 * sans mot de passe (connexion par magic-link uniquement). */
 	async creer(
 		email: string,
 		username: string,
-		motDePasse: string,
+		motDePasse: string | null,
 		brouillon: Brouillon = { profil: '', prenom: '', gabarit: null }
 	): Promise<Utilisateur> {
-		const empreinte = await this.hacheur.hacher(motDePasse);
+		const empreinte = motDePasse ? await this.hacheur.hacher(motDePasse) : null;
 		try {
 			const resultat = this.base
 				.prepare(
@@ -204,16 +205,18 @@ export class Comptes {
 	}
 
 	/** Vérifie le mot de passe, confirmé ou non : c'est à l'appelant de refuser un compte en
-	 * attente, avec un message que seul le titulaire du mot de passe verra. */
+	 * attente, avec un message que seul le titulaire du mot de passe verra.
+	 * Retourne null si le compte n'existe pas ou n'a pas de mot de passe. */
 	async authentifier(email: string, motDePasse: string): Promise<Utilisateur | null> {
 		const ligne = this.base
 			.prepare('SELECT id, hash FROM comptes WHERE email = ?')
-			.get(normaliserEmail(email)) as { id: number; hash: string } | undefined;
+			.get(normaliserEmail(email)) as { id: number; hash: string | null } | undefined;
 		if (!ligne) {
 			this.#empreinteLeurre ??= this.hacheur.hacher('leurre-pour-un-temps-constant');
 			await this.hacheur.verifier(await this.#empreinteLeurre, motDePasse);
 			return null;
 		}
+		if (!ligne.hash) return null; // Compte sans mot de passe (magic-link uniquement)
 		if (!(await this.hacheur.verifier(ligne.hash, motDePasse))) return null;
 		return this.parId(ligne.id);
 	}
@@ -221,6 +224,18 @@ export class Comptes {
 	async changerMotDePasse(id: number, motDePasse: string): Promise<void> {
 		const empreinte = await this.hacheur.hacher(motDePasse);
 		this.base.prepare('UPDATE comptes SET hash = ? WHERE id = ?').run(empreinte, id);
+	}
+
+	/** Définit un mot de passe pour un compte qui n'en avait pas (créé par magic-link). */
+	async definirMotDePasse(id: number, motDePasse: string): Promise<void> {
+		const empreinte = await this.hacheur.hacher(motDePasse);
+		this.base.prepare('UPDATE comptes SET hash = ? WHERE id = ? AND hash IS NULL').run(empreinte, id);
+	}
+
+	/** Vrai si le compte a un mot de passe défini. */
+	aUnMotDePasse(id: number): boolean {
+		const ligne = this.base.prepare('SELECT hash FROM comptes WHERE id = ?').get(id) as { hash: string | null };
+		return ligne?.hash !== null;
 	}
 
 	/** L'adresse ne change qu'une fois la nouvelle prouvée : c'est à l'appelant d'avoir

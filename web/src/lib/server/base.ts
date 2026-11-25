@@ -75,6 +75,35 @@ const MIGRATIONS = [
 	INSERT INTO jetons_email_v5 SELECT id, compte_id, email, objet, expire_le FROM jetons_email;
 	DROP TABLE jetons_email;
 	ALTER TABLE jetons_email_v5 RENAME TO jetons_email;
+	CREATE INDEX jetons_email_compte ON jetons_email (compte_id);`,
+	// Magic-link : compte sans mot de passe possible, et suivi des demandes par IP/email.
+	// Hash devient nullable : un compte peut utiliser un magic-link au lieu d'un mot de passe.
+	`ALTER TABLE comptes ADD COLUMN hash_temp TEXT;
+	UPDATE comptes SET hash_temp = hash;
+	ALTER TABLE comptes DROP COLUMN hash;
+	ALTER TABLE comptes ADD COLUMN hash TEXT;
+	UPDATE comptes SET hash = hash_temp;
+	ALTER TABLE comptes DROP COLUMN hash_temp;
+	CREATE TABLE magic_link_demandes (
+		email TEXT NOT NULL COLLATE NOCASE,
+		ip TEXT NOT NULL,
+		demande_le INTEGER NOT NULL,
+		PRIMARY KEY (email, ip, demande_le)
+	);
+	CREATE INDEX magic_link_demandes_email ON magic_link_demandes (email, demande_le);
+	CREATE INDEX magic_link_demandes_ip ON magic_link_demandes (ip, demande_le);`,
+	// Ajout de l'objet 'magic-link' à la contrainte CHECK de jetons_email.
+	// SQLite ne permet pas de modifier une contrainte CHECK existante sans recréer la table.
+	`CREATE TABLE jetons_email_v6 (
+		id TEXT PRIMARY KEY,
+		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
+		email TEXT NOT NULL,
+		objet TEXT NOT NULL CHECK (objet IN ('inscription', 'destinataire', 'reinitialisation', 'adresse', 'magic-link')),
+		expire_le INTEGER NOT NULL
+	);
+	INSERT INTO jetons_email_v6 SELECT id, compte_id, email, objet, expire_le FROM jetons_email;
+	DROP TABLE jetons_email;
+	ALTER TABLE jetons_email_v6 RENAME TO jetons_email;
 	CREATE INDEX jetons_email_compte ON jetons_email (compte_id);`
 ];
 

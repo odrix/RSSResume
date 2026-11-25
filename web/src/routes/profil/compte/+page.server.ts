@@ -3,11 +3,13 @@ import { contexte } from '#lib/server/contexte.js';
 import { exigerConnexion } from '#lib/server/garde.js';
 import { ErreurIdentifiants, MOT_DE_PASSE_ACTUEL_INCORRECT } from '#lib/server/identifiants.js';
 import { COOKIE_SESSION } from '#lib/server/sessions.js';
+import { erreurMotDePasse } from '#lib/server/validation.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	const utilisateur = exigerConnexion(locals.utilisateur, url);
-	return { email: utilisateur.email };
+	const aMotDePasse = contexte().comptes.aUnMotDePasse(utilisateur.id);
+	return { email: utilisateur.email, aMotDePasse };
 };
 
 /** Le refus d'un formulaire, rangé sous son nom : la page porte deux formulaires et ne
@@ -91,6 +93,30 @@ export const actions: Actions = {
 			if (!(erreur instanceof ErreurIdentifiants)) throw erreur;
 			noterVerification(utilisateur.email, erreur);
 			return refus('adresse', erreur, { email });
+		}
+	},
+
+	definirMotDePasse: async ({ locals, request, url }) => {
+		const utilisateur = exigerConnexion(locals.utilisateur, url);
+		const donnees = await request.formData();
+		const nouveauMotDePasse = String(donnees.get('nouveauMotDePasse') ?? '');
+
+		const erreur = erreurMotDePasse(nouveauMotDePasse);
+		if (erreur) {
+			return fail(422, { formulaire: 'definirMotDePasse', champ: 'nouveauMotDePasse', message: erreur });
+		}
+
+		// Vérifier que le compte n'a pas déjà de mot de passe
+		if (contexte().comptes.aUnMotDePasse(utilisateur.id)) {
+			return fail(400, { formulaire: 'definirMotDePasse', champ: 'general', message: 'Ce compte a déjà un mot de passe.' });
+		}
+
+		try {
+			await contexte().comptes.definirMotDePasse(utilisateur.id, nouveauMotDePasse);
+			// Fermer toutes les sessions ouvertes (sauf la actuelle qui est fermées par le changement de mot de passe)
+			return { formulaire: 'definirMotDePasse', succes: 'Mot de passe défini. Vous pouvez maintenant vous connecter avec un mot de passe.' };
+		} catch (erreur) {
+			throw erreur;
 		}
 	}
 };
