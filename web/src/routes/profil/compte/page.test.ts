@@ -102,4 +102,52 @@ describe('/profil/compte', () => {
 		expect(refus.data.email).toBe('nouvelle@example.com');
 		expect(env.courrier.envoyes).toEqual([]);
 	});
+
+	describe('compte venu du magic-link, sans mot de passe', () => {
+		let sans: Utilisateur;
+		beforeEach(async () => {
+			const cree = await env.comptes.creer('sans@example.com', 'sans', null);
+			env.comptes.confirmer(cree.id);
+			sans = env.comptes.parId(cree.id)!;
+		});
+
+		it('le dit à la page', () => {
+			expect(load(evenement(sans))).toMatchObject({ aMotDePasse: false });
+			expect(load(evenement(moi))).toMatchObject({ aMotDePasse: true });
+		});
+
+		it('définit un premier mot de passe, qui permet ensuite de se connecter', async () => {
+			const resultat = await actions.definirMotDePasse(evenement(sans, { nouveauMotDePasse: 'un tout nouveau mot de passe' }));
+			expect(resultat).toMatchObject({ formulaire: 'definirMotDePasse', succes: expect.any(String) });
+			expect(await env.comptes.authentifier('sans@example.com', 'un tout nouveau mot de passe')).not.toBeNull();
+		});
+
+		it('refuse un mot de passe trop court, sous son champ', async () => {
+			const refus = (await actions.definirMotDePasse(evenement(sans, { nouveauMotDePasse: 'court' }))) as {
+				status: number;
+				data: { formulaire: string; champ: string };
+			};
+			expect(refus.status).toBe(422);
+			expect(refus.data).toMatchObject({ formulaire: 'definirMotDePasse', champ: 'nouveauMotDePasse' });
+			expect(env.comptes.aUnMotDePasse(sans.id)).toBe(false);
+		});
+
+		it("ne remplace pas le mot de passe d'un compte qui en a déjà un", async () => {
+			const refus = (await actions.definirMotDePasse(evenement(moi, { nouveauMotDePasse: 'un tout nouveau mot de passe' }))) as {
+				status: number;
+			};
+			expect(refus.status).toBe(409);
+			expect(await env.comptes.authentifier('moi@example.com', ACTUEL)).not.toBeNull();
+		});
+
+		it("refuse le changement d'adresse en disant pourquoi, sans rien envoyer", async () => {
+			const refus = (await actions.adresse(evenement(sans, { email: 'nouvelle@example.com', motDePasse: '' }))) as {
+				status: number;
+				data: { champ: string; message: string };
+			};
+			expect(refus.status).toBe(409);
+			expect(refus.data).toMatchObject({ champ: 'general', message: expect.stringContaining('mot de passe') });
+			expect(env.courrier.envoyes).toEqual([]);
+		});
+	});
 });

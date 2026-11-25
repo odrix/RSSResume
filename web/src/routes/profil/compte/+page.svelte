@@ -37,61 +37,77 @@
 	{/if}
 
 	<form method="POST" action="?/motDePasse" class="formulaire carte">
+		<label>
+			Mot de passe actuel
+			<input
+				type="password"
+				name="motDePasseActuel"
+				autocomplete="current-password"
+				required
+				aria-invalid={erreur('motDePasse', 'motDePasseActuel') ? 'true' : undefined}
+			/>
+			{#if erreur('motDePasse', 'motDePasseActuel')}
+				<span class="erreur-champ">{erreur('motDePasse', 'motDePasseActuel')}</span>
+			{/if}
+		</label>
+		<label>
+			Nouveau mot de passe
+			<span class="aide">Au moins 12 caractères. Vos autres sessions seront fermées.</span>
+			<input
+				type="password"
+				name="nouveauMotDePasse"
+				autocomplete="new-password"
+				minlength="12"
+				required
+				aria-invalid={erreur('motDePasse', 'nouveauMotDePasse') ? 'true' : undefined}
+			/>
+			{#if erreur('motDePasse', 'nouveauMotDePasse')}
+				<span class="erreur-champ">{erreur('motDePasse', 'nouveauMotDePasse')}</span>
+			{/if}
+		</label>
+		<button type="submit">Changer le mot de passe</button>
+	</form>
 {:else}
 	<h2>Définir un mot de passe</h2>
 
+	<p class="attenue">
+		Une fois un mot de passe défini, vous pourrez vous connecter avec un mot de passe ou avec un lien magique.
+	</p>
+
 	{#if succes('definirMotDePasse')}
 		<p class="message succes" role="status">{succes('definirMotDePasse')}</p>
+	{:else if messageGeneral('definirMotDePasse')}
+		<p class="message erreur" role="alert">{messageGeneral('definirMotDePasse')}</p>
 	{/if}
 
 	<form method="POST" action="?/definirMotDePasse" class="formulaire carte">
-{/if}
-	<label>
-		Mot de passe actuel
-		<input
-			type="password"
-			name="motDePasseActuel"
-			autocomplete="current-password"
-			required
-			aria-invalid={erreur('motDePasse', 'motDePasseActuel') ? 'true' : undefined}
-		/>
-		{#if erreur('motDePasse', 'motDePasseActuel')}
-			<span class="erreur-champ">{erreur('motDePasse', 'motDePasseActuel')}</span>
-		{/if}
-	</label>
-	<label>
-		Nouveau mot de passe
-		<span class="aide">Au moins 12 caractères. Vos autres sessions seront fermées.</span>
-		<input
-			type="password"
-			name="nouveauMotDePasse"
-			autocomplete="new-password"
-			minlength="12"
-			required
-			aria-invalid={erreur('motDePasse', 'nouveauMotDePasse') ? 'true' : undefined}
-		/>
-		{#if erreur('motDePasse', 'nouveauMotDePasse')}
-			<span class="erreur-champ">{erreur('motDePasse', 'nouveauMotDePasse')}</span>
-		{/if}
-	</label>
-		<button type="submit">
-			{#if data.aMotDePasse}
-				Changer le mot de passe
-			{:else}
-				Définir un mot de passe
+		<label>
+			Nouveau mot de passe
+			<span class="aide">Au moins 12 caractères.</span>
+			<input
+				type="password"
+				name="nouveauMotDePasse"
+				autocomplete="new-password"
+				minlength="12"
+				required
+				aria-invalid={erreur('definirMotDePasse', 'nouveauMotDePasse') ? 'true' : undefined}
+			/>
+			{#if erreur('definirMotDePasse', 'nouveauMotDePasse')}
+				<span class="erreur-champ">{erreur('definirMotDePasse', 'nouveauMotDePasse')}</span>
 			{/if}
-		</button>
+		</label>
+		<button type="submit">Définir un mot de passe</button>
 	</form>
+{/if}
 
-	{#if data.aMotDePasse}
-		<h2>Adresse de connexion</h2>
-	{:else}
-		<p class="attenue">
-			Une fois un mot de passe défini, vous pourrez vous connecter avec un mot de passe ou avec un lien magique.
-		</p>
-		<h2>Adresse de connexion</h2>
-	{/if}
+<h2>Adresse de connexion</h2>
 
+{#if !data.aMotDePasse}
+	<p class="attenue">
+		Adresse actuelle : <strong>{data.email}</strong>. Pour la changer, définissez d'abord un mot de passe :
+		c'est lui qui prouve que la demande vient de vous.
+	</p>
+{:else}
 {#if succes('adresse')}
 	<p class="message succes" role="status">{succes('adresse')}</p>
 {:else if messageGeneral('adresse')}
@@ -128,3 +144,4 @@
 	</label>
 	<button type="submit">Changer d'adresse</button>
 </form>
+{/if}

@@ -104,7 +104,19 @@ const MIGRATIONS = [
 	INSERT INTO jetons_email_v6 SELECT id, compte_id, email, objet, expire_le FROM jetons_email;
 	DROP TABLE jetons_email;
 	ALTER TABLE jetons_email_v6 RENAME TO jetons_email;
-	CREATE INDEX jetons_email_compte ON jetons_email (compte_id);`
+	CREATE INDEX jetons_email_compte ON jetons_email (compte_id);`,
+	// Une demande de magic-link est un événement, pas une entité : deux demandes dans la même
+	// milliseconde (un double clic) faisaient échouer la seconde sur la clé primaire.
+	`CREATE TABLE magic_link_demandes_v8 (
+		email TEXT NOT NULL COLLATE NOCASE,
+		ip TEXT NOT NULL,
+		demande_le INTEGER NOT NULL
+	);
+	INSERT INTO magic_link_demandes_v8 SELECT email, ip, demande_le FROM magic_link_demandes;
+	DROP TABLE magic_link_demandes;
+	ALTER TABLE magic_link_demandes_v8 RENAME TO magic_link_demandes;
+	CREATE INDEX magic_link_demandes_email ON magic_link_demandes (email, demande_le);
+	CREATE INDEX magic_link_demandes_ip ON magic_link_demandes (ip, demande_le);`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */

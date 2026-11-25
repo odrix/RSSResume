@@ -67,6 +67,12 @@ export const actions: Actions = {
 		const utilisateur = exigerConnexion(locals.utilisateur, url);
 		const donnees = await request.formData();
 		const email = String(donnees.get('email') ?? '');
+		// Le changement d'adresse se prouve par le mot de passe : un compte venu du magic-link
+		// doit d'abord en définir un, sinon il buterait sur un refus incompréhensible.
+		if (!contexte().comptes.aUnMotDePasse(utilisateur.id)) {
+			const sans = new ErreurIdentifiants('general', "Définissez d'abord un mot de passe pour changer d'adresse.");
+			return refus('adresse', sans, { email }, 409);
+		}
 		const bloque = limiteAtteinte(utilisateur.email);
 		if (bloque) return refus('adresse', bloque, { email }, 429);
 		// Chaque demande écrit à une boîte choisie par l'appelant : plafonnée comme les renvois.
@@ -106,17 +112,16 @@ export const actions: Actions = {
 			return fail(422, { formulaire: 'definirMotDePasse', champ: 'nouveauMotDePasse', message: erreur });
 		}
 
-		// Vérifier que le compte n'a pas déjà de mot de passe
+		// Sans mot de passe actuel à vérifier, cette action remplacerait celui d'un compte qui en a
+		// un : elle ne vaut que pour le premier.
 		if (contexte().comptes.aUnMotDePasse(utilisateur.id)) {
-			return fail(400, { formulaire: 'definirMotDePasse', champ: 'general', message: 'Ce compte a déjà un mot de passe.' });
+			return fail(409, { formulaire: 'definirMotDePasse', champ: 'general', message: 'Ce compte a déjà un mot de passe.' });
 		}
 
-		try {
-			await contexte().comptes.definirMotDePasse(utilisateur.id, nouveauMotDePasse);
-			// Fermer toutes les sessions ouvertes (sauf la actuelle qui est fermées par le changement de mot de passe)
-			return { formulaire: 'definirMotDePasse', succes: 'Mot de passe défini. Vous pouvez maintenant vous connecter avec un mot de passe.' };
-		} catch (erreur) {
-			throw erreur;
-		}
+		await contexte().comptes.definirMotDePasse(utilisateur.id, nouveauMotDePasse);
+		return {
+			formulaire: 'definirMotDePasse',
+			succes: 'Mot de passe défini. Vous pouvez maintenant vous connecter avec un mot de passe.'
+		};
 	}
 };
