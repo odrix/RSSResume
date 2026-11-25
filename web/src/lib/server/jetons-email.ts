@@ -90,6 +90,13 @@ export class JetonsEmail {
 			.run(compteId, email, objet);
 	}
 
+	/** Tous les liens d'un objet pour le compte, quelle que soit l'adresse : un lien envoyé
+	 * à une adresse mal tapée ne doit pas survivre à la demande qui la corrige. */
+	revoquerTous(compteId: number, ...objets: ObjetJeton[]): void {
+		const requete = this.base.prepare('DELETE FROM jetons_email WHERE compte_id = ? AND objet = ?');
+		for (const objet of objets) requete.run(compteId, objet);
+	}
+
 	purgerExpires(): void {
 		this.base.prepare('DELETE FROM jetons_email WHERE expire_le <= ?').run(this.maintenant());
 	}

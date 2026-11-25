@@ -79,6 +79,21 @@ describe('/profil/compte', () => {
 		expect(env.comptes.parId(moi.id)?.email).toBe('nouvelle@example.com');
 	});
 
+	it('remet à zéro les échecs de l’adresse dès que le mot de passe actuel est vérifié', async () => {
+		const limite = (etat.env as { limiteParEmail: LimiteurTentatives }).limiteParEmail;
+		const faux = { motDePasseActuel: 'pas le bon du tout', nouveauMotDePasse: 'un tout nouveau mot de passe' };
+		for (let i = 0; i < 4; i++) await actions.motDePasse(evenement(moi, faux));
+
+		// Le bon mot de passe, même avec un nouveau refusé, prouve qu'on parle au titulaire.
+		await actions.motDePasse(evenement(moi, { motDePasseActuel: ACTUEL, nouveauMotDePasse: 'court' }));
+		for (let i = 0; i < 4; i++) limite.noter('moi@example.com');
+		expect(limite.autorise('moi@example.com')).toBe(true);
+
+		await actions.adresse(evenement(moi, { email: 'nouvelle@example.com', motDePasse: ACTUEL }));
+		limite.noter('moi@example.com');
+		expect(limite.autorise('moi@example.com')).toBe(true);
+	});
+
 	it("refuse le changement d'adresse sans le bon mot de passe", async () => {
 		const refus = (await actions.adresse(
 			evenement(moi, { email: 'nouvelle@example.com', motDePasse: 'pas le bon du tout' })

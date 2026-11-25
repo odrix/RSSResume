@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LimiteurTentatives } from '#lib/server/limiteur.js';
-import { monter } from '#lib/server/outils-test.js';
+import { envoisDifferes, monter } from '#lib/server/outils-test.js';
 
 /* Le contexte réel lit l'environnement et ouvre la base : la route reçoit à la place celui
  * des tests. */
@@ -40,14 +40,26 @@ describe('/mot-de-passe-oublie', () => {
 
 		expect(inconnue.envoye).toBe(connue.envoye);
 		expect(Object.keys(inconnue)).toEqual(Object.keys(connue));
+		await envoisDifferes();
 		// Seule l'adresse connue a reçu un lien.
 		expect(env.courrier.envoyes.map((m) => m.destinataire)).toEqual(['moi@example.com']);
 	});
 
-	it('limite les demandes par adresse', async () => {
-		for (let i = 0; i < 3; i++) await actions.default(evenement('moi@example.com'));
+	it("au-delà du seuil par adresse, répond pareil sans plus rien envoyer", async () => {
+		const reponses = [];
+		// Des IP différentes : c'est la limite par adresse qui est en jeu.
+		for (let i = 0; i < 5; i++) reponses.push(await actions.default(evenement('moi@example.com', `203.0.113.${i}`)));
+		await envoisDifferes();
+
+		expect(new Set(reponses.map((r) => JSON.stringify(r))).size).toBe(1);
+		expect(env.courrier.envoyes).toHaveLength(3);
+	});
+
+	it('refuse en 429 au-delà du seuil par IP', async () => {
+		for (let i = 0; i < 10; i++) await actions.default(evenement(`personne${i}@example.com`));
 		const refus = (await actions.default(evenement('moi@example.com'))) as { status: number };
 		expect(refus.status).toBe(429);
-		expect(env.courrier.envoyes).toHaveLength(3);
+		await envoisDifferes();
+		expect(env.courrier.envoyes).toEqual([]);
 	});
 });

@@ -51,6 +51,9 @@ export class Identifiants {
 		if (refus) throw new ErreurIdentifiants('nouveauMotDePasse', refus);
 		await this.comptes.changerMotDePasse(utilisateur.id, nouveau);
 		this.sessions.fermerToutes(utilisateur.id, jetonSession);
+		// Un lien demandé avant — par la personne ou par qui tenait le compte — ne doit pas
+		// rouvrir ce que le nouveau mot de passe vient de fermer.
+		this.jetons.revoquerTous(utilisateur.id, 'reinitialisation', 'adresse');
 	}
 
 	/** Envoie le lien à la nouvelle adresse ; le compte garde l'ancienne jusqu'au clic. */
@@ -77,9 +80,11 @@ export class Identifiants {
 				"Impossible de changer d'adresse pour l'instant : l'email de confirmation ne peut pas partir."
 			);
 		}
+		// Seule la dernière demande vaut : une adresse mal tapée puis corrigée ne garde pas son lien.
+		this.jetons.revoquerTous(utilisateur.id, 'adresse');
 		const jeton = this.jetons.emettre(utilisateur.id, email, 'adresse');
 		if (!(await this.courrier.confirmerAdresse(utilisateur.username, email, lienConfirmation(origine, jeton)))) {
-			this.jetons.revoquer(utilisateur.id, email, 'adresse');
+			this.jetons.revoquerTous(utilisateur.id, 'adresse');
 			throw new ErreurIdentifiants(
 				'general',
 				"L'email de confirmation n'a pas pu être envoyé. Réessayez dans quelques minutes."
@@ -94,7 +99,7 @@ export class Identifiants {
 		const compte = lu?.objet === 'adresse' ? this.comptes.parId(lu.compteId) : null;
 		if (!lu || !compte?.confirme) throw new ErreurConfirmation(LIEN_INVALIDE);
 		if (compte.email === lu.email) {
-			this.jetons.consommer(jeton);
+			this.jetons.revoquerTous(compte.id, 'adresse');
 			return { ancienne: lu.email, nouvelle: lu.email };
 		}
 		if (!this.jetons.consommer(jeton)) throw new ErreurConfirmation(LIEN_INVALIDE);
@@ -105,6 +110,8 @@ export class Identifiants {
 			if (erreur instanceof CompteExistant) throw new ErreurConfirmation(erreur.message);
 			throw erreur;
 		}
+		// L'adresse a changé : aucun autre lien de changement ne doit pouvoir la déplacer encore.
+		this.jetons.revoquerTous(compte.id, 'adresse');
 		const envoye = await this.courrier.signalerChangementAdresse(compte.username, compte.email, lu.email);
 		if (!envoye) console.error(`Avis de changement d'adresse de ${compte.username} non envoyé.`);
 		return { ancienne: compte.email, nouvelle: lu.email };

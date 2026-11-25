@@ -1,6 +1,7 @@
 import { render } from 'svelte/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { jetonDuLien, monter, ORIGINE } from '#lib/server/outils-test.js';
+import { LimiteurTentatives } from '#lib/server/limiteur.js';
+import { envoisDifferes, jetonDuLien, monter, ORIGINE } from '#lib/server/outils-test.js';
 import { LIEN_REINITIALISATION_INVALIDE } from '#lib/server/reinitialisation.js';
 import Page from './+page.svelte';
 
@@ -37,13 +38,16 @@ function rendre(data: Record<string, unknown>, form: unknown = null): string {
 
 describe('/reinitialiser/[jeton]', () => {
 	let env: ReturnType<typeof monter>;
+	let limiteParEmail: LimiteurTentatives;
 	let jeton: string;
 	beforeEach(async () => {
 		env = monter();
 		await env.creerConfirme('moi@example.com', 'moi');
 		env.reinitialisation.demander('moi@example.com', ORIGINE);
+		await envoisDifferes();
 		jeton = jetonDuLien(env.courrier.envoyes[0].texte);
-		etat.env = env;
+		limiteParEmail = new LimiteurTentatives(5, 15 * 60 * 1000);
+		etat.env = { ...env, limiteParEmail };
 	});
 
 	it("l'affichage ne consomme pas le lien ; l'envoi change le mot de passe et mène à la connexion", async () => {
@@ -55,6 +59,14 @@ describe('/reinitialiser/[jeton]', () => {
 		await expect(actions.default(ev)).rejects.toMatchObject({ status: 303, location: '/connexion?reinitialise=1' });
 		expect(effaces).toEqual(['session']);
 		expect(await env.comptes.authentifier('moi@example.com', NOUVEAU)).not.toBeNull();
+	});
+
+	it('lève le blocage de connexion de l’adresse une fois le mot de passe réinitialisé', async () => {
+		for (let i = 0; i < 5; i++) limiteParEmail.noter('moi@example.com');
+		expect(limiteParEmail.autorise('moi@example.com')).toBe(false);
+
+		await expect(actions.default(evenement(jeton).ev)).rejects.toMatchObject({ status: 303 });
+		expect(limiteParEmail.autorise('moi@example.com')).toBe(true);
 	});
 
 	it('refuse un lien déjà utilisé, sans formulaire', async () => {

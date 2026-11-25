@@ -36,12 +36,18 @@ export class Reinitialisation {
 	/** Envoie un lien si l'adresse a un compte confirmé ; ne rend rien dans tous les cas.
 	 *
 	 * Un compte en attente n'en reçoit pas : il n'a pas encore prouvé son adresse, et c'est
-	 * « Renvoyer le lien » qui le débloque. L'envoi n'est pas attendu : sinon une adresse
-	 * connue répondrait plus lentement qu'une inconnue. */
+	 * « Renvoyer le lien » qui le débloque. Tout le travail est différé — l'écriture du jeton
+	 * comprise, synchrone — : sinon une adresse connue répondrait plus lentement qu'une
+	 * inconnue. Une erreur différée est journalisée, jamais laissée en rejet non géré, qui
+	 * arrêterait Node. */
 	demander(email: string, origine: string): void {
 		const utilisateur = this.comptes.parEmail(normaliserEmail(email));
 		if (!utilisateur?.confirme) return;
-		void this.#envoyer(utilisateur, origine);
+		setImmediate(() => {
+			this.#envoyer(utilisateur, origine).catch((erreur) => {
+				console.error(`Lien de réinitialisation de ${utilisateur.username} non envoyé :`, erreur);
+			});
+		});
 	}
 
 	/** Le compte que le lien permet de réinitialiser, sans le consommer : la page s'affiche
@@ -56,7 +62,8 @@ export class Reinitialisation {
 	}
 
 	/** Fixe le nouveau mot de passe et ferme toutes les sessions du compte : celui qui
-	 * réinitialise reprend la main, une session ouverte par un autre ne survit pas. */
+	 * réinitialise reprend la main, une session ouverte par un autre ne survit pas — ni un
+	 * lien de réinitialisation ou de changement d'adresse encore en circulation. */
 	async reinitialiser(jeton: string, motDePasse: string): Promise<Utilisateur> {
 		const compte = this.lire(jeton);
 		if (!compte) throw new ErreurConfirmation(LIEN_REINITIALISATION_INVALIDE);
@@ -65,6 +72,7 @@ export class Reinitialisation {
 		if (!this.jetons.consommer(jeton)) throw new ErreurConfirmation(LIEN_REINITIALISATION_INVALIDE);
 		await this.comptes.changerMotDePasse(compte.id, motDePasse);
 		this.sessions.fermerToutes(compte.id);
+		this.jetons.revoquerTous(compte.id, 'reinitialisation', 'adresse');
 		return compte;
 	}
 

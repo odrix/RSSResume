@@ -47,7 +47,7 @@
 
 <h2>Durée de conservation</h2>
 <ul>
-	<li>Un compte jamais confirmé est supprimé au bout de sept jours.</li>
+	<li>Un compte jamais confirmé, au-delà de sept jours, est supprimé à la première occasion.</li>
 	<li>Une session expire après trente jours sans visite.</li>
 	<li>
 		Les liens envoyés par email expirent : une heure pour un nouveau mot de passe, vingt-quatre heures

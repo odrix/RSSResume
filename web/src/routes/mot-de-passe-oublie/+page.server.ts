@@ -13,12 +13,17 @@ export const actions: Actions = {
 		const email = normaliserEmail(String((await request.formData()).get('email') ?? ''));
 		const ctx = contexte();
 		const ip = getClientAddress();
-		if (!ctx.limiteOublisParEmail.autorise(email) || !ctx.limiteOublisParIp.autorise(ip)) {
+		if (!ctx.limiteOublisParIp.autorise(ip)) {
 			return fail(429, { email, message: 'Trop de demandes. Réessayez dans une heure.' });
 		}
-		ctx.limiteOublisParEmail.noter(email);
 		ctx.limiteOublisParIp.noter(ip);
-		if (email) ctx.reinitialisation.demander(email, url.origin);
+		// Au-delà du seuil par adresse, la réponse reste la même mais rien ne part : un refus
+		// visible laisserait n'importe qui empêcher la vraie personne d'obtenir son lien, et
+		// dirait au passage que l'adresse a été visée. Le plafond protège sa boîte, pas le site.
+		if (email && ctx.limiteOublisParEmail.autorise(email)) {
+			ctx.limiteOublisParEmail.noter(email);
+			ctx.reinitialisation.demander(email, url.origin);
+		}
 		return { email, envoye: REPONSE_OUBLI };
 	}
 };

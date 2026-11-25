@@ -23,6 +23,8 @@ describe('/confidentialite', () => {
 		expect(html).toContain('La suppression de votre compte');
 		expect(html).toContain('se demande au contact');
 		expect(html).toContain('href="mailto:contact@example.test"');
+		// La purge ne tourne qu'au démarrage et à l'inscription : pas de promesse au jour près.
+		expect(html).toContain('au-delà de sept jours, est supprimé à la première occasion');
 		for (const sujet of ['Les données conservées', 'Finalité', 'Durée de conservation', 'Sous-traitants', 'Resend']) {
 			expect(html).toContain(sujet);
 		}

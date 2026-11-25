@@ -1,15 +1,24 @@
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { migrer } from './base.js';
 import { DUREE_REINITIALISATION_MS, ErreurConfirmation, JetonsEmail, lienReinitialisation } from './jetons-email.js';
-import { jetonDuLien, monter, ORIGINE } from './outils-test.js';
+import { envoisDifferes, jetonDuLien, monter, ORIGINE } from './outils-test.js';
 import { ErreurMotDePasse, LIEN_REINITIALISATION_INVALIDE } from './reinitialisation.js';
 
 const NOUVEAU = 'un tout nouveau mot de passe';
 
+type Env = ReturnType<typeof monter>;
+
+/** Demande un lien et rend son jeton, une fois l'envoi différé parti. */
+async function lienRecu({ reinitialisation, courrier }: Env, email = 'moi@example.com'): Promise<string> {
+	reinitialisation.demander(email, ORIGINE);
+	await envoisDifferes();
+	return jetonDuLien(courrier.envoyes.at(-1)!.texte);
+}
+
 describe('Reinitialisation', () => {
 	it("répond pareil pour une adresse connue, inconnue ou en attente, et n'écrit qu'au compte confirmé", async () => {
-		const { reinitialisation, comptes, courrier, creerConfirme } = monter();
+		const { reinitialisation, comptes, courrier, base, creerConfirme } = monter();
 		await creerConfirme('moi@example.com', 'moi');
 		await comptes.creer('attente@example.com', 'attente', 'une phrase de passe');
 
@@ -20,17 +29,22 @@ describe('Reinitialisation', () => {
 		];
 
 		expect(reponses).toEqual([undefined, undefined, undefined]);
+		// Rien n'est fait avant la réponse, pas même l'écriture du jeton : le temps de
+		// réponse d'une adresse connue est celui d'une inconnue.
+		expect(base.prepare('SELECT COUNT(*) AS n FROM jetons_email').get()).toEqual({ n: 0 });
+		expect(courrier.envoyes).toEqual([]);
+		await envoisDifferes();
 		expect(courrier.envoyes.map((m) => m.destinataire)).toEqual(['moi@example.com']);
 		expect(courrier.envoyes[0].texte).toContain(`${ORIGINE}/reinitialiser/`);
 		expect(courrier.envoyes[0].texte).toContain("dans l'heure");
 	});
 
 	it('change le mot de passe et ferme toutes les sessions du compte', async () => {
-		const { reinitialisation, comptes, sessions, courrier, creerConfirme } = monter();
+		const env = monter();
+		const { reinitialisation, comptes, sessions, creerConfirme } = env;
 		const moi = await creerConfirme('moi@example.com', 'moi');
 		const ouverte = sessions.ouvrir(moi.id);
-		reinitialisation.demander('moi@example.com', ORIGINE);
-		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const jeton = await lienRecu(env);
 
 		expect(reinitialisation.lire(jeton)?.id).toBe(moi.id);
 		await reinitialisation.reinitialiser(jeton, NOUVEAU);
@@ -41,10 +55,10 @@ describe('Reinitialisation', () => {
 	});
 
 	it('refuse un lien déjà utilisé', async () => {
-		const { reinitialisation, comptes, courrier, creerConfirme } = monter();
+		const env = monter();
+		const { reinitialisation, comptes, creerConfirme } = env;
 		await creerConfirme('moi@example.com', 'moi');
-		reinitialisation.demander('moi@example.com', ORIGINE);
-		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const jeton = await lienRecu(env);
 		await reinitialisation.reinitialiser(jeton, NOUVEAU);
 
 		expect(reinitialisation.lire(jeton)).toBeNull();
@@ -56,10 +70,10 @@ describe('Reinitialisation', () => {
 
 	it('refuse un lien expiré, au bout d’une heure', async () => {
 		const h = { t: 1_800_000_000_000 };
-		const { reinitialisation, comptes, courrier, creerConfirme } = monter(() => h.t);
+		const env = monter(() => h.t);
+		const { reinitialisation, comptes, creerConfirme } = env;
 		await creerConfirme('moi@example.com', 'moi');
-		reinitialisation.demander('moi@example.com', ORIGINE);
-		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const jeton = await lienRecu(env);
 
 		h.t += DUREE_REINITIALISATION_MS - 1;
 		expect(reinitialisation.lire(jeton)).not.toBeNull();
@@ -70,25 +84,61 @@ describe('Reinitialisation', () => {
 	});
 
 	it('garde le lien utilisable quand le nouveau mot de passe est refusé', async () => {
-		const { reinitialisation, courrier, creerConfirme } = monter();
+		const env = monter();
+		const { reinitialisation, creerConfirme } = env;
 		await creerConfirme('moi@example.com', 'moi');
-		reinitialisation.demander('moi@example.com', ORIGINE);
-		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const jeton = await lienRecu(env);
 
 		await expect(reinitialisation.reinitialiser(jeton, 'court')).rejects.toBeInstanceOf(ErreurMotDePasse);
 		expect(reinitialisation.lire(jeton)).not.toBeNull();
 	});
 
 	it("n'accepte pas un lien d'un autre objet, ni celui d'une adresse changée depuis", async () => {
-		const { reinitialisation, jetons, comptes, courrier, creerConfirme } = monter();
+		const env = monter();
+		const { reinitialisation, jetons, comptes, creerConfirme } = env;
 		const moi = await creerConfirme('moi@example.com', 'moi');
 		const confirmation = jetons.emettre(moi.id, 'moi@example.com', 'inscription');
 		expect(reinitialisation.lire(confirmation)).toBeNull();
 
-		reinitialisation.demander('moi@example.com', ORIGINE);
-		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const jeton = await lienRecu(env);
 		comptes.changerEmail(moi.id, 'nouvelle@example.com');
 		expect(reinitialisation.lire(jeton)).toBeNull();
+	});
+
+	it("révoque, au nouveau mot de passe, les autres liens de réinitialisation et d'adresse", async () => {
+		const env = monter();
+		const { reinitialisation, jetons, creerConfirme } = env;
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		const premier = await lienRecu(env);
+		const adresse = jetons.emettre(moi.id, 'inconnu@example.com', 'adresse');
+		// Un second lien remplace le premier ; c'est lui qui sert.
+		const second = await lienRecu(env);
+		expect(reinitialisation.lire(premier)).toBeNull();
+
+		await reinitialisation.reinitialiser(second, NOUVEAU);
+		expect(jetons.lire(adresse)).toBeNull();
+		expect(env.base.prepare('SELECT COUNT(*) AS n FROM jetons_email').get()).toEqual({ n: 0 });
+	});
+
+	it("journalise un échec de l'envoi différé au lieu de le laisser en rejet non géré", async () => {
+		const env = monter();
+		await env.creerConfirme('moi@example.com', 'moi');
+		const journal = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(env.jetons, 'emettre').mockImplementation(() => {
+			throw new Error('database is locked');
+		});
+		try {
+			env.reinitialisation.demander('moi@example.com', ORIGINE);
+			await envoisDifferes();
+			await envoisDifferes();
+			expect(journal).toHaveBeenCalledWith(
+				expect.stringContaining('Lien de réinitialisation de moi non envoyé'),
+				expect.any(Error)
+			);
+			expect(env.courrier.envoyes).toEqual([]);
+		} finally {
+			vi.restoreAllMocks();
+		}
 	});
 
 	it('construit le lien vers la page de réinitialisation', () => {

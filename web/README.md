@@ -152,12 +152,15 @@ Ce qui n'est **pas** là, volontairement :
 - **Mot de passe oublié** : la page répond la même chose quelle que soit l'adresse, et
   l'email part sans être attendu (le temps de réponse ne trahit rien) ; seul un compte
   confirmé reçoit un lien. Lien d'une heure, à usage unique, caduc si l'adresse du compte a
-  changé ; l'ouvrir ne consomme rien. Le nouveau mot de passe ferme toutes les sessions.
-  3 demandes par adresse et 10 par IP et par heure.
+  changé ; l'ouvrir ne consomme rien. Le nouveau mot de passe ferme toutes les sessions,
+  révoque les liens de réinitialisation et d'adresse en cours et lève le blocage de
+  connexion de l'adresse. 10 demandes par IP et par heure (429) ; au-delà de 3 par adresse,
+  la réponse reste la même mais rien ne part.
 - **Mon compte** (`/profil/compte`) : changer de mot de passe ou d'adresse exige le mot de
   passe actuel (échecs comptés avec ceux de la connexion). Le nouveau mot de passe ferme les
   autres sessions ; la nouvelle adresse ne s'applique qu'au clic sur le lien qu'elle reçoit,
-  et l'ancienne en est prévenue. Les destinataires du digest, eux, restent ceux du profil.
+  et l'ancienne en est prévenue. Seul le dernier lien d'adresse demandé vaut, et aucun ne
+  survit à une confirmation. Les destinataires du digest, eux, restent ceux du profil.
 - **Confidentialité** (`/confidentialite`, sans connexion, lien en pied de page) : l'adresse
   publiée est `CONTACT_EMAIL`, à défaut `ADMIN_EMAIL`.
 - **Mon profil** : le texte de veille avec une aide en trois rubriques (mon métier, ce que je

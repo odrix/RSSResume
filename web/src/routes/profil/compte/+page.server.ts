@@ -30,8 +30,13 @@ function limiteAtteinte(email: string) {
 	return new ErreurIdentifiants('motDePasseActuel', `Trop de tentatives. Réessayez dans ${minutes} minute(s).`);
 }
 
-function noterEchec(email: string, erreur: ErreurIdentifiants): void {
-	if (erreur.message === MOT_DE_PASSE_ACTUEL_INCORRECT) contexte().limiteParEmail.noter(email);
+/** Compte un mauvais mot de passe actuel ; un bon remet le compteur à zéro, comme une
+ * connexion réussie — sinon la personne resterait bloquée sur /connexion. `erreur` est nulle
+ * quand l'action a réussi, donc que le mot de passe a été vérifié. */
+function noterVerification(email: string, erreur: ErreurIdentifiants | null): void {
+	const limite = contexte().limiteParEmail;
+	if (erreur?.message === MOT_DE_PASSE_ACTUEL_INCORRECT) limite.noter(email);
+	else if (erreur?.champ !== 'motDePasseActuel') limite.oublier(email);
 }
 
 export const actions: Actions = {
@@ -49,9 +54,10 @@ export const actions: Actions = {
 			);
 		} catch (erreur) {
 			if (!(erreur instanceof ErreurIdentifiants)) throw erreur;
-			noterEchec(utilisateur.email, erreur);
+			noterVerification(utilisateur.email, erreur);
 			return refus('motDePasse', erreur);
 		}
+		noterVerification(utilisateur.email, null);
 		return { formulaire: 'motDePasse', succes: 'Mot de passe changé. Vos autres sessions sont fermées.' };
 	},
 
@@ -76,13 +82,14 @@ export const actions: Actions = {
 				url.origin
 			);
 			ctx.limiteRenvoisParEmail.noter(cle);
+			noterVerification(utilisateur.email, null);
 			return {
 				formulaire: 'adresse',
 				succes: `Un lien vient d'être envoyé à ${nouvelle}. Votre adresse ne changera qu'une fois ce lien ouvert, dans les 24 heures.`
 			};
 		} catch (erreur) {
 			if (!(erreur instanceof ErreurIdentifiants)) throw erreur;
-			noterEchec(utilisateur.email, erreur);
+			noterVerification(utilisateur.email, erreur);
 			return refus('adresse', erreur, { email });
 		}
 	}

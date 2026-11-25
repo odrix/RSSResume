@@ -37,6 +37,18 @@ describe('Identifiants : mot de passe', () => {
 		expect(sessions.valider(ici.jeton)).not.toBeNull();
 		expect(sessions.valider(ailleurs.jeton)).toBeNull();
 	});
+
+	it("révoque les liens de réinitialisation et d'adresse en circulation", async () => {
+		const { identifiants, jetons, creerConfirme } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		const reinitialisation = jetons.emettre(moi.id, 'moi@example.com', 'reinitialisation');
+		const adresse = jetons.emettre(moi.id, 'inconnu@example.com', 'adresse');
+
+		await identifiants.changerMotDePasse(moi, ACTUEL, NOUVEAU, undefined);
+
+		expect(jetons.lire(reinitialisation)).toBeNull();
+		expect(jetons.lire(adresse)).toBeNull();
+	});
 });
 
 describe('Identifiants : adresse', () => {
@@ -59,6 +71,31 @@ describe('Identifiants : adresse', () => {
 		});
 		// Le lien ne sert qu'une fois.
 		await expect(identifiants.confirmerAdresse(jetonDuLien(lien.texte))).rejects.toBeInstanceOf(ErreurConfirmation);
+	});
+
+	it('une adresse mal tapée puis corrigée ne garde pas son lien', async () => {
+		const { identifiants, comptes, courrier, creerConfirme } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+
+		await identifiants.demanderChangementAdresse(moi, ACTUEL, 'faute@example.com', ORIGINE);
+		const fautif = jetonDuLien(courrier.envoyes.at(-1)!.texte);
+		await identifiants.demanderChangementAdresse(moi, ACTUEL, 'bonne@example.com', ORIGINE);
+		const bon = jetonDuLien(courrier.envoyes.at(-1)!.texte);
+		await expect(identifiants.confirmerAdresse(fautif)).rejects.toBeInstanceOf(ErreurConfirmation);
+
+		await identifiants.confirmerAdresse(bon);
+		await expect(identifiants.confirmerAdresse(fautif)).rejects.toBeInstanceOf(ErreurConfirmation);
+		expect(comptes.parId(moi.id)?.email).toBe('bonne@example.com');
+	});
+
+	it('révoque à la confirmation les autres liens de changement du compte', async () => {
+		const { identifiants, jetons, courrier, creerConfirme } = monter();
+		const moi = await creerConfirme('moi@example.com', 'moi');
+		await identifiants.demanderChangementAdresse(moi, ACTUEL, 'nouvelle@example.com', ORIGINE);
+		// Un lien vers une autre adresse, émis par une version antérieure du site.
+		const reste = jetons.emettre(moi.id, 'inconnu@example.com', 'adresse');
+		await identifiants.confirmerAdresse(jetonDuLien(courrier.envoyes.at(-1)!.texte));
+		expect(jetons.lire(reste)).toBeNull();
 	});
 
 	it('refuse sans le bon mot de passe, et sans rien envoyer', async () => {

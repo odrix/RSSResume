@@ -17,8 +17,11 @@ export const load: PageServerLoad = ({ params }) => {
 export const actions: Actions = {
 	default: async ({ params, request, cookies }) => {
 		const motDePasse = String((await request.formData()).get('motDePasse') ?? '');
+		const ctx = contexte();
 		try {
-			await contexte().reinitialisation.reinitialiser(params.jeton, motDePasse);
+			const compte = await ctx.reinitialisation.reinitialiser(params.jeton, motDePasse);
+			// Les échecs qui ont mené ici bloqueraient sinon la connexion avec le bon mot de passe.
+			ctx.limiteParEmail.oublier(compte.email);
 		} catch (erreur) {
 			if (erreur instanceof ErreurMotDePasse) return fail(422, { message: erreur.message, champ: 'motDePasse' });
 			if (erreur instanceof ErreurConfirmation) return fail(400, { message: erreur.message, champ: null });

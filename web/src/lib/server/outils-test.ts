@@ -40,6 +40,11 @@ export function jetonDuLien(texte: string): string {
 	return trouve[1];
 }
 
+/** Laisse partir ce qui a été différé par `setImmediate` — le lien du mot de passe oublié. */
+export function envoisDifferes(): Promise<void> {
+	return new Promise((resoudre) => setImmediate(resoudre));
+}
+
 export function monter(maintenant: () => number = Date.now) {
 	const base = ouvrirBase(':memory:');
 	const comptes = new Comptes(base, EMAIL_ADMIN, new FauxHacheur(), maintenant);
