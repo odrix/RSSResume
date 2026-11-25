@@ -65,6 +65,13 @@ ENV_RESEND_API_KEY = "RESEND_API_KEY"
 #: destinataire est configuré, et le digest ne partirait plus sans que rien ne le dise.
 ENV_SMTP_TO = "SMTP_TO"
 
+#: L'adresse de l'exploitant, à qui la tournée signale ses échecs. C'est un réglage de
+#: l'installation, comme `SMTP_FROM` — pas une donnée de la personne servie, qui ne
+#: doit rien y voir : la règle de `profil.py` protège la personne, pas qui l'exploite.
+#: Alignée sur `ADMIN_EMAIL` du site, dont elle partage l'esprit sans partager
+#: l'environnement — deux processus, deux `.env`.
+ENV_ADMIN_EMAIL = "RSSRESUME_ADMIN_EMAIL"
+
 #: Catégories routées vers le traitement déterministe des avis CERT-FR (`rssresume/certfr/`)
 #: au lieu du scoring, du résumé et de la synthèse vocale. Le routage est explicite et non
 #: déduit du nom de la catégorie : rien ne doit changer de pipeline parce que quelqu'un a
@@ -161,6 +168,24 @@ def load_site_url(valeur: str | None = None) -> str | None:
         raise ValueError(
             f"{ENV_SITE_URL} : « {adresse} » n'est pas une adresse complète. "
             "Écrire le schéma, par exemple https://veille.example.com."
+        )
+    return adresse
+
+
+def load_admin_email(valeur: str | None = None) -> str | None:
+    """L'adresse de l'exploitant, `None` si elle n'est pas posée.
+
+    Posée sans « @ », elle est refusée au lancement — même arbitrage que `load_site_url` :
+    l'alerte partirait avec un destinataire que rien ne peut joindre, et l'échec se
+    découvrirait le matin où l'exploitant est précisément celui qui a besoin d'être prévenu.
+    """
+    adresse = (valeur or "").strip()
+    if not adresse:
+        return None
+    if "@" not in adresse:
+        raise ValueError(
+            f"{ENV_ADMIN_EMAIL} : « {adresse} » n'est pas une adresse. Écrire une adresse "
+            "complète, par exemple exploitant@example.com."
         )
     return adresse
 
@@ -318,6 +343,10 @@ class AppConfig:
     #: L'identifiant de la personne servie, posé par `pour` avec `username` : le lien de
     #: désabonnement le nomme parce qu'il ne change jamais, quand le nom pourrait.
     profil_id: str = ""
+    #: L'adresse de l'exploitant, renseignée par `from_env` seul — `pour` n'y touche pas :
+    #: qui avertir d'un échec est un réglage de l'installation, pas une donnée de la
+    #: personne servie. `None`, la tournée reste silencieuse : les logs seulement.
+    admin_email: str | None = None
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -389,6 +418,7 @@ class AppConfig:
             axes=personne.axes,
             site_url=load_site_url(_env(ENV_SITE_URL)),
             cle_signature=_env(ENV_API_TOKEN),
+            admin_email=load_admin_email(_env(ENV_ADMIN_EMAIL)),
         )
 
     def pour(self, lecteur: Lecteur) -> "AppConfig":

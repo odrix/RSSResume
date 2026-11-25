@@ -8,7 +8,7 @@ from typing import Iterable, Protocol
 
 from rssresume.axes import Axes
 from rssresume.certfr import Revue, Stack
-from rssresume.models import Article, CategoryDigest, Ephemeride, Montage, Note
+from rssresume.models import Article, CategoryDigest, EchecProfil, Ephemeride, Montage, Note
 
 
 class FreshRSSClientProtocol(Protocol):
@@ -98,6 +98,17 @@ class CertfrServiceProtocol(Protocol):
         ...
 
     def lire(self, articles: list[Article]) -> Revue:
+        ...
+
+
+class AlerteEchecsProtocol(Protocol):
+    """Ce que `Tournee` attend de l'alerte : prévenir l'exploitant une fois, à la fin.
+
+    Reçu de `cli.main` construit ou absent (`None`) : sans adresse d'exploitant, ni
+    `--dry-run`, ni `--no-email`, la tournée tourne sans lui, comme avant.
+    """
+
+    def notifier(self, day: dt.date, echecs: list[EchecProfil]) -> None:
         ...
 
 

@@ -17,11 +17,13 @@ import datetime as dt
 from typing import Callable
 
 from rssresume import runlog
+from rssresume.alerte import resumer_cause
 from rssresume.categories import Catalogue
 from rssresume.config import AppConfig
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
-from rssresume.models import Article
+from rssresume.models import Article, EchecProfil
+from rssresume.protocols import AlerteEchecsProtocol
 from rssresume.profil import Annuaire
 from rssresume.tools import console
 
@@ -43,11 +45,15 @@ class Tournee:
         annuaire: Annuaire,
         freshrss_client: FreshRSSClient,
         assembleur: Assembleur,
+        alerte: AlerteEchecsProtocol | None = None,
     ):
         self._config = config
         self._annuaire = annuaire
         self._freshrss_client = freshrss_client
         self._assembleur = assembleur
+        #: Construit par `cli.main` quand l'installation a une adresse d'exploitant et
+        #: que la tournée enverra du courrier ; absent, le comportement ne change pas.
+        self._alerte = alerte
 
     def run(
         self,
@@ -75,20 +81,29 @@ class Tournee:
 
         console.log(f"Tournée du {day.isoformat()} : {', '.join(cibles)}")
         lus: list[Article] = []
-        echecs: list[str] = []
+        echecs: list[EchecProfil] = []
         for nom in cibles:
             try:
                 lus.extend(self._servir(installation, nom, day, send_email, write_tags))
             except Exception as exc:  # noqa: BLE001 — un profil perdu, pas tous les suivants
                 console.error(f"Échec du digest de « {nom} » du {day.isoformat()} : {exc!r}")
-                echecs.append(nom)
+                echecs.append(EchecProfil(nom, resumer_cause(exc)))
 
+        noms_en_echec = [echec.nom for echec in echecs]
         if not mark_read:
             console.log("Marquage comme lu : ignoré (--no-mark-read)")
-        elif self._peut_marquer(cibles, echecs):
+        elif self._peut_marquer(cibles, noms_en_echec):
             lus.extend(self._articles_orphelins(installation, day))
             self._marquer(lus)
-        return echecs
+        if echecs and self._alerte is not None:
+            # Dernier geste de la tournée, enveloppé : une alerte qu'on n'arrive pas à
+            # envoyer ne doit rien changer à ce qui a déjà été servi et marqué, ni au
+            # rendu des échecs. L'inscrit apprendra sa panne autrement.
+            try:
+                self._alerte.notifier(day, echecs)
+            except Exception as exc:  # noqa: BLE001 — l'alerte ne coûte pas la tournée
+                console.error(f"Alerte à l'exploitant impossible ({exc!r}) ; la tournée est finie")
+        return noms_en_echec
 
     def _verifier_catalogue(self, catalogue: Catalogue) -> None:
         """Un catalogue ouvert ne vaut que pour une seule personne.
