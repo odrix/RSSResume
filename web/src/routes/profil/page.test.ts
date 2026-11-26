@@ -57,23 +57,14 @@ function cochees(html: string): string[] {
 		.map((balise) => /value="([^"]*)"/.exec(balise)![1]);
 }
 
+/** Le bloc repliable `<details>` qui contient `texte`. */
+function section(html: string, texte: string): string {
+	return (html.match(/<details[\s\S]*?<\/details>/g) ?? []).find((details) => details.includes(texte)) ?? '';
+}
+
 /** Le bloc `<fieldset>` qui contient `texte`. */
 function bloc(html: string, texte: string): string {
 	return (html.match(/<fieldset[\s\S]*?<\/fieldset>/g) ?? []).find((fieldset) => fieldset.includes(texte)) ?? '';
-}
-
-/** Les blocs `<dialog>…</dialog>` du rendu. */
-function dialogs(html: string): string[] {
-	return html.match(/<dialog[\s\S]*?<\/dialog>/g) ?? [];
-}
-
-/** Le bouton d'une popup, celui qui porte `titre`. */
-function boutonPopup(html: string, titre: string): string {
-	return (
-		(html.match(/<button[^>]*type="button"[^>]*>[\s\S]*?<\/button>/g) ?? []).find((bouton) =>
-			bouton.includes(titre)
-		) ?? ''
-	);
 }
 
 describe('page Mon profil', () => {
@@ -107,7 +98,7 @@ describe('page Mon profil', () => {
 		const message = 'moi : catégorie « Veille interne » inconnue du catalogue.';
 		const saisie: ProfilSaisi = { ...PROFIL, categories: ['Tech'] };
 		const html = rendre({}, { message, saisie, champ: 'categories' });
-		const categories = bloc(html, 'Catégories suivies');
+		const categories = section(html, 'Catégories suivies');
 		expect(categories).toContain(message);
 		expect(champs(categories, 'categories').every((balise) => balise.includes('aria-invalid="true"'))).toBe(true);
 		// Le bandeau en tête renvoie au champ sans répéter le message ; la saisie est conservée.
@@ -122,16 +113,30 @@ describe('page Mon profil', () => {
 	it('montre en tête une erreur dont le champ n’est pas sur la page', () => {
 		const html = rendre({}, { message: 'flux_exclus : refusé', saisie: PROFIL, champ: 'flux_exclus' });
 		expect(html).toMatch(/role="alert"[^>]*>\s*flux_exclus : refusé/);
+		// Les adresses de réception ne sont plus sur la page : leur erreur reste en tête.
+		const email = rendre({}, { message: 'email : refusé', saisie: PROFIL, champ: 'email' });
+		expect(email).toMatch(/role="alert"[^>]*>\s*email : refusé/);
 	});
 
-	it('présente la stack comme facultative, sans CERT-FR ni Keycloak', () => {
+	it('met le prénom en haut du formulaire, toujours visible', () => {
+		const html = rendre({ depart: { ...PROFIL, prenom: 'Adrien' } });
+		const prenom = html.indexOf('name="prenom"');
+		expect(prenom).toBeGreaterThan(-1);
+		expect(prenom).toBeLessThan(html.indexOf('name="profil"'));
+		expect(champs(html, 'prenom')[0]).toContain('value="Adrien"');
+	});
+
+	it('garde le régime de sécurité visible, juste après le profil de veille', () => {
 		const html = rendre({});
-		expect(html).toContain('si vous exploitez des serveurs ou des logiciels');
-		expect(html).toContain('ex. PostgreSQL');
-		for (const interne of ['CERT-FR', 'Keycloak', 'RH-SSO']) expect(html).not.toContain(interne);
-		// Repliée quand elle est vide, ouverte quand elle ne l'est pas.
-		expect(html).not.toMatch(/<details[^>]*class="bloc stack[^"]*"[^>]*open/);
-		expect(rendre({ depart: { ...PROFIL, stack: ['PostgreSQL'] } })).toMatch(/<details[^>]*open/);
+		const profil = html.indexOf('name="profil"');
+		const securite = html.indexOf('name="securite"');
+		expect(profil).toBeGreaterThan(-1);
+		expect(securite).toBeGreaterThan(profil);
+		// Toujours visible : pas dans un bloc repliable.
+		expect(bloc(html, 'Régime de sécurité')).not.toHaveLength(0);
+		expect(section(html, 'Régime de sécurité')).toHaveLength(0);
+		// Et avant les trois sections repliables.
+		expect(securite).toBeLessThan(html.indexOf('Catégories suivies'));
 	});
 
 	it('explique chaque régime de sécurité en une ligne', () => {
@@ -143,7 +148,39 @@ describe('page Mon profil', () => {
 		expect(coche[0]).toContain('value="decideur"');
 	});
 
-	it("propose de repartir d'un gabarit, et dit que rien n'est enregistré", () => {
+	it('cache les adresses de réception, resoumises telles quelles pour être conservées', () => {
+		const html = rendre({ enAttente: ['nouvelle@example.com'] });
+		// Pas de champ visible : pas de textarea, un seul input caché.
+		expect(html).not.toContain('<textarea name="email"');
+		const email = champs(html, 'email');
+		expect(email).toHaveLength(1);
+		expect(email[0]).toContain('type="hidden"');
+		expect(email[0]).toContain('moi@example.com');
+		expect(email[0]).toContain('nouvelle@example.com');
+	});
+
+	it('replie par défaut les catégories, les rubriques et la stack', () => {
+		const html = rendre({ depart: { ...PROFIL, categories: ['Tech'], stack: ['PostgreSQL'] } });
+		for (const titre of ['Catégories suivies', 'Rubriques du résumé', 'Stack surveillée']) {
+			const blocRepliable = section(html, titre);
+			expect(blocRepliable).not.toHaveLength(0);
+			expect(blocRepliable).not.toMatch(/<details[^>]*\sopen/);
+		}
+		// Un refus rouvre seulement la section concernée.
+		const refuse = rendre({}, { message: 'stack : refusé', saisie: PROFIL, champ: 'stack' });
+		expect(section(refuse, 'Stack surveillée')).toMatch(/<details[^>]*\sopen/);
+		expect(section(refuse, 'Catégories suivies')).not.toMatch(/<details[^>]*\sopen/);
+		expect(section(refuse, 'Rubriques du résumé')).not.toMatch(/<details[^>]*\sopen/);
+	});
+
+	it('présente la stack comme facultative, sans CERT-FR ni Keycloak', () => {
+		const html = rendre({});
+		expect(html).toContain('si vous exploitez des serveurs ou des logiciels');
+		expect(html).toContain('ex. PostgreSQL');
+		for (const interne of ['CERT-FR', 'Keycloak', 'RH-SSO']) expect(html).not.toContain(interne);
+	});
+
+	it("propose de repartir d'un gabarit en dessous du bouton Enregistrer", () => {
 		const gabarits = [
 			{ metier: 'qa', libelle: 'QA', profil: 'Testeuse.' },
 			{ metier: 'rssi', libelle: 'RSSI', profil: 'RSSI.' }
@@ -154,6 +191,9 @@ describe('page Mon profil', () => {
 		expect(html).toContain('pré-rempli avec le gabarit « RSSI » : texte, régime, rubriques et catégories.');
 		expect(html).toContain('Exemple : le gabarit « RSSI »');
 		expect(html).toMatch(/<form method="POST" action="\/profil"/);
+		const enregistrer = html.indexOf('>Enregistrer</button>');
+		expect(enregistrer).toBeGreaterThan(-1);
+		expect(html.indexOf('Repartir d')).toBeGreaterThan(enregistrer);
 	});
 
 	it('ne prétend pas appliquer les catégories du gabarit quand elles sont masquées', () => {
@@ -167,64 +207,5 @@ describe('page Mon profil', () => {
 		expect(html).not.toContain('rubriques et catégories');
 		expect(html).toContain('Remplace le texte, le régime de sécurité, les rubriques par ceux');
 		expect(champs(html, 'categories_editees')).toEqual([]);
-	});
-
-	it('montre chaque section réglable en bouton résumant son état actuel', () => {
-		const html = rendre({});
-		expect(boutonPopup(html, 'Catégories suivies')).toContain('toutes suivies');
-		expect(boutonPopup(html, 'Régime de sécurité')).toContain('Exploitant');
-		expect(boutonPopup(html, 'Rubriques du résumé')).toContain('rubriques par défaut');
-		expect(boutonPopup(html, 'Prénom')).toContain('non renseigné');
-		expect(boutonPopup(html, 'Adresses de réception')).toContain('1 adresse');
-		expect(boutonPopup(html, 'Stack surveillée')).toContain('aucune');
-
-		const rempli = rendre({
-			depart: {
-				...PROFIL,
-				categories: ['Qualité'],
-				securite: 'decideur',
-				axes: [{ slug: 'cyber', libelle: 'Cyber', description: 'Les failles.' }],
-				prenom: 'Adrien',
-				email: ['moi@example.com', 'autre@example.com'],
-				stack: ['PostgreSQL']
-			},
-			enAttente: ['nouvelle@example.com']
-		});
-		expect(boutonPopup(rempli, 'Catégories suivies')).toContain('1 suivie');
-		expect(boutonPopup(rempli, 'Régime de sécurité')).toContain('Décideur');
-		expect(boutonPopup(rempli, 'Rubriques du résumé')).toContain('1 rubrique');
-		expect(boutonPopup(rempli, 'Prénom')).toContain('Adrien');
-		expect(boutonPopup(rempli, 'Adresses de réception')).toContain('3 adresses, dont 1 en attente');
-		expect(boutonPopup(rempli, 'Stack surveillée')).toContain('1 logiciel');
-	});
-
-	it("met le contenu d'édition de chaque section dans un <dialog>, sauf le profil de veille", () => {
-		const contenu = dialogs(rendre({}));
-		// Six sections en popup : catégories, régime, rubriques, prénom, adresses, stack.
-		expect(contenu).toHaveLength(6);
-		const tout = contenu.join(' ');
-		for (const nom of ['categories', 'securite', 'axe_libelle', 'prenom', 'email', 'stack_nom']) {
-			expect(tout).toContain(`name="${nom}"`);
-		}
-		// La textarea « Profil de veille » reste sur la page, hors de tout dialog.
-		expect(contenu.every((dialog) => !dialog.includes('name="profil"'))).toBe(true);
-		expect(rendre({})).toContain('name="profil"');
-		// Les dialogs sont fermés à l'affichage.
-		expect(contenu.every((dialog) => !/<dialog[^>]*\sopen/.test(dialog))).toBe(true);
-	});
-
-	it('rend ouvert le dialog du champ refusé, et seulement celui-là', () => {
-		const html = rendre({}, { message: 'securite : refusé', saisie: PROFIL, champ: 'securite' });
-		const ouverts = dialogs(html).filter((dialog) => /<dialog[^>]*\sopen/.test(dialog));
-		expect(ouverts).toHaveLength(1);
-		expect(ouverts[0]).toContain('name="securite"');
-
-		const refuse = rendre(
-			{},
-			{ message: 'catégorie inconnue', saisie: { ...PROFIL, categories: ['Tech'] }, champ: 'categories' }
-		);
-		const ouvert = dialogs(refuse).filter((dialog) => /<dialog[^>]*\sopen/.test(dialog));
-		expect(ouvert).toHaveLength(1);
-		expect(ouvert[0]).toContain('name="categories"');
 	});
 });
