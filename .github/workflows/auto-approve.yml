@@ -2,7 +2,7 @@ name: Auto-Approve & Merge PR
 
 on:
   workflow_run:
-    workflows: ["Claude Code Review"]  # Déclenché après la review Claude
+    workflows: ["Claude Code Review"]
     types: [completed]
 
 jobs:
@@ -24,41 +24,52 @@ jobs:
           sudo apt-get install -y gh
           gh --version
 
-      - name: Get PR number and details
+      - name: Configure GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Get PR number
         id: pr-details
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Récupère le PR number depuis le workflow_run
+          # Extraire le numéro de PR depuis l'événement workflow_run
           PR_NUMBER=$(jq --raw-output '.workflow_run.pull_requests[0].number' "$GITHUB_EVENT_PATH")
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "PR Number: $PR_NUMBER"
 
-          # Récupère les commentaires de Claude sur la PR
+      - name: Fetch all comments for the PR
+        id: fetch-comments
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
+        run: |
+          # Récupérer tous les commentaires de la PR
           COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments)
           echo "comments=$COMMENTS" >> $GITHUB_OUTPUT
+          echo "Comments fetched: $(echo "$COMMENTS" | jq length)"
 
-          # Récupère les détails de la PR
-          PR_DATA=$(gh pr view $PR_NUMBER --json title,author,additions,deletions,body)
-          echo "pr_data=$PR_DATA" >> $GITHUB_OUTPUT
-
-      - name: Extract score from Claude's comments
+      - name: Extract score from comments
         id: score
         env:
-          COMMENTS: ${{ steps.pr-details.outputs.comments }}
+          COMMENTS: ${{ steps.fetch-comments.outputs.comments }}
         run: |
-          # Cherche un commentaire contenant un score au format "Score de complexité: X/10"
-          SCORE=$(echo "$COMMENTS" | jq -r '.[] | select(.body | test("Score de complexité:\\s*\\d+/10")) | .body' | head -1)
-          SCORE_VALUE=$(echo "$SCORE" | grep -oP 'Score de complexité:\s*\K\d+')
-
-          if [ -z "$SCORE_VALUE" ]; then
-            # Si aucun score trouvé, on met 10 par défaut (besoin de review humaine)
+          # Chercher un commentaire contenant "Score: X/10"
+          SCORE=$(echo "$COMMENTS" | jq -r '.[] | select(.body | test("Score:\\s*\\d+/10")) | .body' | head -1)
+          if [ -z "$SCORE" ]; then
+            echo "No score found in comments, defaulting to 10"
             SCORE_VALUE=10
+          else
+            SCORE_VALUE=$(echo "$SCORE" | grep -oP 'Score:\s*\(\K\d+' | head -1)
+            if [ -z "$SCORE_VALUE" ]; then
+              echo "Failed to parse score, defaulting to 10"
+              SCORE_VALUE=10
+            fi
           fi
-
           echo "score=$SCORE_VALUE" >> $GITHUB_OUTPUT
-          echo "Score extrait : $SCORE_VALUE/10"
+          echo "Extracted Score: $SCORE_VALUE/10"
 
-      - name: Post score comment
+      - name: Post score summary comment
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,6 +89,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
         run: |
+          # Approuver la PR
           gh pr review --approve "$PR_NUMBER" -b "✅ **Auto-approved** : Score = ${{ steps.score.outputs.score }}/10 (Simple/Trivial)"
-          sleep 5  # Attendre que l'approbation soit enregistrée
-          gh pr merge "$PR_NUMBER" --squash --delete-branch -b "🤖 **Auto-merged** : Score < 5/10"
+          sleep 5
+          # Attendre que l'approbation soit enregistrée
+          
+          # Vérifier que la PR a au moins une approbation
+          APPROVALS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews | jq '[.[] | select(.state == "APPROVED")] | length')
+          if [ "$APPROVALS" -ge 1 ]; then
+            # Merger la PR en squashant et supprimant la branche
+            gh pr merge "$PR_NUMBER" --squash --delete-branch -b "🤖 **Auto-merged** : Score = ${{ steps.score.outputs.score }}/10"
+          else
+            echo "No approvals found after auto-approve, skipping merge"
+          fi
