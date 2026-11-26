@@ -95,6 +95,8 @@ describe('ContenuJournee', () => {
 			paused: true,
 			play() {},
 			pause() {},
+			load() {},
+			removeAttribute() {},
 			addEventListener() {}
 		};
 		const lecteur = new LecteurAudio(() => element);

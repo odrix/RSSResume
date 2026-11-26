@@ -7,9 +7,10 @@
  * coordonner. Les pages ne font que le piloter (`LecteurPlein`) ; le layout montre le
  * mini-lecteur (`LecteurGlobal`) quand aucune page n'offre d'emplacement à la piste en cours.
  */
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, untrack } from 'svelte';
+import { dateLisible } from '#lib/journee.js';
 
-/** Une écoute : la journée entière (montage, carte de la liste) ou une seule catégorie. */
+/** Une écoute : la journée entière (son montage) ou une seule catégorie. */
 export class PisteAudio {
 	constructor(
 		readonly username: string,
@@ -18,6 +19,23 @@ export class PisteAudio {
 		readonly titre: string,
 		readonly journeeEntiere: boolean
 	) {}
+
+	/** La piste d'un fichier de la journée, présentée comme la journée entière seulement si
+	 * c'est son montage — la règle de la page de la journée (`contenu.montage.audio`). En mode
+	 * par catégorie, le premier fichier n'est qu'une catégorie : le titre le dit, sans quoi le
+	 * mini-lecteur annoncerait la journée en ne jouant qu'un morceau. */
+	static pourFichier(
+		username: string,
+		date: string,
+		nom: string,
+		montage: string | null,
+		categorie: string | null
+	): PisteAudio {
+		if (montage !== null && nom === montage) {
+			return new PisteAudio(username, date, nom, dateLisible(date), true);
+		}
+		return new PisteAudio(username, date, nom, `${dateLisible(date)} · ${categorie ?? nom}`, false);
+	}
 
 	/** Le relais du site, jamais l'API : il contrôle le droit d'écouter et sert le `Range`. */
 	get url(): string {
@@ -43,6 +61,8 @@ export interface ElementAudio {
 	readonly paused: boolean;
 	play(): Promise<void> | void;
 	pause(): void;
+	load(): void;
+	removeAttribute(nom: string): void;
 	addEventListener(type: string, ecouteur: () => void): void;
 }
 
@@ -64,6 +84,9 @@ export class LecteurAudio {
 	#element: ElementAudio | null = null;
 	#abonnes = new Set<(piste: PisteAudio) => void>();
 	#termineeNotifiee = false;
+	/** Vrai entre `ended` et la relecture : rejouer repart alors de zéro, et compte comme une
+	 * nouvelle écoute, à annoncer de nouveau quand elle s'achève. */
+	#finie = false;
 
 	/** L'élément n'est fabriqué qu'à la première écoute : sous SSR, `Audio` n'existe pas, et
 	 * le lecteur est construit à chaque requête. */
@@ -72,10 +95,6 @@ export class LecteurAudio {
 	/** Le mini-lecteur ne double pas un lecteur plein déjà à l'écran pour la même piste. */
 	get afficherMini(): boolean {
 		return this.piste !== null && !this.#ancres[this.piste.cle];
-	}
-
-	get progression(): number {
-		return this.duree > 0 ? Math.min(1, this.position / this.duree) : 0;
 	}
 
 	lancer(piste: PisteAudio): void {
@@ -93,6 +112,7 @@ export class LecteurAudio {
 		this.position = 0;
 		this.duree = 0;
 		this.#termineeNotifiee = false;
+		this.#finie = false;
 		this.#jouer(element);
 	}
 
@@ -102,39 +122,50 @@ export class LecteurAudio {
 		else this.#element.pause();
 	}
 
-	pause(): void {
-		this.#element?.pause();
-	}
-
 	chercher(secondes: number): void {
 		if (!this.#element || !Number.isFinite(secondes)) return;
 		this.#element.currentTime = secondes;
 		this.position = secondes;
 	}
 
-	/** Arrête et oublie la piste : le mini-lecteur disparaît, l'élément reste pour la suivante. */
+	/** Arrête et oublie la piste. La source est retirée, et non seulement mise en pause : le
+	 * navigateur cesserait sinon de télécharger le MP3 qu'on ne veut plus. */
 	fermer(): void {
-		this.#element?.pause();
+		const element = this.#element;
+		if (element) {
+			element.pause();
+			element.removeAttribute('src');
+			element.load();
+		}
 		this.piste = null;
+		this.enLecture = false;
 		this.position = 0;
 		this.duree = 0;
+		this.#termineeNotifiee = false;
+		this.#finie = false;
 	}
 
 	/** Déclare qu'une page montre cette piste en lecteur plein ; la fonction rendue la retire,
-	 * ce que fait le démontage du composant quand on quitte la page. */
+	 * ce que fait le démontage du composant quand on quitte la page.
+	 *
+	 * Appelé depuis un `$effect` : lire le compteur pour l'incrémenter abonnerait l'effet à ce
+	 * qu'il écrit, et il se relancerait sans fin. D'où `untrack`, à l'aller comme au retour ;
+	 * `afficherMini`, lu ailleurs, reste abonné aux ancres. */
 	ancrer(cle: string): () => void {
-		this.#ancres[cle] = (this.#ancres[cle] ?? 0) + 1;
+		untrack(() => (this.#ancres[cle] = (this.#ancres[cle] ?? 0) + 1));
 		let retiree = false;
 		return () => {
 			if (retiree) return;
 			retiree = true;
-			const reste = (this.#ancres[cle] ?? 1) - 1;
-			if (reste > 0) this.#ancres[cle] = reste;
-			else delete this.#ancres[cle];
+			untrack(() => {
+				const reste = (this.#ancres[cle] ?? 1) - 1;
+				if (reste > 0) this.#ancres[cle] = reste;
+				else delete this.#ancres[cle];
+			});
 		};
 	}
 
-	/** Prévient d'une écoute menée à son terme, une fois par piste lancée. Le lecteur ne fait
+	/** Prévient d'une écoute menée à son terme, une fois par écoute. Le lecteur ne fait
 	 * qu'annoncer : ce que cela vaut (marquer la journée lue…) est l'affaire de l'abonné. */
 	surEcouteTerminee(rappel: (piste: PisteAudio) => void): () => void {
 		this.#abonnes.add(rappel);
@@ -144,6 +175,12 @@ export class LecteurAudio {
 	}
 
 	#jouer(element: ElementAudio): void {
+		if (this.#finie) {
+			this.#finie = false;
+			this.#termineeNotifiee = false;
+			element.currentTime = 0;
+			this.position = 0;
+		}
 		// Le navigateur peut refuser la lecture (politique d'autoplay, fichier introuvable) :
 		// la promesse rejetée ne doit pas remonter en erreur non gérée.
 		const promesse = element.play();
@@ -161,6 +198,7 @@ export class LecteurAudio {
 		element.addEventListener('pause', () => (this.enLecture = false));
 		element.addEventListener('ended', () => {
 			this.enLecture = false;
+			this.#finie = true;
 			if (this.#termineeNotifiee || !this.piste) return;
 			this.#termineeNotifiee = true;
 			const piste = this.piste;

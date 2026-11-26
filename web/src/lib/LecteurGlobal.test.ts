@@ -20,6 +20,10 @@ class FauxAudio extends EventTarget implements ElementAudio {
 		this.paused = true;
 		this.dispatchEvent(new Event('pause'));
 	}
+
+	load(): void {}
+
+	removeAttribute(): void {}
 }
 
 const PISTE = new PisteAudio('moi', '2026-11-21', 'journee.mp3', 'Vendredi 21 novembre 2026', true);

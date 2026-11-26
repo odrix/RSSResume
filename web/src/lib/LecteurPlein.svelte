@@ -23,8 +23,17 @@
 		lecteur.lancer(piste);
 	}
 
+	/** La position que la main tient pendant un glissement : `timeupdate` continue d'arriver et
+	 * ramènerait sinon le curseur sous le doigt. On ne cherche qu'au relâchement. */
+	let glissement = $state<number | null>(null);
+
+	function glisser(evenement: Event): void {
+		glissement = Number((evenement.currentTarget as HTMLInputElement).value);
+	}
+
 	function chercher(evenement: Event): void {
 		lecteur.chercher(Number((evenement.currentTarget as HTMLInputElement).value));
+		glissement = null;
 	}
 </script>
 
@@ -43,8 +52,10 @@
 			min="0"
 			max={lecteur.duree || 0}
 			step="1"
-			value={lecteur.position}
-			oninput={chercher}
+			value={glissement ?? lecteur.position}
+			disabled={!lecteur.duree}
+			oninput={glisser}
+			onchange={chercher}
 			aria-label="Position dans l'écoute"
 		/>
 		<span class="temps">{temps}</span>

@@ -20,7 +20,18 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	}
 	// L'API les rend déjà ainsi ; retrié ici pour que la page n'en dépende pas.
 	journees.sort((a, b) => b.date.localeCompare(a.date));
-	const indicateursJournees: Record<string, { ecoute: string | null; categories: number; articles: number }> = {};
+	/** `montage` et `categoriesAudio` disent ce que joue le bouton de la carte : la journée entière
+	 * seulement si son fichier est le montage, sinon la catégorie dont il est l'audio. */
+	const indicateursJournees: Record<
+		string,
+		{
+			ecoute: string | null;
+			categories: number;
+			articles: number;
+			montage: string | null;
+			categoriesAudio: Record<string, string>;
+		}
+	> = {};
 	if (!erreur && journees.length) {
 		const details = await Promise.all(
 			journees.map(async (journee) => {
@@ -36,14 +47,20 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 						},
 						{ categories: 0, articles: 0 }
 					);
+					const categoriesAudio: Record<string, string> = {};
+					for (const categorie of detail.categories) {
+						if (categorie.audio) categoriesAudio[categorie.audio] = categorie.categorie;
+					}
 					return {
 						date: journee.date,
 						ecoute: detail.ecoute ?? detail.montage?.ecoute ?? null,
-						...totaux
+						...totaux,
+						montage: detail.montage?.audio ?? null,
+						categoriesAudio
 					};
 				} catch (cause) {
 					if (!(cause instanceof ErreurApi)) throw cause;
-					return { date: journee.date, ecoute: null, categories: 0, articles: 0 };
+					return { date: journee.date, ecoute: null, categories: 0, articles: 0, montage: null, categoriesAudio: {} };
 				}
 			})
 		);
@@ -51,7 +68,9 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 			indicateursJournees[detail.date] = {
 				ecoute: detail.ecoute,
 				categories: detail.categories,
-				articles: detail.articles
+				articles: detail.articles,
+				montage: detail.montage,
+				categoriesAudio: detail.categoriesAudio
 			};
 		}
 	}

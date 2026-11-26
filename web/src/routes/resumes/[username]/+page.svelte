@@ -38,10 +38,27 @@
 		if (duree) durees = { ...durees, [cleAudio(date, nom)]: duree };
 	}
 
-	/** La carte ne porte pas de lecteur : elle lance celui du layout, qui continue d'une page à l'autre. */
-	function lire(date: string, nom: string): void {
-		lecteur.lancer(new PisteAudio(data.username, date, nom, dateLisible(date), true));
+	/** Ce que joue la carte : son premier fichier n'est la journée entière que s'il en est le
+	 * montage, comme sur la page de la journée. */
+	function pisteDeCarte(date: string, nom: string): PisteAudio {
+		const indicateurs = data.indicateursJournees?.[date];
+		return PisteAudio.pourFichier(
+			data.username,
+			date,
+			nom,
+			indicateurs?.montage ?? null,
+			indicateurs?.categoriesAudio?.[nom] ?? null
+		);
 	}
+
+	/** La carte ne porte pas de lecteur : elle lance celui du layout, qui continue d'une page à
+	 * l'autre, ou le met en pause quand c'est déjà sa piste qui joue. */
+	function lire(piste: PisteAudio): void {
+		if (lecteur.piste?.cle === piste.cle) lecteur.basculer();
+		else lecteur.lancer(piste);
+	}
+
+	const enLecture = (piste: PisteAudio) => lecteur.piste?.cle === piste.cle && lecteur.enLecture;
 
 	const urlAudio = (date: string, nom: string) =>
 		`/audio/${encodeURIComponent(data.username)}/${encodeURIComponent(date)}/${encodeURIComponent(nom)}`;
@@ -95,6 +112,7 @@
 		<li class="carte journee">
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
+				{@const piste = pisteDeCarte(journee.date, audio.nom)}
 				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
 				<div class="titre-carte">
 					<h2>
@@ -112,9 +130,9 @@
 					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
 				</ul>
 				<div class="actions">
-					<button type="button" class="lecture" onclick={() => lire(journee.date, audio.nom)}>
-						<span class="icone-lecture" aria-hidden="true">▶</span>
-						<span class="texte-lecture">Lecture</span>
+					<button type="button" class="lecture" onclick={() => lire(piste)}>
+						<span class="icone-lecture" aria-hidden="true">{enLecture(piste) ? '❚❚' : '▶'}</span>
+						<span class="texte-lecture">{enLecture(piste) ? 'Pause' : 'Lecture'}</span>
 					</button>
 					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
 				</div>

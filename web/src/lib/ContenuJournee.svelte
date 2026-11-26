@@ -8,25 +8,19 @@
 <script lang="ts">
 	import LecteurPlein from '#lib/LecteurPlein.svelte';
 	import { PisteAudio } from '#lib/lecteur.svelte.js';
-	import {
-		dateLisible,
-		paragraphes,
-		urlSure,
-		type ContenuJournee,
-		type LienArticle
-	} from '#lib/journee.js';
+	import { paragraphes, urlSure, type ContenuJournee, type LienArticle } from '#lib/journee.js';
 
 	let { contenu, username }: { contenu: ContenuJournee; username: string } = $props();
 
 	/** La même piste que la carte de la liste, pour qu'une écoute lancée là-bas se reprenne ici. */
 	const montage = $derived(
 		contenu.montage?.audio
-			? new PisteAudio(username, contenu.date, contenu.montage.audio, dateLisible(contenu.date), true)
+			? PisteAudio.pourFichier(username, contenu.date, contenu.montage.audio, contenu.montage.audio, null)
 			: null
 	);
 
 	const pisteCategorie = (categorie: ContenuJournee['categories'][number], nom: string) =>
-		new PisteAudio(username, contenu.date, nom, `${dateLisible(contenu.date)} · ${categorie.categorie}`, false);
+		PisteAudio.pourFichier(username, contenu.date, nom, null, categorie.categorie);
 
 	const listes = (categorie: ContenuJournee['categories'][number]) =>
 		[
