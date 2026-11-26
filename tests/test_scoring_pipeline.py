@@ -259,7 +259,7 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
     def test_a_note_reread_from_the_tags_arrives_without_its_angle(self):
         """Écart assumé : une phrase entière n'est pas un tag, le cache ne la garde pas.
 
-        Le score et la thématique survivent, l'angle revient vide — et c'est le prompt
+        Le score et la thématique survivent, l'angle revient vide, et c'est le prompt
         qui l'assume, pas le code : le champ est alors simplement omis du payload.
         """
         articles = [
@@ -511,7 +511,7 @@ class DegradedScoringTests(PipelineHarness, unittest.TestCase):
         self.assertIsNotNone(digests[0].audio_path)
 
     def test_a_category_whose_scoring_lost_everything_yields_no_audio(self):
-        """Sans une seule note, la journée est vide — surtout pas racontée sans avoir été triée."""
+        """Sans une seule note, la journée est vide, surtout pas racontée sans avoir été triée."""
         articles = [make_article("item-1"), make_article("item-2")]
 
         client, _, digests = self._run(articles, [self.sans_note("item-1"), self.sans_note("item-2")])
@@ -559,7 +559,7 @@ class NoSelectionMarkerTests(unittest.TestCase):
     """Aucun article au-dessus du seuil : marqueur listant les scores, pas d'audio."""
 
     def _run(self, articles, notes):
-        """Renvoie (digest, contenu du marqueur, générateurs) — lus avant le nettoyage du tmpdir."""
+        """Renvoie (digest, contenu du marqueur, générateurs), lus avant le nettoyage du tmpdir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
                 make_config(tmpdir), categories=["Tech"]

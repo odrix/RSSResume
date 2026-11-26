@@ -1,7 +1,7 @@
 """Les ressources de l'API, une classe par forme d'URL.
 
-La base porte ce qui est commun — reconnaître son URL, refuser une méthode qu'elle ne
-sert pas, retrouver le profil nommé — ; chaque sous-classe ne redéfinit que les méthodes
+La base porte ce qui est commun, reconnaître son URL, refuser une méthode qu'elle ne
+sert pas, retrouver le profil nommé, ; chaque sous-classe ne redéfinit que les méthodes
 HTTP qu'elle sert. Les routes ne parlent pas HTTP elles-mêmes : elles lèvent `ErreurApi`
 et rendent des objets, la requête (`serveur.GestionnaireApi`) se charge du reste.
 """
@@ -217,7 +217,7 @@ class _RouteRetourParLien(Route):
     """Ce que les deux routes du vote par lien partagent : relire le jeton du corps.
 
     Dans le corps et non dans l'URL, comme le désabonnement : les journaux d'accès notent
-    les chemins. Le profil et la journée ne viennent que du jeton — un `profil_id` ou un
+    les chemins. Le profil et la journée ne viennent que du jeton, un `profil_id` ou un
     `jour` glissés dans le corps ne sont pas lus.
     """
 
@@ -243,7 +243,7 @@ class RouteRetourLecture(_RouteRetourParLien):
 
     La page du site l'appelle à l'affichage : un antivirus de messagerie qui ouvre le lien
     ne doit pas voter à la place de la personne. Le vote existant est rendu pour que la
-    page le pré-remplisse — sans lui, un second envoi effacerait en silence le commentaire
+    page le pré-remplisse, sans lui, un second envoi effacerait en silence le commentaire
     laissé la première fois.
     """
 
@@ -291,7 +291,7 @@ class RouteRetourJournee(Route):
     """`/api/v1/profils/{username}/journees/{date}/retour` : le vote du site, pour qui est connecté.
 
     Le site a déjà vérifié que la personne connectée est le propriétaire du profil ; l'API
-    ne vérifie pas que la journée existe sur le disque — le site non plus ne laisse voter
+    ne vérifie pas que la journée existe sur le disque, le site non plus ne laisse voter
     que sur une journée qu'il vient d'afficher.
     """
 

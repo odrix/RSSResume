@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Renvoyer le lien — RSSResume</title>
+	<title>Renvoyer le lien, RSSResume</title>
 </svelte:head>
 
 <h1>Renvoyer le lien de confirmation</h1>

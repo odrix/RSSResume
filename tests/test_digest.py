@@ -39,7 +39,7 @@ def make_article(category="Tech", title="Nouveau modèle", item_id="item-1"):
 class EnrichissementCveTests(unittest.TestCase):
     """La page d'un avis est lue UNE fois, et son texte reste dans les articles retenus.
 
-    Elle a trois lecteurs — le résumé de la catégorie, l'appariement sur la stack, et
+    Elle a trois lecteurs, le résumé de la catégorie, l'appariement sur la stack, et
     l'audio de journée. Lue au moment du résumé, elle était rechargée pour chacun, et
     surtout les deux autres travaillaient sur le seul titre.
     """
@@ -396,7 +396,7 @@ class CertfrRoutingTests(unittest.TestCase):
 
             self.assertEqual(2, len(digest.articles))
             self.assertEqual(["avis-2"], [article.item_id for article in digest.selected])
-            self.assertIn("Keycloak — exécution de code arbitraire à distance", digest.summary_text)
+            self.assertIn("Keycloak, exécution de code arbitraire à distance", digest.summary_text)
 
     def test_the_category_is_routed_even_when_the_variable_drops_the_accents(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -438,8 +438,8 @@ class CertfrRoutingTests(unittest.TestCase):
 
 
 class AudioGlobalTests(unittest.TestCase):
-    """Ce que ces tests protègent : en mode `global`, un seul fichier est écrit — celui
-    de la journée — et aucune catégorie n'en produit plus. Les deux modes ne doivent
+    """Ce que ces tests protègent : en mode `global`, un seul fichier est écrit, celui
+    de la journée, et aucune catégorie n'en produit plus. Les deux modes ne doivent
     jamais coexister dans un même répertoire, sans quoi l'email joindrait les deux."""
 
     def _run(self, articles_by_category, mode, montage_service=None, **kwargs):

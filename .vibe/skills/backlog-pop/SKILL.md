@@ -1,13 +1,13 @@
 ---
 name: backlog-pop
-description: Traite le ou les items suivants de backlog/todo/ — plan validé, implémentation et tests dans un worktree par item, branche poussée, item déplacé dans backlog/done/. Par priorité par défaut ; un identifiant BL-NNN force un item ; un nombre N en traite N en parallèle, de catégories différentes. Invoquée par l'utilisateur via /backlog-pop ; ne pas charger de sa propre initiative.
+description: Traite le ou les items suivants de backlog/todo/, plan validé, implémentation et tests dans un worktree par item, branche poussée, item déplacé dans backlog/done/. Par priorité par défaut ; un identifiant BL-NNN force un item ; un nombre N en traite N en parallèle, de catégories différentes. Invoquée par l'utilisateur via /backlog-pop ; ne pas charger de sa propre initiative.
 ---
 
 # /backlog-pop
 
 Arguments reçus dans le message de l'utilisateur qui a invoqué `/backlog-pop`.
 
-Tout ce que dit CLAUDE.md s'applique, à toi comme aux sous-sessions que tu lances — ce
+Tout ce que dit CLAUDE.md s'applique, à toi comme aux sous-sessions que tu lances, ce
 fichier n'est pas chargé automatiquement par Vibe : le lire explicitement, avec README.md
 et FONCTIONNEMENT.md. Français, unittest, Edit/Write seulement, pas de `.env`, pas de
 dépendance nouvelle, conception objet sur le modèle de `llm/base.py`, pas de refactor hors
@@ -25,7 +25,7 @@ Tout autre jeton : s'arrêter et rappeler l'usage `/backlog-pop [BL-NNN] [N]`.
 
 ## 2. Vérifier le point de départ
 
-- `git status` : être sur `main`, et `backlog/` sans modification non commitée — sinon s'arrêter
+- `git status` : être sur `main`, et `backlog/` sans modification non commitée, sinon s'arrêter
   et le dire : les branches partent de `HEAD`, un backlog modifié non commité ne serait pas dans
   les worktrees.
 - `git fetch origin` puis vérifier que `main` n'est pas en retard sur `origin/main` ; s'il l'est,
@@ -36,7 +36,7 @@ Tout autre jeton : s'arrêter et rappeler l'usage `/backlog-pop [BL-NNN] [N]`.
 ## 3. Choisir les items
 
 Lire les fichiers de `backlog/todo/`. Un item est un fichier `BL-NNN.md`, qui s'ouvre sur
-`# BL-NNN — titre` et porte les champs **Catégorie**, **Priorité**, éventuellement **Dépend de**,
+`# BL-NNN - titre` et porte les champs **Catégorie**, **Priorité**, éventuellement **Dépend de**,
 **Description**, **Bénéfice attendu**, **Tests d'acceptation**.
 
 Éligible = catégorie différente de `exploitation`, et aucune dépendance encore présente dans
@@ -52,7 +52,7 @@ Lire les fichiers de `backlog/todo/`. Un item est un fichier `BL-NNN.md`, qui s'
 
 Un item `exploitation` forcé ne se code pas : livrer la procédure ou le patch documenté que décrit
 l'item (dans `docs/`), et laisser l'item dans `backlog/todo/` avec une ligne « Procédure prête :
-<chemin> » — il ne passe dans `backlog/done/` que quand la personne confirme l'avoir appliqué.
+<chemin> », il ne passe dans `backlog/done/` que quand la personne confirme l'avoir appliqué.
 
 ## 4. Planifier, puis faire valider
 
@@ -61,7 +61,7 @@ méthodes ajoutées ou modifiées, où vit la configuration, tests ajoutés en f
 d'acceptation, dépendance éventuelle (refusée par défaut). Avec `N > 1`, lancer une sous-session
 de planification par item, toutes dans le même message.
 
-Présenter les plans ensemble, puis demander l'accord avec l'outil `ask_user_question` — CLAUDE.md
+Présenter les plans ensemble, puis demander l'accord avec l'outil `ask_user_question`, CLAUDE.md
 exige l'accord au-delà de deux fichiers, et un item à moins de trois fichiers est validé dans le
 même geste. Proposer : tout lancer / lancer seulement certains items / amender un plan. Un item
 refusé reste dans `backlog/todo/`, intact.
@@ -95,7 +95,7 @@ message** pour qu'elles tournent en parallèle. Chaque prompt de sous-session co
 ## 6. Relire
 
 Pour chaque branche revenue verte : lancer une sous-session de revue de code (effort « medium »)
-sur la branche, cible `backlog/BL-NNN-…` — lui donner le chemin de la branche à relire par rapport
+sur la branche, cible `backlog/BL-NNN-…`, lui donner le chemin de la branche à relire par rapport
 à `main` et repartir de son compte rendu. Un défaut confirmé se corrige dans le worktree, suite
 relancée, nouveau commit. Un item dont un test d'acceptation reste ❌ ne passe pas à l'étape 7 :
 le signaler, laisser la branche et l'item en place.

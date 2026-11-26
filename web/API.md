@@ -10,7 +10,7 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
 
 ## Généralités
 
-- **Base** : `RSSRESUME_API_URL`, `http://rssresume-api:8080` — le service `api` du compose
+- **Base** : `RSSRESUME_API_URL`, `http://rssresume-api:8080`, le service `api` du compose
   de l'appli de résumé (même image que `rssresume`, lancé par `python -m rssresume.api`),
   joint par son alias sur `dokploy-network`, le site étant une application Dokploy distincte.
 - **Authentification** : chaque requête porte `Authorization: Bearer ${RSSRESUME_API_TOKEN}`.
@@ -24,7 +24,7 @@ module, [`src/lib/server/api-resume.ts`](src/lib/server/api-resume.ts), et simul
   `422`. Le message d'un `422` est **affiché tel quel** à la personne dans « Mon profil » :
   il doit être en français et dire quel champ est en cause (`email : adresse invalide (x)`).
   Quand le refus tient à une clé du profil, le corps la nomme aussi :
-  `{"erreur": "…", "champ": "categories"}` — `profil`, `stack`, `email`, `prenom`, `securite`,
+  `{"erreur": "…", "champ": "categories"}`, `profil`, `stack`, `email`, `prenom`, `securite`,
   `axes`, `categories`, `flux_exclus` ou `id`. Le site affiche alors le message sous ce champ ;
   sans `champ`, ou pour un champ que la page ne montre pas, en tête de page. Un catalogue
   des catégories illisible en base est une panne, pas un refus : `500`, sans `champ`.
@@ -77,7 +77,7 @@ description pour les axes. Un axe existant garde son slug, un nouveau en reçoit
 son libellé ; toutes les lignes vides envoient `axes: []`. Toutes les catégories cochées
 envoient `categories: null` : l'API retire la clé, pour que le profil suive aussi celles
 ajoutées plus tard. Aucune cochée est refusé par le site avant l'appel, l'API lisant `[]`
-comme « tout » — en `PUT`, un `null` dit la même chose. Une section que la page n'a pas pu
+comme « tout », en `PUT`, un `null` dit la même chose. Une section que la page n'a pas pu
 montrer (catalogue injoignable ou ouvert) garde la valeur lue : le `PUT` fusionne, la clé
 que le site n'envoie pas n'est pas touchée par l'enregistrement.
 
@@ -113,10 +113,10 @@ absent et liste vide y valent tous deux le défaut.
 
 ### `PUT /api/v1/profils/{username}`
 
-Corps : les clés à changer — `{"profil", "stack", "email", "prenom", "securite"}`, et
+Corps : les clés à changer, `{"profil", "stack", "email", "prenom", "securite"}`, et
 `"axes"`, `"categories"`, `"flux_exclus"` quand le client les édite. Fusion, pas
 remplacement : une clé absente du corps garde sa valeur stockée, une clé présente la
-remplace, un `null` explicite la remet à son défaut (absente du document — pour `email`,
+remplace, un `null` explicite la remet à son défaut (absente du document, pour `email`,
 `axes`, `categories` et `flux_exclus`, « aucun réglage » / « tout le catalogue »). Le site
 n'envoie que les clés qu'il édite : un réglage déclaré par l'API ou par un gabarit survit
 ainsi à un enregistrement qui ne le connaît pas.
@@ -126,8 +126,8 @@ ainsi à un enregistrement qui ne le connaît pas.
 
 ### `GET /api/v1/profils/{username}/categories`
 
-→ `200`, les catégories que ce username peut suivre — publiques, et privées dont il est
-propriétaire —, dans l'ordre du catalogue :
+→ `200`, les catégories que ce username peut suivre, publiques, et privées dont il est
+propriétaire, dans l'ordre du catalogue :
 
 ```json
 {"ouvert": false, "categories": [{"libelle": "Cybersécurité", "description": "…", "privee": false}]}
@@ -188,7 +188,7 @@ renvoyer l'email :
 - `montage` vaut `null` en mode par catégorie ; `audio` et `ecoute` y valent `null` quand le
   fichier manque ou que sa durée ne se mesure pas.
 - `raison` : la phrase d'une journée sans article (`categories` vide), `null` sinon.
-- `en_cours` : `true` quand la tournée écrit encore la journée — aucun journal ni marqueur
+- `en_cours` : `true` quand la tournée écrit encore la journée, aucun journal ni marqueur
   `.no-article` encore, ou un journal tronqué lu en pleine écriture. `categories` est alors
   vide et `raison` à `null` : la journée n'est pas vide, elle n'est pas finie.
 - Les textes (`resume`, `titre`, `source`) sont **bruts** : ils viennent du modèle et des flux,
@@ -253,7 +253,7 @@ Le jeton compte huit caractères par destinataire de la lettre, en plus d'enviro
 en borne la longueur à 4 096.
 
 Le site ne vérifie pas le jeton, il ne connaît pas la clé : il le relaie tel quel, sans
-session ni cookie. C'est la seule route du site qui accepte un `POST` d'une autre origine — le
+session ni cookie. C'est la seule route du site qui accepte un `POST` d'une autre origine, le
 désabonnement en un clic (`List-Unsubscribe-Post`) que Gmail et Yahoo envoient depuis le
 client mail (`web/src/lib/server/csrf.ts`).
 
@@ -268,7 +268,7 @@ lettre ou de la page des résumés. Un retour a cette forme :
 
 - `avis` : `utile` ou `pas_utile`.
 - `commentaire` : texte brut, rogné, fins de ligne ramenées à `\n`, **2 000 caractères** au
-  plus (comptés en points de code : un emoji vaut un). Au-delà, refusé — jamais tronqué. Le
+  plus (comptés en points de code : un emoji vaut un). Au-delà, refusé, jamais tronqué. Le
   site l'échappe au rendu.
 - `vote_le` : posé par l'API, en UTC.
 - `username` : `null` quand le profil a été supprimé depuis ; le retour reste.
@@ -287,7 +287,7 @@ le vote déjà donné, **sans rien écrire** :
 ```
 
 - `404` → `{"erreur": "Lien de vote invalide."}`, quelle qu'en soit la raison : jeton illisible,
-  signature fausse — un jeton de désabonnement compris —, date impossible ou profil supprimé.
+  signature fausse, un jeton de désabonnement compris, date impossible ou profil supprimé.
 
 Le jeton est `v1.<profil_id>.<AAAA-MM-JJ>.<signature>`, signé avec `RSSRESUME_API_TOKEN` sous
 une clé propre au vote. La date est celle de la journée **racontée** (le titre de la lettre),
@@ -317,7 +317,7 @@ vote.
 
 Corps `{"avis": "…", "commentaire": "…"}`. → `200`, le retour enregistré ; `422` avec `champ`.
 L'API ne vérifie pas que la journée existe sur le disque : le site ne propose de voter que sur
-une journée qu'il vient d'afficher, à son propriétaire seulement — un administrateur qui
+une journée qu'il vient d'afficher, à son propriétaire seulement, un administrateur qui
 consulte la journée d'un autre ne vote pas.
 
 Ouvrir le lien de la lettre n'enregistre rien : la page `/retour/{jeton}` montre le

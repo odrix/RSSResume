@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Connexion par lien — RSSResume</title>
+	<title>Connexion par lien, RSSResume</title>
 </svelte:head>
 
 {#if data.invalide}

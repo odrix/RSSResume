@@ -3,7 +3,7 @@
 Plusieurs personnes lisent le même FreshRSS, et l'état « lu » y est unique. Le marquage
 comme lu ne peut donc plus appartenir au digest d'une personne : le premier profil servi
 viderait la journée de tous les suivants, puisque l'API écarte les articles lus. Chaque
-digest tourne ici sans marquer, et la tournée marque à la fin — et seulement quand tout le
+digest tourne ici sans marquer, et la tournée marque à la fin, et seulement quand tout le
 monde a été servi.
 
 Ce module ne choisit aucun fournisseur : il reçoit de quoi assembler un digest
@@ -65,7 +65,7 @@ class Tournee:
     ) -> list[str]:
         """Sert `day` à tous les profils, ou au seul `username`. Rend les noms en échec.
 
-        Un profil qui échoue — document fautif, fournisseur en panne — est journalisé,
+        Un profil qui échoue, document fautif, fournisseur en panne, est journalisé,
         et les suivants sont servis : même arbitrage que la boucle des jours, où un matin
         perdu ne coûte pas les suivants.
         """
@@ -85,7 +85,7 @@ class Tournee:
         for nom in cibles:
             try:
                 lus.extend(self._servir(installation, nom, day, send_email, write_tags))
-            except Exception as exc:  # noqa: BLE001 — un profil perdu, pas tous les suivants
+            except Exception as exc:  # noqa: BLE001, un profil perdu, pas tous les suivants
                 console.error(f"Échec du digest de « {nom} » du {day.isoformat()} : {exc!r}")
                 echecs.append(EchecProfil(nom, resumer_cause(exc)))
 
@@ -101,7 +101,7 @@ class Tournee:
             # rendu des échecs. L'inscrit apprendra sa panne autrement.
             try:
                 self._alerte.notifier(day, echecs)
-            except Exception as exc:  # noqa: BLE001 — l'alerte ne coûte pas la tournée
+            except Exception as exc:  # noqa: BLE001, l'alerte ne coûte pas la tournée
                 console.error(f"Alerte à l'exploitant impossible ({exc!r}) ; la tournée est finie")
         return noms_en_echec
 
@@ -109,7 +109,7 @@ class Tournee:
         """Un catalogue ouvert ne vaut que pour une seule personne.
 
         Ouvert, il sert tout à tout le monde : pour une installation à une personne, c'est
-        le comportement d'avant le catalogue, et il reste permis — avec un avertissement à
+        le comportement d'avant le catalogue, et il reste permis, avec un avertissement à
         chaque tournée, pour qu'il ne s'oublie pas. Dès deux personnes, la veille privée de
         l'une partirait chez l'autre : la tournée refuse de démarrer, et dit quoi faire.
         """
@@ -124,7 +124,7 @@ class Tournee:
             )
         if usernames:
             console.log(
-                "Catalogue des catégories : aucun — toutes les catégories sont servies au seul "
+                "Catalogue des catégories : aucun, toutes les catégories sont servies au seul "
                 f"profil. Avant d'en ajouter un second : {self._annuaire.remede_sans_catalogue()}"
             )
 
@@ -169,7 +169,7 @@ class Tournee:
         """Les articles du jour des catégories que personne n'a reçues, à marquer lus.
 
         Une panne de lecture ici est journalisée et ne coûte que ces articles-là : les
-        emails sont déjà partis, et lever maintenant laisserait toute la journée non lue —
+        emails sont déjà partis, et lever maintenant laisserait toute la journée non lue -
         un rejeu renverrait alors chaque email. Les orphelines resteront non lues, ce qui
         ne coûte qu'un compteur dans FreshRSS.
         """
@@ -179,7 +179,7 @@ class Tournee:
                 for categorie in self._orphelines(installation)
                 for article in self._freshrss_client.fetch_daily_articles(categorie, day)
             ]
-        except Exception as exc:  # noqa: BLE001 — le marquage de ce qui a été servi d'abord
+        except Exception as exc:  # noqa: BLE001, le marquage de ce qui a été servi d'abord
             console.error(
                 f"Catalogue : lecture des catégories servies à personne impossible ({exc!r}) ; "
                 "seul ce qui a été servi est marqué lu"
@@ -204,7 +204,7 @@ class Tournee:
 
         Un profil en échec doit pouvoir être rejoué sans `--include-read` : ses articles
         restent non lus. Un passage ciblé (`--profil`) ne marque pas non plus quand
-        d'autres profils existent — ils n'ont peut-être pas encore eu leur journée. Les
+        d'autres profils existent, ils n'ont peut-être pas encore eu leur journée. Les
         articles restés non lus ne reviennent dans aucun autre jour : la lecture est
         bornée à la journée, ils ne coûtent qu'un compteur dans FreshRSS.
         """

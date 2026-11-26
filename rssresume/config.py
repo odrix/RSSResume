@@ -2,7 +2,7 @@
 
 Ce qui concerne les fournisseurs de LLM n'est plus ici : leurs réglages vivent dans
 `llm/providers.json`, leur choix et leurs clés dans `llm/providers.py`. Ce qui est propre à
-la personne non plus — profil de pertinence, stack surveillée, destinataire du digest sont
+la personne non plus, profil de pertinence, stack surveillée, destinataire du digest sont
 dans un document unique que `profil.py` lit (`RSSRESUME_PROFILE_FILE`). Il ne reste donc ici
 que ce qui est propre à cette installation : FreshRSS, les catégories, le seuil, le transport
 du courrier.
@@ -33,7 +33,7 @@ from rssresume.tools.text import casefold_ascii, words
 
 #: Fuseau qui découpe les journées. Les bornes se calculaient en UTC : en heure d'été, un
 #: article publié à 1 h du matin à Paris tombait dans la veille et n'apparaissait dans
-#: aucun digest — un décalage muet, invisible tant qu'on ne le cherche pas.
+#: aucun digest, un décalage muet, invisible tant qu'on ne le cherche pas.
 ENV_TIMEZONE = "RSSRESUME_TIMEZONE"
 DEFAULT_TIMEZONE = "Europe/Paris"
 
@@ -41,7 +41,7 @@ DEFAULT_TIMEZONE = "Europe/Paris"
 #: caractères depuis toujours ; le résumé, lui, envoyait le texte intégral de douze
 #: articles, soit facilement cent mille caractères sans le moindre garde-fou. Huit mille
 #: laissent passer entier un avis de sécurité enrichi par `tools/cve.py`, qui en lit six
-#: mille au plus — c'est là que sont les versions touchées, et rien ne doit les couper.
+#: mille au plus, c'est là que sont les versions touchées, et rien ne doit les couper.
 ENV_ARTICLE_CHAR_LIMIT = "RSSRESUME_ARTICLE_CHAR_LIMIT"
 DEFAULT_ARTICLE_CHAR_LIMIT = 8000
 
@@ -49,7 +49,7 @@ DEFAULT_ARTICLE_CHAR_LIMIT = 8000
 #: filtrent 25, 465 et 587 en sortie : `resend` passe alors par le 443, qui sort
 #: forcément. Les noms sont déclarés ici, et non dans `external/mail.py` qui les fait
 #: correspondre à leur implémentation, pour qu'un réglage fautif fasse échouer le
-#: lancement — un conteneur qui ne démarre pas se voit, un matin sans digest non.
+#: lancement, un conteneur qui ne démarre pas se voit, un matin sans digest non.
 ENV_MAIL_TRANSPORT = "RSSRESUME_MAIL_TRANSPORT"
 MAIL_TRANSPORT_SMTP = "smtp"
 MAIL_TRANSPORT_RESEND = "resend"
@@ -66,23 +66,23 @@ ENV_RESEND_API_KEY = "RESEND_API_KEY"
 ENV_SMTP_TO = "SMTP_TO"
 
 #: L'adresse de l'exploitant, à qui la tournée signale ses échecs. C'est un réglage de
-#: l'installation, comme `SMTP_FROM` — pas une donnée de la personne servie, qui ne
+#: l'installation, comme `SMTP_FROM`, pas une donnée de la personne servie, qui ne
 #: doit rien y voir : la règle de `profil.py` protège la personne, pas qui l'exploite.
 #: Alignée sur `ADMIN_EMAIL` du site, dont elle partage l'esprit sans partager
-#: l'environnement — deux processus, deux `.env`.
+#: l'environnement, deux processus, deux `.env`.
 ENV_ADMIN_EMAIL = "RSSRESUME_ADMIN_EMAIL"
 
 #: Catégories routées vers le traitement déterministe des avis CERT-FR (`rssresume/certfr/`)
 #: au lieu du scoring, du résumé et de la synthèse vocale. Le routage est explicite et non
 #: déduit du nom de la catégorie : rien ne doit changer de pipeline parce que quelqu'un a
-#: renommé un dossier FreshRSS. Vide — le défaut — laisse tout au chemin habituel.
+#: renommé un dossier FreshRSS. Vide, le défaut, laisse tout au chemin habituel.
 ENV_CERTFR_CATEGORIES = "RSSRESUME_CERTFR_CATEGORIES"
 
-#: Comment la journée est mise en voix. `category` — le défaut — rend un mp3 par
+#: Comment la journée est mise en voix. `category`, le défaut, rend un mp3 par
 #: catégorie ; `global` n'en rend qu'un, qui raconte la journée entière. Le second ne
 #: remplace pas les résumés de catégorie : il les relit pour les enchaîner, et l'email
 #: continue de montrer les siens, mot pour mot. Les valeurs sont en anglais comme celles
-#: de `RSSRESUME_MAIL_TRANSPORT` — ce qui se tape dans l'environnement suit la langue des
+#: de `RSSRESUME_MAIL_TRANSPORT`, ce qui se tape dans l'environnement suit la langue des
 #: variables, pas celle du code métier.
 ENV_AUDIO_MODE = "RSSRESUME_AUDIO_MODE"
 AUDIO_MODE_CATEGORY = "category"
@@ -90,14 +90,14 @@ AUDIO_MODE_GLOBAL = "global"
 AUDIO_MODES = (AUDIO_MODE_CATEGORY, AUDIO_MODE_GLOBAL)
 DEFAULT_AUDIO_MODE = AUDIO_MODE_CATEGORY
 
-#: Le mode debug. Il ne commande qu'une chose — le bilan de la journée imprimé en fin de
-#: passage, articles compris — et pas un interrupteur fourre-tout qui promettrait des
+#: Le mode debug. Il ne commande qu'une chose, le bilan de la journée imprimé en fin de
+#: passage, articles compris, et pas un interrupteur fourre-tout qui promettrait des
 #: traces partout. Le conteneur n'expose rien : sa sortie standard est le seul endroit où
 #: l'on regarde, et c'est là que le bilan doit atterrir pour se chercher et s'archiver.
 ENV_DEBUG = "RSSRESUME_DEBUG"
 
 #: Le jeton de l'API, partagé par le site. Déclaré ici et non dans `api/serveur.py` :
-#: le travailleur le lit aussi, comme secret des liens signés de la lettre — c'est le
+#: le travailleur le lit aussi, comme secret des liens signés de la lettre, c'est le
 #: seul secret que les deux processus ont déjà en commun.
 ENV_API_TOKEN = "RSSRESUME_API_TOKEN"
 
@@ -118,8 +118,8 @@ def load_timezone(name: str | None = None) -> dt.tzinfo:
     except (KeyError, ValueError, OSError) as exc:
         raise ValueError(
             f"{ENV_TIMEZONE} : fuseau « {nom} » introuvable ({exc}). Vérifier le nom "
-            f"(par exemple {DEFAULT_TIMEZONE}) et, sur un système sans base de fuseaux — "
-            "Windows en tête — que le paquet `tzdata` est installé."
+            f"(par exemple {DEFAULT_TIMEZONE}) et, sur un système sans base de fuseaux, "
+            "Windows en tête, que le paquet `tzdata` est installé."
         ) from exc
 
 
@@ -142,7 +142,7 @@ def load_audio_mode(name: str | None = None) -> str:
     """Le mode nommé, validé au lancement : un nom inconnu ne doit pas attendre le soir.
 
     Même arbitrage que le transport du courrier. Une faute de frappe ignorée retomberait
-    sur le mode par catégorie, c'est-à-dire précisément sur celui qu'on voulait quitter —
+    sur le mode par catégorie, c'est-à-dire précisément sur celui qu'on voulait quitter -
     et rien ne le dirait avant la boîte aux lettres, sept mp3 plus tard.
     """
     mode = (name or DEFAULT_AUDIO_MODE).strip().lower() or DEFAULT_AUDIO_MODE
@@ -158,7 +158,7 @@ def load_site_url(valeur: str | None = None) -> str | None:
     """L'adresse du site sans `/` final, `None` si elle n'est pas posée.
 
     Sans schéma, elle est refusée au lancement : `veille.example.com` posé tel quel
-    donnerait des liens relatifs, qu'un client mail résout n'importe où — et la lettre
+    donnerait des liens relatifs, qu'un client mail résout n'importe où, et la lettre
     partirait tous les matins avec des liens morts sans que rien ne le dise.
     """
     adresse = (valeur or "").strip().rstrip("/")
@@ -175,7 +175,7 @@ def load_site_url(valeur: str | None = None) -> str | None:
 def load_admin_email(valeur: str | None = None) -> str | None:
     """L'adresse de l'exploitant, `None` si elle n'est pas posée.
 
-    Posée sans « @ », elle est refusée au lancement — même arbitrage que `load_site_url` :
+    Posée sans « @ », elle est refusée au lancement, même arbitrage que `load_site_url` :
     l'alerte partirait avec un destinataire que rien ne peut joindre, et l'échec se
     découvrirait le matin où l'exploitant est précisément celui qui a besoin d'être prévenu.
     """
@@ -221,8 +221,8 @@ def _split_categories(value: str | None, name: str) -> list[str]:
     """`Catégorie, Autre` → les libellés, une entrée mal formée levant au lancement.
 
     Deux fautes se ressemblent assez pour arriver, et aucune des deux ne se verrait
-    autrement qu'à l'usage : recopier la forme de `RSSRESUME_CATEGORY_THRESHOLDS` —
-    « Catégorie=7 » là où seul le libellé est attendu — et laisser une entrée qui ne
+    autrement qu'à l'usage : recopier la forme de `RSSRESUME_CATEGORY_THRESHOLDS` -
+    « Catégorie=7 » là où seul le libellé est attendu, et laisser une entrée qui ne
     porte pas un mot, reste d'une liste à demi effacée. Dans les deux cas la catégorie
     ne serait jamais routée, et le digest continuerait de la passer au LLM sans rien
     dire. Même arbitrage que les seuils par catégorie : on lève.
@@ -232,7 +232,7 @@ def _split_categories(value: str | None, name: str) -> list[str]:
         if "=" in item:
             raise ValueError(
                 f"{name} : « {item} » n'est qu'un libellé de catégorie à recopier, sans "
-                "« = » ni valeur — cette variable ne prend pas de réglage par catégorie"
+                "« = » ni valeur, cette variable ne prend pas de réglage par catégorie"
             )
         if not words(item):
             raise ValueError(f"{name} : « {item} » ne porte ni lettre ni chiffre")
@@ -253,7 +253,7 @@ class AppConfig:
     #: date par défaut de la ligne de commande.
     timezone: dt.tzinfo
     #: Profil de pertinence : le texte qui définit ce qui mérite d'être noté et raconté.
-    #: Résolu une fois au démarrage — un fichier de profil illisible doit faire échouer
+    #: Résolu une fois au démarrage, un fichier de profil illisible doit faire échouer
     #: le lancement, pas la troisième catégorie.
     profil: str
     #: Score minimal pour qu'un article entre dans le digest.
@@ -283,25 +283,25 @@ class AppConfig:
     smtp_use_tls: bool
     smtp_use_ssl: bool
     #: Par où part le digest : `smtp` ou `resend`. Les adresses, elles, restent celles de
-    #: `SMTP_FROM` et `SMTP_TO` — expéditeur et destinataires ne changent pas de nature
+    #: `SMTP_FROM` et `SMTP_TO`, expéditeur et destinataires ne changent pas de nature
     #: parce que le transport change.
     mail_transport: str = DEFAULT_MAIL_TRANSPORT
     resend_api_key: str | None = None
     #: Catégories routées hors du pipeline LLM, vers le traitement déterministe des avis
-    #: CERT-FR. Les libellés sont gardés tels qu'ils ont été écrits — c'est
+    #: CERT-FR. Les libellés sont gardés tels qu'ils ont été écrits, c'est
     #: `est_deterministe` qui les replie pour comparer, et le journal n'a rien à y lire.
     certfr_categories: list[str] = dataclasses.field(default_factory=list)
     #: Les composants surveillés, déclarés dans le même document que le profil et lus au
     #: même moment : un document fautif fait échouer le lancement, pas la catégorie
-    #: d'avis d'un matin. Vide par défaut — c'est l'état de qui vient d'installer l'outil,
+    #: d'avis d'un matin. Vide par défaut, c'est l'état de qui vient d'installer l'outil,
     #: et la phrase du digest le dit.
     stack: Stack = dataclasses.field(default_factory=Stack)
     #: Le régime de sécurité, déclaré à la clé `securite` du même document : ce que la
     #: personne a besoin d'entendre d'une CVE. Il module le détail que la stack gradue,
-    #: et voyage donc avec elle. Absent, le régime d'avant la clé — rien ne change.
+    #: et voyage donc avec elle. Absent, le régime d'avant la clé, rien ne change.
     securite: Securite = SECURITE_PAR_DEFAUT
     #: Le prénom de la personne, déclaré dans le même document que le profil : c'est avec
-    #: lui que l'audio de journée ouvre. Facultatif — sans lui, le montage ouvre sans
+    #: lui que l'audio de journée ouvre. Facultatif, sans lui, le montage ouvre sans
     #: nommer personne, et rien d'autre ne change.
     prenom: str = ""
     #: Comment la journée est mise en voix : un audio par catégorie, ou un seul pour tout.
@@ -313,7 +313,7 @@ class AppConfig:
     #: l'installation : ses tags FreshRSS ne portent aucun préfixe, et sa sortie est la
     #: racine. C'est l'état de `from_env`, jamais celui d'un digest réellement servi.
     username: str = ""
-    #: Le catalogue des catégories : à qui chacune est servie. Ouvert par défaut — tout à
+    #: Le catalogue des catégories : à qui chacune est servie. Ouvert par défaut, tout à
     #: tout le monde, comme avant lui ; c'est la tournée qui pose celui de l'annuaire, et
     #: qui refuse le catalogue ouvert dès qu'elle sert plus d'une personne.
     catalogue: Catalogue = dataclasses.field(default_factory=CatalogueOuvert)
@@ -343,7 +343,7 @@ class AppConfig:
     #: L'identifiant de la personne servie, posé par `pour` avec `username` : le lien de
     #: désabonnement le nomme parce qu'il ne change jamais, quand le nom pourrait.
     profil_id: str = ""
-    #: L'adresse de l'exploitant, renseignée par `from_env` seul — `pour` n'y touche pas :
+    #: L'adresse de l'exploitant, renseignée par `from_env` seul, `pour` n'y touche pas :
     #: qui avertir d'un échec est un réglage de l'installation, pas une donnée de la
     #: personne servie. `None`, la tournée reste silencieuse : les logs seulement.
     admin_email: str | None = None
@@ -424,8 +424,8 @@ class AppConfig:
     def pour(self, lecteur: Lecteur) -> "AppConfig":
         """La configuration de l'installation, appliquée à une personne.
 
-        Ce qui est personnel — profil, stack, régime de sécurité (`securite`), prénom,
-        destinataires, flux exclus, axes — vient du document
+        Ce qui est personnel, profil, stack, régime de sécurité (`securite`), prénom,
+        destinataires, flux exclus, axes, vient du document
         de la personne, tout le reste de l'environnement. La sortie descend d'un cran,
         `{output}/{id}/` : tout ce qui lit `output_dir` (le digest, `--send-only`,
         `--journal`) suit sans savoir qu'il y a plusieurs personnes. L'identifiant et non
@@ -517,7 +517,7 @@ class AppConfig:
 
         La comparaison retire la casse **et** les accents, comme `categories_installation`
         et le catalogue. C'est délibéré et ce n'est pas une préférence : le libellé
-        réel en porte — « 1 - Alertes et avis CERT-FR ANSSI » —, et un libellé recopié
+        réel en porte, « 1 - Alertes et avis CERT-FR ANSSI », et un libellé recopié
         dans une variable d'environnement les perd régulièrement en route ; `.env.local`
         contient déjà un `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. Une catégorie qu'on
         croit routée et qui ne l'est pas ne fait pas d'erreur : elle repasse par le

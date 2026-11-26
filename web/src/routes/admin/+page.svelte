@@ -5,16 +5,16 @@
 	let { data }: PageProps = $props();
 
 	const format = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-	const quand = (iso: string | null) => (iso ? format.format(new Date(iso)) : '—');
+	const quand = (iso: string | null) => (iso ? format.format(new Date(iso)) : '-');
 	const cout = (couts: { total: number | null; devise: string; tarification_complete: boolean; modeles_sans_tarif: string[] } | null) => {
-		if (!couts) return '—';
+		if (!couts) return '-';
 		if (!couts.tarification_complete) return `? (${couts.modeles_sans_tarif.join(', ')})`;
 		return `${couts.total?.toFixed(6) ?? '0.000000'} ${couts.devise}`;
 	};
 </script>
 
 <svelte:head>
-	<title>Administration — RSSResume</title>
+	<title>Administration, RSSResume</title>
 </svelte:head>
 
 <h1>Administration</h1>

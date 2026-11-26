@@ -33,7 +33,7 @@ function limiteAtteinte(email: string) {
 }
 
 /** Compte un mauvais mot de passe actuel ; un bon remet le compteur à zéro, comme une
- * connexion réussie — sinon la personne resterait bloquée sur /connexion. `erreur` est nulle
+ * connexion réussie, sinon la personne resterait bloquée sur /connexion. `erreur` est nulle
  * quand l'action a réussi, donc que le mot de passe a été vérifié. */
 function noterVerification(email: string, erreur: ErreurIdentifiants | null): void {
 	const limite = contexte().limiteParEmail;

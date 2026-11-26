@@ -1,6 +1,6 @@
 ---
 name: backlog-raf
-description: Reste à faire — liste les items de backlog/todo/ par priorité (1 à 5), avec le nombre d'items par priorité, leur catégorie et ce qui les bloque. Lecture seule.
+description: Reste à faire, liste les items de backlog/todo/ par priorité (1 à 5), avec le nombre d'items par priorité, leur catégorie et ce qui les bloque. Lecture seule.
 disable-model-invocation: true
 ---
 
@@ -26,7 +26,7 @@ qu'ignoré en silence.
 
 Une dépendance est **levée** quand son `BL-NNN` n'a plus de fichier dans `backlog/todo/`. Un item est :
 
-- **à prendre** : catégorie différente de `exploitation` et dépendances toutes levées — c'est ce
+- **à prendre** : catégorie différente de `exploitation` et dépendances toutes levées, c'est ce
   que `/backlog-pop` peut traiter ;
 - **bloqué** : au moins une dépendance encore dans `todo/` (la nommer) ;
 - **à la main** : catégorie `exploitation`, jamais traitée automatiquement.
@@ -42,7 +42,7 @@ total :
 Puis, par priorité croissante, la liste des items, dans l'ordre où `/backlog-pop` les prendrait
 (identifiant croissant à priorité égale) :
 
-`BL-NNN` · catégorie · titre — avec « (attend BL-MMM) » pour un item bloqué et « (à la main) »
+`BL-NNN` · catégorie · titre, avec « (attend BL-MMM) » pour un item bloqué et « (à la main) »
 pour `exploitation`.
 
 Terminer par l'item que `/backlog-pop` prendrait à son prochain appel sans argument : le premier

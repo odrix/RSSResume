@@ -16,7 +16,7 @@
 </script>
 
 <svelte:head>
-	<title>Votre avis — RSSResume</title>
+	<title>Votre avis, RSSResume</title>
 </svelte:head>
 
 <h1>Votre avis</h1>

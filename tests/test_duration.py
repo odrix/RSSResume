@@ -1,8 +1,8 @@
 """La mesure du temps d'écoute, lue dans le fichier audio.
 
 Ce que ces tests protègent : le sous-titre de l'email annonce une durée par catégorie.
-Une durée fausse est pire qu'une durée absente — elle sert à décider si on lance
-l'écoute maintenant — et un fichier illisible ne doit jamais empêcher l'envoi.
+Une durée fausse est pire qu'une durée absente, elle sert à décider si on lance
+l'écoute maintenant, et un fichier illisible ne doit jamais empêcher l'envoi.
 """
 
 import pathlib
@@ -15,7 +15,7 @@ from rssresume.tools import duration
 #: Un en-tête de trame MPEG-1 Layer III, 128 kbit/s, 44100 Hz, sans bourrage.
 #: 0xFF 0xFB : synchronisation, version MPEG-1, layer III.
 #: 0x90      : index de débit 9 (128 kbit/s), index de cadence 0 (44100 Hz).
-#: 0xC4      : mode mono — le champ ne change ni la longueur ni la durée.
+#: 0xC4      : mode mono, le champ ne change ni la longueur ni la durée.
 ENTETE_MPEG1 = bytes((0xFF, 0xFB, 0x90, 0xC4))
 
 #: 144 × 128000 / 44100, arrondi à l'entier inférieur : la longueur que le décodeur

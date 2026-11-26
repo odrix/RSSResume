@@ -97,7 +97,7 @@ class FreshRSSClientTests(unittest.TestCase):
         """00h30 à Paris en été, c'est 22h30 la veille en UTC : l'article disparaissait.
 
         La veille étant déjà livrée et ses articles marqués lus, il n'apparaissait
-        ensuite dans aucun digest — un décalage muet, invisible sans le chercher.
+        ensuite dans aucun digest, un décalage muet, invisible sans le chercher.
         """
         payload = {"items": [{"title": "Publié à 00h30", "published": paris(2026, 8, 23, 0, 30)}]}
 

@@ -5,7 +5,7 @@ liens, un par avis, qui mènent à une page du site sans connexion : un destinat
 par un autre n'a pas de compte, et c'est pourtant lui qu'on veut entendre. La page des
 résumés porte les mêmes boutons pour qui est connecté.
 
-Un vote vaut pour un profil et une journée — la journée que la lettre RACONTE, celle de
+Un vote vaut pour un profil et une journée, la journée que la lettre RACONTE, celle de
 son titre, et non le jour de l'envoi : c'est elle qu'on juge. Un second vote sur la même
 journée remplace le premier, d'où qu'il vienne.
 
@@ -57,8 +57,8 @@ class JourneeVisee:
     """Ce qu'un lien de vote désigne : un profil et une journée, rien d'autre.
 
     L'avis n'en fait pas partie : il passe en paramètre de l'URL, en clair. Signé, il
-    aurait fallu deux jetons par lettre pour la même autorisation — voter sur cette
-    journée —, et la page laisse de toute façon changer d'avis avant d'envoyer.
+    aurait fallu deux jetons par lettre pour la même autorisation, voter sur cette
+    journée, et la page laisse de toute façon changer d'avis avant d'envoyer.
     """
 
     profil_id: str
@@ -131,7 +131,7 @@ class LienRetour:
         self._signataire = signataire
 
     def jeton(self, profil_id: str, jour: dt.date) -> str:
-        """Déterministe : même profil, même journée, même jeton — `--send-only` reste fidèle."""
+        """Déterministe : même profil, même journée, même jeton, `--send-only` reste fidèle."""
         return self._signataire.signer(VERSION, profil_id, jour.isoformat())
 
     @staticmethod
@@ -142,7 +142,7 @@ class LienRetour:
         """La journée que vise le jeton. Altéré, d'une autre clé, d'un autre format ou d'une
         date impossible : `JetonInvalide`."""
         # Importé ici : `sorties` compose les journées par `newsletter`, qui importe ce
-        # module pour ses liens de vote — en tête de fichier, l'import serait circulaire.
+        # module pour ses liens de vote, en tête de fichier, l'import serait circulaire.
         from rssresume.api.sorties import date_valide
 
         champs = self._signataire.verifier(jeton)

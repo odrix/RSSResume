@@ -86,7 +86,7 @@ def build_service(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate daily FreshRSS audio summaries by category.")
     # Pas de défaut ici : « aujourd'hui » se lit dans le fuseau configuré, que seule la
-    # configuration connaît — et l'horloge d'un serveur de cron est souvent en UTC.
+    # configuration connaît, et l'horloge d'un serveur de cron est souvent en UTC.
     parser.add_argument("--date", help="Date to summarize (YYYY-MM-DD). Defaults to today in RSSRESUME_TIMEZONE.")
     parser.add_argument("--no-email", action="store_true", help="Skip sending the digest email.")
     parser.add_argument(
@@ -174,8 +174,8 @@ def send_only(config: AppConfig, day: dt.date) -> int:
     """Renvoie l'email d'une journée déjà produite, sans rien recalculer.
 
     Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est
-    l'envoi seul qui a échoué — un port SMTP filtré, une clé d'API refusée, un domaine
-    non vérifié — la repayer pour retrouver un texte déjà écrit sur le disque n'a aucun
+    l'envoi seul qui a échoué, un port SMTP filtré, une clé d'API refusée, un domaine
+    non vérifié, la repayer pour retrouver un texte déjà écrit sur le disque n'a aucun
     sens. Les journaux du jour portent tout ce que l'email montre.
 
     Ni FreshRSS ni les fournisseurs ne sont sollicités, et rien n'est marqué comme lu :
@@ -196,7 +196,7 @@ def send_only(config: AppConfig, day: dt.date) -> int:
         f"Renvoi de l'email du {day.isoformat()} depuis {day_dir} : "
         f"{len(digests)} catégorie(s), aucun appel IA"
     )
-    # L'introduction s'ouvre sur AUJOURD'HUI — le jour où la lettre arrive — et non sur
+    # L'introduction s'ouvre sur AUJOURD'HUI, le jour où la lettre arrive, et non sur
     # la journée qu'elle raconte. Celle du journal ne resert donc que si l'on renvoie le
     # jour même, ce qui est le cas courant ; sinon elle est recalculée localement, sans
     # aucun appel, comme le promet `--send-only`.
@@ -221,8 +221,8 @@ def journal(config: AppConfig, day: dt.date) -> int:
 
     Les fichiers d'une journée vivent dans un volume, sur un serveur où l'on n'entre que
     par SSH. Cette commande répond aux questions qu'on se pose devant une journée qui
-    s'est mal passée — quel statut, quel seuil a réellement trié, combien ça a coûté,
-    qu'est-ce qui est passé juste à côté — sans avoir à en extraire un fichier.
+    s'est mal passée, quel statut, quel seuil a réellement trié, combien ça a coûté,
+    qu'est-ce qui est passé juste à côté, sans avoir à en extraire un fichier.
 
     Aucun appel, aucun envoi, rien d'écrit : elle ne fait que lire.
     """
@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         console.log("Mode --dry-run : ni email, ni tags, ni marquage comme lu")
     # Le filtrage des drapeaux vit ici, au seul endroit qui les connaît : sans adresse
-    # réglée, ou sans email du passage, la tournée tourne sans alerte — les logs seulement.
+    # réglée, ou sans email du passage, la tournée tourne sans alerte, les logs seulement.
     alerte = AlerteEchecs.depuis_config(config) if config.admin_email and send_email else None
 
     client_freshrss = FreshRSSClient(config, include_read=args.include_read)
@@ -289,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             console.error(f"Tournée : {exc}")
             return 2
-        except Exception as exc:  # noqa: BLE001 — impossible de vérifier --categories si FreshRSS est indisponible
+        except Exception as exc:  # noqa: BLE001, impossible de vérifier --categories si FreshRSS est indisponible
             console.error(f"Tournée : impossible de vérifier --categories ({exc!r})")
             return 2
 
@@ -306,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         # Le catalogue refusé ou corrompu : un message qui dit quoi faire, pas une trace
-        # de pile. Un profil fautif, lui, n'arrive pas jusqu'ici — la tournée l'isole.
+        # de pile. Un profil fautif, lui, n'arrive pas jusqu'ici, la tournée l'isole.
         console.error(f"Tournée : {exc}")
         return 2
     return 1 if echecs else 0

@@ -3,7 +3,7 @@
 Un profil en échec n'était dit que dans les logs du conteneur : l'inscrit s'en
 apercevrait le premier, en ne recevant rien. En fin de tournée, s'il y a eu des
 échecs, un seul email part au transport déjà configuré, qui nomme chaque profil,
-cause résumée, et la commande `--journal` à lancer pour chacun — savoir avant
+cause résumée, et la commande `--journal` à lancer pour chacun, savoir avant
 l'inscrit qu'il n'a rien reçu.
 
 Le destinataire est un réglage de l'installation (`config.admin_email`) :
@@ -22,11 +22,11 @@ from rssresume.protocols import EmailSenderProtocol
 from rssresume.tools import console
 
 #: La cause tenue en une ligne : un repr tronqué dit le type et le message levés.
-#: Plus long, l'email embarquerait une pile que personne ne lit — le journal, lui,
+#: Plus long, l'email embarquerait une pile que personne ne lit, le journal, lui,
 #: garde les détails.
 PLAFOND_CAUSE = 200
 
-#: L'exception qui traverse la tournée peut porter un message en plusieurs lignes —
+#: L'exception qui traverse la tournée peut porter un message en plusieurs lignes -
 #: un traceback, un JSON d'API. Une cause multiligne casserait la ligne du profil
 #: dans le corps de l'alerte ; chaque retour à la ligne est rastérisé.
 SEPARATEUR_LIGNE = " / "
@@ -43,7 +43,7 @@ def resumer_cause(exc: BaseException) -> str:
 class AlerteEchecs:
     """Un seul email à l'exploitant par tournée en échec, par le transport du digest.
 
-    L'expéditeur, lui, est construit sur la configuration dérivée — la même, à
+    L'expéditeur, lui, est construit sur la configuration dérivée, la même, à
     l'exception des destinataires, qui sont l'adresse de l'exploitant. La vérifier
     avant d'envoyer (`is_configured`), c'est ce qui garde le comportement d'une
     installation sans courrier inchangé : les logs seulement.
@@ -56,8 +56,8 @@ class AlerteEchecs:
     def depuis_config(cls, config: AppConfig) -> "AlerteEchecs":
         """L'alerte que `config` institue : le transport du digest, l'adresse de l'exploitant.
 
-        Le transport est celui déjà configuré — SMTP ou Resend, même appel, même
-        expéditeur `SMTP_FROM` — construit sur la configuration dérivée, aux seuls
+        Le transport est celui déjà configuré, SMTP ou Resend, même appel, même
+        expéditeur `SMTP_FROM`, construit sur la configuration dérivée, aux seuls
         destinataires changés : l'adresse de l'exploitant, réglage de l'installation,
         vit dans la configuration et n'a pas besoin d'aller nulle part ailleurs.
         `config.admin_email` doit être renseigné ; `cli.main` ne construit pas
@@ -71,7 +71,7 @@ class AlerteEchecs:
         """Écrit une fois à l'exploitant : nom, cause et rejeu de chaque profil.
 
         Texte seul, sans pièce jointe ni HTML : ce message dit une panne, il n'a
-        rien à montrer. Un transport non configuré est un silence assumé — le jour
+        rien à montrer. Un transport non configuré est un silence assumé, le jour
         de l'installation où l'on n'envoie pas, l'alerte ne doit pas faire échouer
         la tournée qui vient pourtant de finir.
         """
@@ -79,7 +79,7 @@ class AlerteEchecs:
             return
         jour = day.isoformat()
         lignes = [
-            f"- {echec.nom} — {echec.cause}\n"
+            f"- {echec.nom}, {echec.cause}\n"
             f"  Rejouer et diagnostiquer : python -m rssresume --journal --date {jour} "
             f"--profil {echec.nom}"
             for echec in echecs
@@ -92,7 +92,7 @@ class AlerteEchecs:
         )
         if not self._expediteur.is_configured():
             console.error(
-                "Alerte à l'exploitant : transport non configuré, rien n'est envoyé — "
+                "Alerte à l'exploitant : transport non configuré, rien n'est envoyé, "
                 f"{len(echecs)} profil(s) en échec : {', '.join(e.nom for e in echecs)}"
             )
             return

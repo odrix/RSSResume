@@ -99,12 +99,12 @@ def synthesize_long(provider, texte, reponses):
 
 
 class DecoupageTests(unittest.TestCase):
-    """Ce que ces tests protègent : `/v1/audio/speech` refuse une entrée trop longue —
+    """Ce que ces tests protègent : `/v1/audio/speech` refuse une entrée trop longue -
     elle n'est pas tronquée, l'appel échoue et la journée est perdue. Le texte part donc
     en plusieurs appels, dont les audios sont raboutés en un seul fichier."""
 
     #: Trois phrases identiques de 28 signes : sous un plafond de 60, elles se rangent
-    #: deux d'un côté, une de l'autre — deux appels, coupés sur une fin de phrase.
+    #: deux d'un côté, une de l'autre, deux appels, coupés sur une fin de phrase.
     TEXTE = ("Une phrase de trente signes. " * 3).strip()
 
     def test_a_text_over_the_limit_is_sent_in_several_calls(self):
@@ -136,7 +136,7 @@ class DecoupageTests(unittest.TestCase):
 
     def test_the_id3_tag_of_a_resumed_segment_is_dropped(self):
         """Sans cela le parcours des trames s'arrête au tag, et la durée annoncée est
-        celle du premier morceau — le sous-titre de l'email promettrait la moitié."""
+        celle du premier morceau, le sous-titre de l'email promettrait la moitié."""
         segments = [tag_id3(b"pochette" * 4) + mp3(10) for _ in range(2)]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -145,7 +145,7 @@ class DecoupageTests(unittest.TestCase):
             with mock.patch.object(OpenAIProvider, "_post", side_effect=segments):
                 generator.synthesize(self.TEXTE, chemin)
 
-            # Le tag du premier est gardé — c'est celui du fichier —, celui du second non.
+            # Le tag du premier est gardé, c'est celui du fichier, celui du second non.
             self.assertEqual(segments[0] + mp3(10), chemin.read_bytes())
             self.assertAlmostEqual(20 * DUREE_TRAME, duration.seconds(chemin), places=5)
 

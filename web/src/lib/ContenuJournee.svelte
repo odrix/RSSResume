@@ -71,7 +71,7 @@
 						{:else}
 							<span>{lien.titre}</span>
 						{/if}
-						{#if lien.source}<span class="attenue"> — {lien.source}</span>{/if}
+						{#if lien.source}<span class="attenue">, {lien.source}</span>{/if}
 					</li>
 				{/each}
 			</ul>

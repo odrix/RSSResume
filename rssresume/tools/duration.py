@@ -2,7 +2,7 @@
 
 Le sous-titre de l'email annonce un temps d'écoute par catégorie. L'estimer depuis le
 nombre de mots du résumé se trompait de dix à vingt pour cent selon la voix du
-fournisseur — un « 3 min » affiché sur quatre minutes trente est pire qu'un temps absent,
+fournisseur, un « 3 min » affiché sur quatre minutes trente est pire qu'un temps absent,
 puisqu'il sert justement à décider si on lance l'écoute maintenant.
 
 Deux formats à lire, parce que c'est ce que le projet écrit : le `.wav` d'`espeak`, que
@@ -21,7 +21,7 @@ _SYNC = 0xFFE0
 
 #: Débits du Layer III, en kbit/s, indexés par le champ `bitrate_index` de l'en-tête.
 #: Deux tables : MPEG-1 d'un côté, MPEG-2 et 2.5 de l'autre. L'index 0 (libre) et
-#: l'index 15 (invalide) sont à zéro — une trame qui les porte n'est pas une trame.
+#: l'index 15 (invalide) sont à zéro, une trame qui les porte n'est pas une trame.
 _BITRATES_MPEG1 = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0)
 _BITRATES_MPEG2 = (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0)
 
@@ -74,7 +74,7 @@ def _mp3(path: pathlib.Path) -> float | None:
     Pas de règle de trois sur la taille du fichier : elle suppose un débit constant, que
     rien ne garantit, et compte les tags comme du son. Parcourir les trames donne la
     durée exacte en débit constant comme en débit variable, et un fichier de synthèse
-    fait quelques milliers de trames — le parcours est immédiat.
+    fait quelques milliers de trames, le parcours est immédiat.
     """
     data = path.read_bytes()
     position = apres_id3(data)
@@ -101,13 +101,13 @@ def _mp3(path: pathlib.Path) -> float | None:
 def apres_id3(data: bytes) -> int:
     """L'offset du son, une fois passé le tag ID3v2 s'il y en a un.
 
-    Le tag est en tête et peut peser plusieurs kilo-octets — une pochette d'album y
+    Le tag est en tête et peut peser plusieurs kilo-octets, une pochette d'album y
     tient. Le chercher trame par trame finirait par trouver une fausse synchronisation
     dans une image.
 
     Publique parce qu'elle a un second appelant : `audio.py` raboute les morceaux d'une
     synthèse découpée, et chaque morceau arrive avec son propre tag. Laissé au milieu du
-    fichier, il arrêterait le parcours des trames ici même — la durée annoncée serait
+    fichier, il arrêterait le parcours des trames ici même, la durée annoncée serait
     celle du premier morceau seulement.
     """
     if not data.startswith(b"ID3") or len(data) < 10:

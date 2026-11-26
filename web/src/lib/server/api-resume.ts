@@ -68,7 +68,7 @@ export class ErreurApi extends Error {
  * `Profil` complet passé par erreur n'enverrait ni `id` ni `modifie_le`, que l'API seule
  * attribue.
  *
- * En `PUT` (`fusion`), le serveur n'applique que les clés présentes dans le corps — une
+ * En `PUT` (`fusion`), le serveur n'applique que les clés présentes dans le corps, une
  * clé absente garde sa valeur stockée, un `null` explicite remet à son défaut (web/API.md).
  * Le client n'envoie donc que ce qu'il édite : `axes` absent garde ceux du profil, et le
  * `categories: null` de « tout est coché » part tel quel, car omettre la clé ne veut plus
@@ -257,8 +257,8 @@ export class ClientApiResume {
 			return (await reponse.json()) as T;
 		} catch (cause) {
 			// Un corps qui n'est pas du JSON, ou un délai qui expire en pleine lecture. Rendus en
-			// `ErreurApi` comme une API muette, pour que les appelants qui font « au mieux » —
-			// l'heure du passage dans la bienvenue, la liste des métiers — les rattrapent aussi
+			// `ErreurApi` comme une API muette, pour que les appelants qui font « au mieux » -
+			// l'heure du passage dans la bienvenue, la liste des métiers, les rattrapent aussi
 			// au lieu de laisser passer une 500 après coup.
 			console.error(`API de résumé : réponse illisible (${methode} ${chemin}) :`, cause);
 			throw new ErreurApi(0, 'Le service de résumé a rendu une réponse illisible.');

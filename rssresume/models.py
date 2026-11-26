@@ -9,7 +9,7 @@ from typing import Callable, Iterable
 
 #: Fourchette des articles « à surveiller » : notés assez haut pour mériter un lien dans
 #: l'email, trop bas pour entrer dans le résumé raconté. En dessous de 4, l'article n'a
-#: rien à faire dans la journée ; à 7, il est retenu — et entre les deux se trouvent
+#: rien à faire dans la journée ; à 7, il est retenu, et entre les deux se trouvent
 #: exactement ceux dont on veut le titre sans vouloir en entendre parler.
 WATCHLIST_MIN = 4
 WATCHLIST_MAX = 6
@@ -34,8 +34,8 @@ class SelectionRule:
     """
 
     seuil: int
-    #: Seuil de secours, appliqué à la journée entière — et non aux seuls articles
-    #: manquants — quand le seuil normal ne retient pas `minimum` articles. Égal au
+    #: Seuil de secours, appliqué à la journée entière, et non aux seuls articles
+    #: manquants, quand le seuil normal ne retient pas `minimum` articles. Égal au
     #: seuil, ou supérieur, il ne fait jamais rien.
     seuil_repli: int
     #: Nombre de retenus en dessous duquel le repli s'applique. `0` le désactive.
@@ -47,7 +47,7 @@ class SelectionRule:
 
         Le repli abaisse le seuil pour tout le monde : c'est ce qui le distingue d'un
         remplissage jusqu'à `minimum`. Une journée peut donc rendre plus de `minimum`
-        articles — seul le plafond la borne.
+        articles, seul le plafond la borne.
         """
         atteints = sum(1 for score in scores if score >= self.seuil)
         if atteints >= self.minimum:
@@ -90,8 +90,8 @@ class Note:
     """Ce que le scoring a produit pour un article, en entier.
 
     Le score seul pilotait la sélection et le reste était jeté. `thematique` sert
-    maintenant à regrouper les sujets dans l'audio, et `angle` — la phrase qui dit
-    en quoi l'article compte pour ce profil — est passé au résumeur : c'est
+    maintenant à regrouper les sujets dans l'audio, et `angle`, la phrase qui dit
+    en quoi l'article compte pour ce profil, est passé au résumeur : c'est
     exactement le contexte qui lui manquait, et il est déjà payé.
 
     `angle` n'est pas persisté dans FreshRSS : une phrase entière n'est pas un tag.
@@ -116,7 +116,7 @@ def groupees_par_thematique(
 
     Le tri par score seul faisait sauter du réglementaire au cyber, puis au marché, puis
     de nouveau au réglementaire : à l'écoute, aucune transition n'est possible. Regrouper
-    ne coûte aucun appel — la thématique est déjà notée — et l'urgence reste respectée :
+    ne coûte aucun appel, la thématique est déjà notée, et l'urgence reste respectée :
     un groupe est classé sur son meilleur article, et l'ordre à l'intérieur du groupe
     reste le score décroissant.
 
@@ -141,7 +141,7 @@ class Ephemeride:
     `jour` est celui de l'ENVOI, jamais celui que le digest raconte. Les deux diffèrent
     tous les matins : le passage de 7 h résume la veille (`RSSRESUME_SCHEDULE_DAYS_BACK`),
     et une lettre qui s'ouvrirait sur la date d'hier daterait d'un jour dans la boîte de
-    son lecteur. Le titre, lui, garde la date du contenu — c'est ce qu'il nomme.
+    son lecteur. Le titre, lui, garde la date du contenu, c'est ce qu'il nomme.
 
     Il est porté ici plutôt que déduit à l'affichage parce que `fete` et `texte` en
     dépendent tous les deux : les trois doivent parler de la même date, et un seul
@@ -251,7 +251,7 @@ class CategoryDigest:
         """Articles retenus et leurs URL, dans l'ordre de lecture du résumé.
 
         Dérivé de `selected`, pas stocké : deux listes à tenir à jour finiraient par
-        diverger. Le résumé, lui, ne cite aucune URL — le modèle les inventerait — mais
+        diverger. Le résumé, lui, ne cite aucune URL, le modèle les inventerait, mais
         l'email doit rester cliquable, et ces liens en sont le seul moyen.
         """
         return [
@@ -278,8 +278,8 @@ class CategoryDigest:
 class EchecProfil:
     """Un profil dont le digest a échoué, et pour quoi.
 
-    Les échecs de la tournée traversent les modules — vers l'alerte à l'exploitant, vers
-    l'utilisateur — portés par un objet nommé, pas par un tuple nu : un jour la cause
+    Les échecs de la tournée traversent les modules, vers l'alerte à l'exploitant, vers
+    l'utilisateur, portés par un objet nommé, pas par un tuple nu : un jour la cause
     gagne un champ, et la tournée n'a pas à être repassée bout à bout.
     """
 

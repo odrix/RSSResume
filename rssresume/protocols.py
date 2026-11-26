@@ -53,7 +53,7 @@ class MontageServiceProtocol(Protocol):
 
     Jamais `None`, comme l'éphéméride : le service sait toujours quoi rendre, quitte à
     descendre sur l'assemblage local. Un `texte` vide, en revanche, veut dire qu'il n'y
-    avait rien à dire — et c'est le seul cas où aucun audio n'est produit.
+    avait rien à dire, et c'est le seul cas où aucun audio n'est produit.
     """
 
     def ecrire(
@@ -89,7 +89,7 @@ class CertfrServiceProtocol(Protocol):
 
     Deux choses seulement, et la seconde n'est pas décorative : la journée triée, et la
     liste contre laquelle elle l'a été. C'est cette liste que le journal de la catégorie
-    fixe, à la place de l'empreinte de scoring — qui n'a ici aucun sens, puisque aucun
+    fixe, à la place de l'empreinte de scoring, qui n'a ici aucun sens, puisque aucun
     prompt n'a servi.
     """
 
@@ -131,7 +131,7 @@ class EmailSenderProtocol(Protocol):
         envoie un message de texte pur, comme avant.
 
         `desabonnement` est l'URL du lien de désabonnement, et non des en-têtes tout
-        faits : leur forme est une affaire de transport — le SMTP les écrit dans le
+        faits : leur forme est une affaire de transport, le SMTP les écrit dans le
         message, Resend les reçoit dans son JSON. `None` : aucun en-tête.
         """
         ...

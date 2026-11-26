@@ -49,7 +49,7 @@ async function leve(promesse: unknown): Promise<unknown> {
 	throw new Error("rien n'a été levé");
 }
 
-describe('/resumes/[username]/[date] — le vote', () => {
+describe('/resumes/[username]/[date], le vote', () => {
 	let env: Env;
 	let bea: Utilisateur;
 	let admin: Utilisateur;

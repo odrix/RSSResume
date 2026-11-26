@@ -3,11 +3,11 @@
 Le digest est un travail nocturne que personne ne regarde : un 429 du fournisseur ou un
 502 devant FreshRSS suffisait à ce que la journée n'existe pas. Trois tentatives, un
 délai qui double, et un peu de hasard pour ne pas repartir pile au même instant qu'un
-autre client — à une exécution par jour, c'est tout ce que la résilience demande, et
+autre client, à une exécution par jour, c'est tout ce que la résilience demande, et
 c'est vingt lignes plutôt qu'une passerelle de plus à exploiter.
 
 Ce module ne connaît ni FreshRSS ni les fournisseurs de LLM : il reçoit un appel à
-tenter et le rejoue. D'où sa testabilité sans réseau — une doublure qui échoue N fois
+tenter et le rejoue. D'où sa testabilité sans réseau, une doublure qui échoue N fois
 avant de réussir suffit à le juger.
 """
 
@@ -33,12 +33,12 @@ BASE_DELAY = 1.0
 #: et un fournisseur qui demande plus que ça ne sera pas rétabli dans la minute.
 MAX_DELAY = 30.0
 #: Les codes qui valent d'être rejoués : 429 pour le quota, 5xx pour le serveur d'en face.
-#: Tout autre 4xx vient de nous — même requête, même réponse : la rejouer ne fait que perdre
+#: Tout autre 4xx vient de nous, même requête, même réponse : la rejouer ne fait que perdre
 #: du temps et, sur un edit-tag, risquerait de réécrire ce qui a déjà été écrit.
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 #: Ce que la machine annonce en sortant. Sans lui, `urllib` signe « Python-urllib/3.x »,
 #: signature que les pare-feux applicatifs bannissent : les sites d'éditeurs rendent un
-#: 403, et Cloudflare — devant l'API de Resend, entre autres — un « error code: 1010 »
+#: 403, et Cloudflare, devant l'API de Resend, entre autres, un « error code: 1010 »
 #: qui ne ressemble à rien de ce que le service documente. Un nom honnête suffit à passer.
 USER_AGENT = "Mozilla/5.0 (compatible; RSSResume/1.0)"
 
@@ -55,8 +55,8 @@ def retry[T](
     remplacer l'attente sans patcher `time` pour tout le processus.
 
     L'exception d'origine ressort intacte quand les tentatives sont épuisées ou que
-    l'échec ne se rejoue pas : c'est l'appelant qui sait la traduire — `LLMError` chez
-    un fournisseur, `RuntimeError` côté FreshRSS — et il ne doit pas avoir à démêler
+    l'échec ne se rejoue pas : c'est l'appelant qui sait la traduire, `LLMError` chez
+    un fournisseur, `RuntimeError` côté FreshRSS, et il ne doit pas avoir à démêler
     une erreur de transport d'une erreur de réessai.
     """
     for tentative in range(1, attempts + 1):

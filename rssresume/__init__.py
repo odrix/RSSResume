@@ -12,7 +12,7 @@ Découpage par thème technique :
 - `audio`      : synthèse vocale
 - `pricing`    : grille de tarifs et coût d'un appel
 - `runlog`     : journal `<categorie>.log.json` par catégorie et par jour
-- `external/`  : FreshRSS et SMTP — ce que l'on ne contrôle pas
+- `external/`  : FreshRSS et SMTP, ce que l'on ne contrôle pas
 - `llm/`       : tout ce qui parle à un modèle (voir `llm/__init__.py`)
 - `tools/`     : console, texte, lecture d'un avis de vulnérabilité
 """

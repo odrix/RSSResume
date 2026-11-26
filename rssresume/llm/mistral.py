@@ -3,7 +3,7 @@
 Deux écarts avec OpenAI, et ce sont eux qui justifient d'avoir séparé les adaptateurs :
 
 - les complétions sont compatibles, mais ne connaissent ni `reasoning_effort` ni
-  `max_completion_tokens` — les envoyer fait un 400 ;
+  `max_completion_tokens`, les envoyer fait un 400 ;
 - la synthèse vocale ne l'est pas du tout : le champ s'appelle `voice_id`, le format
   `response_format`, il n'y a pas de consignes de diction, et la réponse est un objet
   JSON dont l'audio est encodé en base64 plutôt que le fichier lui-même.
@@ -55,7 +55,7 @@ class MistralProvider(LLMProvider):
     def speech_payload(self, voice: Voice, text: str) -> dict:
         """`voice.instructions` est ignoré : `/audio/speech` n'a pas de champ pour lui.
 
-        Le fournisseur n'en déclare d'ailleurs aucune dans `providers.json` — chez lui,
+        Le fournisseur n'en déclare d'ailleurs aucune dans `providers.json`, chez lui,
         tout se joue dans le choix de la voix.
         """
         return {

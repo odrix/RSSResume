@@ -208,7 +208,7 @@ def ecrire_journee_certfr(racine):
         "categorie": "1 - Alertes et avis CERT-FR ANSSI",
         "date": JOUR.isoformat(),
         "parametres": {"traitement": "certfr", "composants": 4, "empreinte_stack": "abc123def456"},
-        "resume": "3 avis CERT-FR aujourd'hui, 1 touche la stack : Keycloak — "
+        "resume": "3 avis CERT-FR aujourd'hui, 1 touche la stack : Keycloak, "
         "exécution de code arbitraire à distance.",
         "resultat": {"statut": "deterministe", "articles": 3, "retenus": 1, "audio": None},
         "couts": {"devise": "USD", "total": 0.0, "appels": []},
@@ -382,7 +382,7 @@ class MemeLettreTests(unittest.TestCase):
             self.assertEqual(self._sans_heure(corps), self._sans_heure(rejoue["body"]))
             self.assertEqual(self._sans_heure(html), self._sans_heure(rejoue["html"]))
             self.assertIn(f"Se désabonner : {rejoue['desabonnement']}", rejoue["body"])
-            # Les liens de vote aussi : signés pour la même journée, ils sont identiques —
+            # Les liens de vote aussi : signés pour la même journée, ils sont identiques -
             # les égalités ci-dessus le prouvent, encore faut-il qu'ils y soient.
             for rendu in (corps, html, rejoue["body"], rejoue["html"]):
                 self.assertIn(f"https://veille.example.com/retour/v1.{self.PROFIL_ID}.{JOUR.isoformat()}.", rendu)

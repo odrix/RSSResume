@@ -3,12 +3,12 @@
 Un `LLMProvider` reçoit ses réglages au constructeur et sait faire cinq choses :
 noter des articles, résumer un article, écrire le digest d'une catégorie, rendre
 l'éphéméride d'une date, dire un texte. Ce sont ces cinq opérations que le reste du
-projet appelle — jamais un endpoint, jamais un payload.
+projet appelle, jamais un endpoint, jamais un payload.
 
 La classe de base fait tout ce qui ne dépend pas du fournisseur : assembler les
 prompts, découper le lot de notation, relire les réponses, tenir la comptabilité.
 Une sous-classe (`openai.py`, `mistral.py`) ne redéfinit que ce qui diffère
-vraiment — la forme d'une requête et celle d'une réponse, soit quatre méthodes
+vraiment, la forme d'une requête et celle d'une réponse, soit quatre méthodes
 courtes. Un troisième fournisseur, c'est un fichier de plus et un bloc dans
 `providers.json`, rien d'autre.
 """
@@ -49,7 +49,7 @@ class TruncatedResponse(LLMError):
 
     Nommée à part parce qu'elle se rattrape là où les autres échecs ne se rattrapent
     pas : sur la notation, un lot deux fois plus court tient dans le même plafond. Pour
-    les autres actions, elle reste ce qu'elle a toujours été — une `LLMError` fatale.
+    les autres actions, elle reste ce qu'elle a toujours été, une `LLMError` fatale.
     """
 
 
@@ -157,7 +157,7 @@ class LLMProvider:
 
         `stack_declaree` dit si l'on sait ce que la personne exploite, et rien d'autre :
         c'est ce qui décide du détail donné sur les versions d'une CVE. La liste elle-même
-        ne monte pas jusqu'ici — elle a déjà servi, article par article, à poser le champ
+        ne monte pas jusqu'ici, elle a déjà servi, article par article, à poser le champ
         « stack » du payload. `securite` dit qui écoute : il module ce même détail.
         """
         return self._chat(
@@ -170,7 +170,7 @@ class LLMProvider:
         """L'événement du domaine survenu à cette date, ou `AUCUN` si le modèle n'en sait rien.
 
         Un appel par journée, et non par catégorie : il ouvre la lettre entière. La
-        réponse n'est pas relue ici — c'est `ephemeride.py` qui décide si elle est
+        réponse n'est pas relue ici, c'est `ephemeride.py` qui décide si elle est
         exploitable, et vers quoi descendre sinon.
         """
         return self._chat(EPHEMERIDE, prompts.ephemeride_system(), prompts.ephemeride_user(day))
@@ -189,7 +189,7 @@ class LLMProvider:
     ) -> str:
         """Le texte de l'audio unique d'une journée, celui qui part en synthèse vocale.
 
-        Un appel par journée et non par catégorie, comme l'éphéméride — et seulement en
+        Un appel par journée et non par catégorie, comme l'éphéméride, et seulement en
         mode `global` : le mode par catégorie ne le paie jamais. L'entrée est faite des
         sujets de toutes les catégories, déjà remis dans un seul ordre, et des constats
         que les catégories déterministes ont rédigés sans modèle.
@@ -219,8 +219,8 @@ class LLMProvider:
         """Empreinte du prompt de notation, modèle compris.
 
         Sert de clé de cache : tant qu'elle ne change pas, un article déjà noté n'est pas
-        renoté. Changer de profil, de barème, de modèle — ou de fournisseur, puisque le
-        modèle en dépend — produit une empreinte différente et déclenche la renotation.
+        renoté. Changer de profil, de barème, de modèle, ou de fournisseur, puisque le
+        modèle en dépend, produit une empreinte différente et déclenche la renotation.
         """
         return processing.scoring_fingerprint(profil, self._settings.call(SCORING).model, axes)
 
@@ -277,7 +277,7 @@ class LLMProvider:
         Un lot qui ne tient pas dans le plafond de sortie tuait la journée entière. Il
         n'y a pourtant rien à comprendre : la même consigne sur deux fois moins
         d'articles rend deux fois moins de JSON. On redescend donc jusqu'à
-        `SCORING_MIN_BATCH` — en dessous, ce n'est plus la taille qui est en cause, et
+        `SCORING_MIN_BATCH`, en dessous, ce n'est plus la taille qui est en cause, et
         insister ne ferait que repayer le même appel.
         """
         try:
@@ -341,7 +341,7 @@ def adapters() -> dict[str, type[LLMProvider]]:
 def build(settings: Settings) -> LLMProvider:
     """Le fournisseur décrit par ces réglages. Erreur claire s'il n'a pas d'adaptateur.
 
-    Un fournisseur peut être déclaré dans `providers.json` sans adaptateur — une
+    Un fournisseur peut être déclaré dans `providers.json` sans adaptateur, une
     passerelle compatible qu'on n'a pas nommée ainsi. Le dire ici vaut mieux que
     laisser la requête partir dans le mauvais dialecte.
     """
@@ -359,7 +359,7 @@ def for_action(action: str) -> LLMProvider | None:
 
     `None` n'est pas une erreur : c'est ce qui fait retomber le résumé sur l'extractif
     local et la synthèse sur `espeak`. Chaque action a son fournisseur, donc sa propre
-    clé — une action sans clé n'emprunte jamais celle d'une autre.
+    clé, une action sans clé n'emprunte jamais celle d'une autre.
     """
     settings = providers.settings(providers.chosen(action))
     return build(settings) if settings.configured else None

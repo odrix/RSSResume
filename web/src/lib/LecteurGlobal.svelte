@@ -1,6 +1,6 @@
 <!--
 	Le mini-lecteur du layout : la journée en cours d'écoute, quand la page visitée ne lui offre
-	pas d'emplacement plein. Il ne porte pas l'audio — le `LecteurAudio` le fait, hors markup —
+	pas d'emplacement plein. Il ne porte pas l'audio, le `LecteurAudio` le fait, hors markup -
 	et ne rend donc rien du tout tant qu'aucune piste n'est lancée : pas de lecteur vide.
 
 	Une réserve de hauteur suit le pied de page, pour que le mini-lecteur, fixé en bas, ne

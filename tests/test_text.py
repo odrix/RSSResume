@@ -134,7 +134,7 @@ class CasefoldAsciiTests(unittest.TestCase):
 
 class CleTriNaturelTests(unittest.TestCase):
     """Le tri naturel des libellés de catégories : le préfixe numérique compte comme un
-    nombre, et non comme du texte — « 11 » avant « 2 » serait l'inverse de la numérotation
+    nombre, et non comme du texte, « 11 » avant « 2 » serait l'inverse de la numérotation
     choisie."""
 
     def test_a_numeric_prefix_sorts_numerically(self):
@@ -196,7 +196,7 @@ class ContainsWordsTests(unittest.TestCase):
 
 class DecoupeTests(unittest.TestCase):
     """Ce que ces tests protègent : un texte qui dépasse le plafond du fournisseur de
-    synthèse n'est pas tronqué, il est refusé — et la journée est perdue. Le découpage
+    synthèse n'est pas tronqué, il est refusé, et la journée est perdue. Le découpage
     doit donc tenir le plafond sans jamais perdre un mot."""
 
     def test_a_text_under_the_limit_stays_whole(self):

@@ -2,7 +2,7 @@
 
 Ce module ne parle à aucun fournisseur : il reçoit du texte et rend des dictionnaires.
 Ce découpage lui vaut d'être le seul endroit à connaître les défauts d'une réponse de
-modèle — JSON enveloppé de Markdown, lot incomplet, numéro recopié de travers — et
+modèle, JSON enveloppé de Markdown, lot incomplet, numéro recopié de travers, et
 d'être testable sans réseau.
 
 Lancé seul (`python -m rssresume.llm.processing`), il fait la démonstration complète du
@@ -38,7 +38,7 @@ def scoring_fingerprint(profil: str | None, model: str, axes: Axes | None = None
 
     Sert de clé de cache côté tags FreshRSS : toute retouche du profil, des axes, du
     barème ou du modèle produit une empreinte différente et déclenche donc la renotation.
-    C'est ce qui rend le profil injectable sans risque — changer de profil ne peut pas
+    C'est ce qui rend le profil injectable sans risque, changer de profil ne peut pas
     laisser traîner des scores calculés contre l'ancien.
     """
     material = f"{prompts.scoring_system(profil, axes)}\n{model}"
@@ -57,7 +57,7 @@ def read_scores(raw: str, lot: list[dict], axes: Axes | None = None) -> list[dic
     d'envoi. `notee` est faux quand le modèle n'a rien rendu pour cet article : trente-neuf
     notes sur quarante faisaient échouer la catégorie en cours et toutes les suivantes,
     alors que le réalignement sait déjà où sont les trous. L'article manquant sort donc
-    avec un score nul et le drapeau baissé — c'est à l'appelant de décider ce qu'il en
+    avec un score nul et le drapeau baissé, c'est à l'appelant de décider ce qu'il en
     fait, et `digest.py` choisit de ne pas le noter du tout plutôt que de figer un zéro.
 
     Une réponse dont RIEN n'est exploitable reste une erreur : ce n'est plus un trou dans
@@ -250,7 +250,7 @@ def _demo() -> None:
 
     notes = noteur.score_articles(EXEMPLES)
     for note in notes:
-        print(f"[{note['score']:>2}/10] {note['thematique']:<13} {note['id']} — {note['angle']}")
+        print(f"[{note['score']:>2}/10] {note['thematique']:<13} {note['id']}, {note['angle']}")
 
     print()
     par_id = {str(a["id"]): a for a in EXEMPLES}

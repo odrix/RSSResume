@@ -7,7 +7,7 @@ Ce que ces tests protègent, dans l'ordre d'importance :
   ne doit plus décider de ce qu'on entend en premier ;
 - la phrase d'une catégorie déterministe est relayée telle quelle, jamais refaite : la
   faire réécrire par un modèle réintroduirait l'invention là où `certfr/` l'a écartée ;
-- les phrases de plomberie — « Aucun article retenu sur 3 (seuil 7) » — ne partent
+- les phrases de plomberie, « Aucun article retenu sur 3 (seuil 7) » : ne partent
   jamais à la voix ;
 - une journée déjà payée ne se perd pas sur le dernier appel : sans fournisseur comme
   après un échec, l'assemblage local prend la suite et `origine` le dit.
@@ -35,7 +35,7 @@ ENVOI = dt.date(2026, 8, 31)
 EPHEMERIDE = Ephemeride(
     jour=ENVOI,
     fete="saint Aristide",
-    texte="1991 — l'Ukraine proclame son indépendance.",
+    texte="1991, l'Ukraine proclame son indépendance.",
     origine="table",
 )
 
@@ -55,7 +55,7 @@ def article(titre="Un titre", contenu="Le corps de l'article."):
 def racontee(categorie, resume, sujets=None, contenus=None):
     """Une catégorie résumée : pas de marqueur, des articles retenus et leurs notes.
 
-    `sujets` est une suite de (titre, score, thematique) — c'est tout ce dont l'ordre du
+    `sujets` est une suite de (titre, score, thematique), c'est tout ce dont l'ordre du
     jour a besoin. Par défaut, un seul sujet dont le titre porte la catégorie, pour que
     deux catégories montées dans le même test ne partagent pas un identifiant.
     """
@@ -174,7 +174,7 @@ class OrdreDuJourTests(unittest.TestCase):
         )
 
         appel, = provider.appels
-        # Le groupe cyber ouvre — il porte le meilleur score — puis le réglementaire
+        # Le groupe cyber ouvre, il porte le meilleur score, puis le réglementaire
         # d'un bloc, ses deux articles réunis alors qu'ils venaient de deux catégories.
         self.assertEqual(
             ["Faille grave", "Faille mineure", "DORA", "NIS2"],
@@ -217,7 +217,7 @@ class CeQuiPartAuModeleTests(unittest.TestCase):
         jour = provider.appels[0]["jour"]
         self.assertEqual(
             "Lundi 31 août 2026, saint Aristide. "
-            "1991 — l'Ukraine proclame son indépendance.",
+            "1991, l'Ukraine proclame son indépendance.",
             jour,
         )
 

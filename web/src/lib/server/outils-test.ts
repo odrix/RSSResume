@@ -35,14 +35,14 @@ export class FauxHacheur extends HacheurMotDePasse {
 	}
 }
 
-/** Le jeton d'un lien envoyé — confirmation ou réinitialisation —, relu dans le texte du message. */
+/** Le jeton d'un lien envoyé, confirmation ou réinitialisation, relu dans le texte du message. */
 export function jetonDuLien(texte: string): string {
 	const trouve = /\/(?:confirmer|reinitialiser)\/([A-Za-z0-9_-]+)/.exec(texte);
 	if (!trouve) throw new Error(`pas de lien dans : ${texte}`);
 	return trouve[1];
 }
 
-/** Laisse partir ce qui a été différé par `setImmediate` — le lien du mot de passe oublié. */
+/** Laisse partir ce qui a été différé par `setImmediate`, le lien du mot de passe oublié. */
 export function envoisDifferes(): Promise<void> {
 	return new Promise((resoudre) => setImmediate(resoudre));
 }

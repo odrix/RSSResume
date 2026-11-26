@@ -11,7 +11,7 @@ touche, moi.
 D'où trois opérations, toutes hors modèle :
 
 1. **apparier** le titre et la description sur la liste des composants (`stack.py`) ;
-2. **graduer** l'avis sur l'impact que le CERT-FR y annonce lui-même — la description
+2. **graduer** l'avis sur l'impact que le CERT-FR y annonce lui-même, la description
    d'un avis nomme ce que la faille permet, dans un vocabulaire fixe : « exécution de
    code arbitraire à distance », « élévation de privilèges », « déni de service » ;
 3. **rédiger** une phrase, une seule, qui liste ce qui touche la stack et à quel titre.
@@ -34,7 +34,7 @@ class Criticite:
 
     Le rang n'est pas une échelle du CERT-FR : ses avis ne portent ni score CVSS ni
     cotation de gravité, seulement la liste de ce que la faille permet. C'est donc un
-    classement local, celui de l'exploitant — prendre la main devant la couper — et il
+    classement local, celui de l'exploitant : prendre la main devant la couper, et il
     ne sert qu'à mettre en tête de la phrase l'avis qu'on veut lire en premier.
     """
 
@@ -57,7 +57,7 @@ class Criticite:
 #:
 #: Plusieurs libellés partagent un rang : ce sont des impacts distincts, que le CERT-FR
 #: nomme distinctement, et qu'on ne veut pas départager. Chacun a son entrée plutôt que
-#: d'être la variante d'un autre — la phrase du digest nomme ce qui a été reconnu, elle
+#: d'être la variante d'un autre, la phrase du digest nomme ce qui a été reconnu, elle
 #: ne le traduit pas.
 ECHELLE = (
     Criticite(9, "exécution de code arbitraire à distance"),
@@ -75,7 +75,7 @@ ECHELLE = (
     Criticite(1, "déni de service"),
 )
 
-#: Ce qu'on écrit quand la description n'annonce aucun impact connu — un bulletin
+#: Ce qu'on écrit quand la description n'annonce aucun impact connu, un bulletin
 #: d'actualité, un avis dont l'éditeur n'a rien spécifié, une tournure inédite. Un repli
 #: nommé plutôt qu'un champ vide : la phrase doit dire qu'elle ne sait pas, sinon le
 #: lecteur croit à une faille bénigne.
@@ -101,21 +101,21 @@ class Avis:
 
     @property
     def dit(self) -> str:
-        """« Keycloak — élévation de privilèges », le fragment que la phrase enfile.
+        """« Keycloak, élévation de privilèges », le fragment que la phrase enfile.
 
         Le composant et non le titre de l'avis : le titre est déjà dans la liste « À
         lire » de l'email, mot pour mot, et il dit « Multiples vulnérabilités dans X »
         là où on veut lire X. Un avis qui touche deux composants les nomme tous les deux
-        — c'est précisément le jour où l'on veut le savoir.
+,        c'est précisément le jour où l'on veut le savoir.
         """
-        return f"{_enumere(self.composants)} — {self.criticite.libelle}"
+        return f"{_enumere(self.composants)}, {self.criticite.libelle}"
 
 
 class Revue:
     """Ce que le tri déterministe a fait d'une journée d'avis.
 
-    Elle porte les trois nombres dont la phrase a besoin — les avis lus, ceux qui
-    touchent, les composants surveillés — parce qu'une phrase qui dirait « 2 avis vous
+    Elle porte les trois nombres dont la phrase a besoin, les avis lus, ceux qui
+    touchent, les composants surveillés, parce qu'une phrase qui dirait « 2 avis vous
     concernent » sans dire sur combien ne se juge pas. Deux sur deux et deux sur trente
     ne se lisent pas de la même façon à sept heures du matin.
     """
@@ -192,7 +192,7 @@ class CertfrService:
 
         Le tri est stable : à impact égal, l'ordre reste celui du flux, c'est-à-dire
         celui de publication. Deux exécutions de la même journée rendent donc la même
-        phrase, mot pour mot — c'est ce qui rend `--send-only` et le journal comparables.
+        phrase, mot pour mot, c'est ce qui rend `--send-only` et le journal comparables.
         """
         apparies = [avis for avis in (self._avis(article) for article in articles) if avis]
         apparies.sort(key=lambda avis: avis.criticite.rang, reverse=True)

@@ -7,7 +7,7 @@ Ce que ces tests protègent :
 - l'alerte ne coûte rien à la tournée : sans échec, sans adresse, sans transport configuré,
   ou l'échec d'elle-même, ni le service ni le marquage ne changent ;
 - le filtrage `--dry-run` / `--no-email` vit dans `cli.main`, seul endroit qui connaît les
-  drapeaux — la tournée reçoit le collaborateur, ou pas de collaborateur du tout.
+  drapeaux, la tournée reçoit le collaborateur, ou pas de collaborateur du tout.
 """
 
 import contextlib
@@ -130,7 +130,7 @@ class TourneeAlerteTests(unittest.TestCase):
     def test_a_failed_alert_neither_stops_the_run_nor_the_marking(self):
         """Un SMTP mort au pire moment ne doit pas transformer une tournée finie en échec.
 
-        Un profil en échec diffère déjà le marquage par construction — c'est la règle
+        Un profil en échec diffère déjà le marquage par construction, c'est la règle
         d'isolement de la tournée : le test vérifie que la décision de marquage est prise
         comme avant, l'échec de l'alerte laissant le rendu des échecs intact.
         """
@@ -146,8 +146,8 @@ class TourneeAlerteTests(unittest.TestCase):
             self.assertEqual(["adrien"], echecs)
             erreurs = [appel.args[0] for appel in erreur.call_args_list]
             self.assertTrue(any("Alerte à l'exploitant impossible" in m for m in erreurs))
-            # La décision de marquage a bien été prise — différée, un profil doit
-            # rejouer sa journée — et non court-circuitée par l'erreur d'alerte.
+            # La décision de marquage a bien été prise, différée, un profil doit
+            # rejouer sa journée, et non court-circuitée par l'erreur d'alerte.
             logs = [appel.args[0] for appel in log.call_args_list]
             self.assertTrue(any("Marquage comme lu : différé" in m for m in logs))
             self.assertEqual(0, client.appels_marquage)

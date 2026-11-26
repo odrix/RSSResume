@@ -1,6 +1,6 @@
 """La lettre du jour : ce que l'email montre, en HTML comme en texte.
 
-Un seul endroit compose l'email, et il le compose deux fois — une version HTML, qui
+Un seul endroit compose l'email, et il le compose deux fois, une version HTML, qui
 porte la mise en page, et une version texte, qui reste lisible partout. Les deux
 partent dans le même message : le client choisit celle qu'il sait afficher, et un
 lecteur en texte seul reçoit toujours quelque chose de complet.
@@ -9,8 +9,8 @@ Ce qu'une lettre porte, dans l'ordre :
 
     Veille du 30 août 2026                            <- le titre : la date du CONTENU
     6 catégories, 21 min d'écoute                     <- le sous-titre, détaillé en info-bulle
-    Dimanche 31 août 2026, saint Aristide. 1991 —…    <- l'introduction : le jour de l'ENVOI
-    ┌ Cybersécurité technique — 5 min ──────────────┐
+    Dimanche 31 août 2026, saint Aristide. 1991 -…    <- l'introduction : le jour de l'ENVOI
+    ┌ Cybersécurité technique, 5 min ──────────────┐
     │ le texte du résumé, celui qu'a lu la voix     │
     │ À lire : les articles retenus                 │
     │ À surveiller : ceux qui ont failli l'être     │
@@ -25,7 +25,7 @@ lettre d'un jour dans la boîte de son lecteur.
 
 La composition est ici et non dans `digest.py` parce qu'elle sert deux chemins : la
 journée qu'on vient de produire, et celle qu'on renvoie depuis ses journaux
-(`--send-only`). Les deux passent par `Lettre.compose` — deux façons d'écrire le même
+(`--send-only`). Les deux passent par `Lettre.compose`, deux façons d'écrire le même
 email finiraient par ne plus dire pareil, et c'est déjà arrivé une fois.
 """
 
@@ -114,7 +114,7 @@ def duree(secondes: float | None) -> str | None:
 class Section:
     """Une catégorie, telle que la lettre la présente.
 
-    Objet de lecture et non de calcul : tout y est déjà résolu — la durée est mesurée,
+    Objet de lecture et non de calcul : tout y est déjà résolu, la durée est mesurée,
     les liens sont dérivés. Les deux rendus n'ont plus qu'à le parcourir, ce qui est la
     seule façon de garantir qu'ils disent la même chose.
     """
@@ -164,7 +164,7 @@ class Section:
         Le message porte un mp3 par catégorie, tous dans le même bandeau de pièces
         jointes, et rien ne disait lequel allait avec quoi : il fallait rapprocher un
         slug d'un titre de catégorie soi-même. Le nommer dans la section fait ce
-        rapprochement, et se lit dans les deux sens — de la section vers le fichier
+        rapprochement, et se lit dans les deux sens, de la section vers le fichier
         comme du fichier vers la section.
 
         Le nom seul, sans le chemin : c'est ainsi que le client mail l'affiche.
@@ -237,7 +237,7 @@ class Abonnement:
     def depuis_config(cls, config: "AppConfig") -> "Abonnement | None":
         """L'abonnement de la personne servie, ou `None` quand il n'y a pas de site à citer.
 
-        `None` sans `site_url` — une installation sans site n'a nulle part où renvoyer —
+        `None` sans `site_url`, une installation sans site n'a nulle part où renvoyer -
         et sans `username` : la configuration de l'installation n'est encore celle de
         personne. Le lien de désabonnement exige en plus la clé, l'identifiant et des
         destinataires ; s'il en manque un, la lettre part sans lui plutôt que sans pied.
@@ -307,9 +307,9 @@ class Lettre:
 
         `montage` est le seul paramètre qui change la forme de la lettre : avec lui, une
         seule pièce jointe et une seule durée, annoncées une fois sous l'introduction.
-        Les sections gardent tout le reste — leur texte, leurs ancres, leurs deux listes.
+        Les sections gardent tout le reste, leur texte, leurs ancres, leurs deux listes.
 
-        Les sections suivent le tri naturel de leur catégorie — « 2 … » avant « 11 … » —
+        Les sections suivent le tri naturel de leur catégorie, « 2 … » avant « 11 … » -
         parce que le site relit cette même lettre pour afficher la journée : un ordre
         différent entre l'email et la page serait un ordre dont on ne sait plus lequel
         est le bon. C'est aussi le seul point de tri, ce qui couvre l'email du jour,
@@ -361,18 +361,18 @@ class Lettre:
 
     @property
     def _annonce_audio(self) -> str | None:
-        """`Pièce jointe : journee.mp3 — 12 min`, la seule mention du fichier.
+        """`Pièce jointe : journee.mp3, 12 min`, la seule mention du fichier.
 
         Une ligne pour la lettre entière, et non une par section : en mode `global` le
         message ne porte qu'un fichier, et le nommer sous chaque catégorie donnerait six
         fois le même nom sans rien apprendre. La durée y est jointe parce que c'est ici
-        qu'elle sert — juste avant de décider d'écouter.
+        qu'elle sert, juste avant de décider d'écouter.
         """
         nom = self.montage_path.name if self.montage_path else None
         if not nom:
             return None
         ecoute = self.montage_ecoute
-        return f"{PIECE_JOINTE} {nom}" + (f" — {ecoute}" if ecoute else "")
+        return f"{PIECE_JOINTE} {nom}" + (f", {ecoute}" if ecoute else "")
 
     # -- ce que l'expéditeur demande ----------------------------------------
 
@@ -380,16 +380,16 @@ class Lettre:
     def subject(self) -> str:
         """L'objet : la date, et le temps que la lettre coûte à écouter.
 
-        Le temps d'écoute est là parce que c'est là qu'il sert — dans la liste des
+        Le temps d'écoute est là parce que c'est là qu'il sert, dans la liste des
         messages, avant d'ouvrir, quand on décide si on a le temps maintenant. Le
         décompte des catégories, lui, n'y est pas : il ne change pas cette décision, et
         un objet chargé se fait couper par le client avant d'être lu. Il reste dans le
         sous-titre, où on le lit une fois la lettre ouverte.
         """
         if not self.sections:
-            return f"{TITRE} du {date_courte(self.day)} — aucun article"
+            return f"{TITRE} du {date_courte(self.day)}, aucun article"
         total = duree(self.total_secondes)
-        return f"{TITRE} du {date_courte(self.day)}" + (f" — {total} d'écoute" if total else "")
+        return f"{TITRE} du {date_courte(self.day)}" + (f", {total} d'écoute" if total else "")
 
     @property
     def attachments(self) -> list[pathlib.Path]:
@@ -409,7 +409,7 @@ class Lettre:
         """La durée d'écoute annoncée, `None` si rien n'a pu être mesuré.
 
         En mode `global` c'est celle du seul fichier ; sinon la somme des catégories.
-        Dans les deux cas, c'est le temps que la lettre coûte à écouter en entier — ce
+        Dans les deux cas, c'est le temps que la lettre coûte à écouter en entier, ce
         que l'objet promet, et ce sur quoi on décide de l'ouvrir maintenant ou plus tard.
         """
         if self.montage:
@@ -452,8 +452,8 @@ class Lettre:
     def _ouverture(self) -> str:
         """La première ligne de l'introduction : le jour de l'envoi, et sa fête.
 
-        La fête est en apposition derrière la date — « Vendredi 28 août 2026, saint
-        Augustin. » — parce que c'est ainsi qu'une page de calendrier se lit, et que la
+        La fête est en apposition derrière la date, « Vendredi 28 août 2026, saint
+        Augustin. », parce que c'est ainsi qu'une page de calendrier se lit, et que la
         tournure marche aussi bien pour un saint que pour la Toussaint ou Noël.
         """
         jour = self.sent_on or self.day
@@ -471,7 +471,7 @@ class Lettre:
 
         Deux lignes et non un paragraphe : d'un seul tenant, la date, la fête et le
         fait se suivaient sans respiration et le retour à la ligne tombait au hasard de
-        la largeur — au milieu de la date sur un téléphone. En les séparant, la seule
+        la largeur, au milieu de la date sur un téléphone. En les séparant, la seule
         coupure imposée est celle qu'on a choisie ; les lignes peuvent encore se replier
         sur un écran étroit, mais chacune dans son coin.
         """
@@ -496,9 +496,9 @@ class Lettre:
             lignes.append(f"Composée le {self.generated_at.strftime('%d/%m/%Y à %H:%M')}.")
         if self.abonnement:
             # Qui écrit, et pourquoi à cette adresse : ce qu'un lecteur qui n'a rien
-            # demandé lui-même — un destinataire ajouté par un autre — cherche d'abord,
+            # demandé lui-même, un destinataire ajouté par un autre, cherche d'abord,
             # avant de décider si c'est un indésirable.
-            lignes.append(f"Envoyée par {self.abonnement.expediteur} — {self.abonnement.site_url}.")
+            lignes.append(f"Envoyée par {self.abonnement.expediteur}, {self.abonnement.site_url}.")
             lignes.append(
                 "Vous la recevez parce que cette adresse est destinataire du profil "
                 f"« {self.abonnement.username} »."
@@ -512,7 +512,7 @@ class Lettre:
 
     @property
     def _liens_avis(self) -> list[LienPied]:
-        """« Utile » et « Pas utile » pour la journée racontée — `day`, pas `sent_on` : c'est
+        """« Utile » et « Pas utile » pour la journée racontée, `day`, pas `sent_on` : c'est
         la journée du titre qu'on juge, et c'est elle que `/resumes` affiche."""
         return self.abonnement.liens_avis(self.day) if self.abonnement else []
 
@@ -549,7 +549,7 @@ class Lettre:
     def text(self) -> str:
         """La lettre en texte seul : le repli, et la seule version que l'audio résume.
 
-        Volontairement pauvre en décor — deux ou trois filets, aucune tentative de
+        Volontairement pauvre en décor, deux ou trois filets, aucune tentative de
         reproduire la mise en page. Un client texte n'a pas besoin d'un dessin, il a
         besoin que les liens soient sur leur propre ligne et que les titres se voient.
         """
@@ -582,7 +582,7 @@ class Lettre:
     def _section_texte(section: Section) -> str:
         titre = section.category.upper()
         if section.ecoute:
-            titre += f" — {section.ecoute}"
+            titre += f", {section.ecoute}"
         lignes = ["=" * 60, titre]
         # Un résumé vide n'ouvre pas un blanc : les journaux écrits avant que le texte
         # du résumé y soit conservé se renvoient sans lui, et la section n'a alors plus
@@ -604,7 +604,7 @@ class Lettre:
     def html(self) -> str:
         """La lettre en HTML, styles en ligne : aucun client mail ne lit une feuille externe.
 
-        Largeur bornée, une colonne, pas de flottant ni de grille — ce qui traverse
+        Largeur bornée, une colonne, pas de flottant ni de grille, ce qui traverse
         Outlook comme Gmail comme un téléphone. Le bloc `<style>` ne sert qu'au mode
         sombre, que les clients qui l'ignorent ignorent sans dommage.
         """
@@ -624,7 +624,7 @@ class Lettre:
 
         Le titre est sorti du bandeau : posé sur le fond de la page, en encre sombre, il
         se lit comme le nom du message et non comme le premier élément d'un encart. Le
-        bandeau ne porte plus que ce qui décrit la livraison du jour — combien de
+        bandeau ne porte plus que ce qui décrit la livraison du jour, combien de
         catégories parlent, et pour combien de temps d'écoute.
 
         Le détail des durées est à la fois en info-bulle et en pastilles, et pas l'un ou
@@ -653,7 +653,7 @@ class Lettre:
 
         Les espaces de la date sont remplacées par des espaces insécables : sur un
         téléphone, « Vendredi 28 août 2026 » coupé entre le mois et l'année se lit
-        comme une erreur de composition. La fête, elle, reste sécable — « sainte Thérèse
+        comme une erreur de composition. La fête, elle, reste sécable, « sainte Thérèse
         de l'Enfant-Jésus » déborderait un écran étroit si on la liait tout entière.
         """
         lignes = []
@@ -667,7 +667,7 @@ class Lettre:
             lignes.append(_INTRODUCTION_LIGNE.format(corps=corps, style=_INTRO_STYLES[rang > 0]))
         if self._annonce_audio:
             # Sous l'introduction et non dans une section : le fichier porte la journée
-            # entière. Même traitement qu'ailleurs — le nom en chasse fixe, jamais un
+            # entière. Même traitement qu'ailleurs, le nom en chasse fixe, jamais un
             # lien, aucun client mail n'ouvrant une pièce jointe depuis le corps.
             lignes.append(_ANNONCE_AUDIO.format(texte=_e(self._annonce_audio)))
         return "".join(lignes)
@@ -711,8 +711,8 @@ class Lettre:
 
 # -- gabarits ----------------------------------------------------------------
 #
-# Des chaînes à trous et non un moteur de gabarits : le HTML d'un email est figé — pas
-# de boucle, pas de condition, pas d'héritage — et une dépendance de plus pour six
+# Des chaînes à trous et non un moteur de gabarits : le HTML d'un email est figé, pas
+# de boucle, pas de condition, pas d'héritage, et une dépendance de plus pour six
 # blocs ne se justifierait pas. Les styles sont en ligne parce que Gmail supprime tout
 # ce qui vit dans un `<style>`, à l'exception notable des requêtes média.
 
@@ -743,7 +743,7 @@ def _lien_html(lien: Link, couleur: str) -> str:
     """Un article de liste ; son titre seul quand son URL n'est pas une page web.
 
     Le titre reste : l'article a été retenu, le lecteur doit savoir qu'il existe. Seul
-    le lien saute — un `javascript:` venu d'un flux traverse l'échappement HTML intact.
+    le lien saute, un `javascript:` venu d'un flux traverse l'échappement HTML intact.
     """
     url = lien_sur(lien.url)
     gabarit = _LIEN if url else _LIEN_SANS_URL
@@ -767,8 +767,8 @@ def _resume_html(texte: str, liens: list[Link] | None = None) -> str:
     c'est celle-là qu'on transpose.
 
     Les liens des articles retenus sont posés dessus après coup, sur le groupe de mots
-    qui rappelle leur titre (`ancres.py`). Le texte n'est pas modifié d'un caractère —
-    la voix lit le même — et l'URL vient de la sélection : un lien mal placé reste un
+    qui rappelle leur titre (`ancres.py`). Le texte n'est pas modifié d'un caractère -
+    la voix lit le même, et l'URL vient de la sélection : un lien mal placé reste un
     lien juste. Ceux qui ne trouvent pas où se poser restent dans la liste « À lire ».
 
     Les articles à URL refusée sont écartés avant l'ancrage et non au rendu : sinon l'un
@@ -790,7 +790,7 @@ def _blocs(segments: list[ancres.Segment]) -> list[list[ancres.Segment]]:
     Le découpage en paragraphes vient après l'ancrage et non avant : les liens se
     placent sur le résumé entier, et c'est seulement une fois qu'ils sont placés qu'on
     sait où couper sans passer au travers de l'un d'eux. Un segment qui porte un lien
-    n'est jamais coupé — l'ancre ne traverse pas une ligne vide, par construction.
+    n'est jamais coupé, l'ancre ne traverse pas une ligne vide, par construction.
     """
     blocs: list[list[ancres.Segment]] = [[]]
     for segment in segments:
@@ -851,14 +851,14 @@ _BADGE = (
 _LIEN = (
     '<li style="margin:0 0 9px;">'
     '<a href="{url}" style="color:{couleur};text-decoration:none;font-weight:500;">{titre}</a>'
-    '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
+    '<span style="color:#9ca3af;font-size:13px;">, {source}</span>'
     "</li>"
 )
 
 _LIEN_SANS_URL = (
     '<li style="margin:0 0 9px;">'
     '<span style="color:{couleur};font-weight:500;">{titre}</span>'
-    '<span style="color:#9ca3af;font-size:13px;"> — {source}</span>'
+    '<span style="color:#9ca3af;font-size:13px;">, {source}</span>'
     "</li>"
 )
 

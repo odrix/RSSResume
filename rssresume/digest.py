@@ -2,8 +2,8 @@
 
 Ce module décide ce que la journée contient ; il ne décide plus de quoi elle a l'air.
 La mise en forme de l'email est passée dans `newsletter.py` le jour où l'email a eu un
-titre, un sous-titre et un pied de page : elle sert deux chemins — la journée qu'on
-vient de produire et celle qu'on renvoie de ses journaux — et elle en avait déjà deux
+titre, un sous-titre et un pied de page : elle sert deux chemins, la journée qu'on
+vient de produire et celle qu'on renvoie de ses journaux, et elle en avait déjà deux
 copies ici, qui commençaient à diverger.
 """
 
@@ -77,7 +77,7 @@ class DigestService:
         #: Sans service injecté, celui qui n'appelle personne : table embarquée et
         #: calendrier. L'email a toujours son introduction, même monté à la main.
         self._ephemeride_service = ephemeride_service or EphemerideService()
-        #: Le tri déterministe des avis CERT-FR, avec une stack vide à défaut — c'est
+        #: Le tri déterministe des avis CERT-FR, avec une stack vide à défaut, c'est
         #: `cli.build_service` qui lui passe celle du document de profil. Construit
         #: toujours, sollicité seulement par les catégories que
         #: `RSSRESUME_CERTFR_CATEGORIES` route.
@@ -90,7 +90,7 @@ class DigestService:
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
         #: Les tags que ce digest relit comme cache : ceux de sa personne seulement. Lus
-        #: de la configuration, comme ceux que le client FreshRSS écrit — une seule source
+        #: de la configuration, comme ceux que le client FreshRSS écrit, une seule source
         #: pour le nom, sans quoi on relirait sous un préfixe ce qu'on écrit sous un autre.
         self._etiquettes = Etiquettes(config.username)
 
@@ -128,7 +128,7 @@ class DigestService:
 
             # Après toutes les catégories, et toujours dans le scope de la journée : le
             # montage comme sa synthèse ne se rattachent à aucune catégorie, et c'est
-            # ici — et nulle part ailleurs — que leur coût est compté.
+            # ici, et nulle part ailleurs, que leur coût est compté.
             montage = self._build_montage(day_dir, ephemeride, digests)
             journal.set_montage(montage)
 
@@ -168,7 +168,7 @@ class DigestService:
         """L'audio unique de la journée, `None` hors du mode `global`.
 
         Le texte est écrit avant de savoir s'il y aura un fichier : un montage vide veut
-        dire que la journée n'avait rien à raconter — toutes les catégories muettes — et
+        dire que la journée n'avait rien à raconter, toutes les catégories muettes, et
         une salutation suivie d'un silence serait pire qu'une pièce jointe absente.
         L'email dit déjà, lui, qu'aucun article n'a été trouvé.
         """
@@ -245,7 +245,7 @@ class DigestService:
         """Construit la catégorie sous son journal : scores, coûts et suivi sont écrits ensuite.
 
         Le journal est ouvert ici et non dans `run` : il est indexé par catégorie, et
-        c'est ce qui permet aux appels au fournisseur — partis du fond d'un `LLMProvider` — de
+        c'est ce qui permet aux appels au fournisseur, partis du fond d'un `LLMProvider`, de
         se ranger sous la bonne, sans que rien n'ait à leur transmettre la catégorie.
         """
         slug = slugify(category)
@@ -289,7 +289,7 @@ class DigestService:
             "audio": self._config.audio_mode,
             # Qui fait quoi : fournisseur et modèle de chaque action, tels qu'ils ont été
             # lus au lancement. Une action dont `actif` est faux est retombée sur le
-            # local — extractif pour le résumé, espeak pour la voix.
+            # local, extractif pour le résumé, espeak pour la voix.
             "fournisseurs": providers.describe(),
             # L'empreinte du prompt de scoring : deux journaux dont elle diffère n'ont
             # pas noté leurs articles contre le même profil, et ne se comparent pas.
@@ -306,7 +306,7 @@ class DigestService:
         `seuil_repli` et `empreinte_scoring` n'ont aucun sens sans scoring : les écrire
         à zéro ferait lire ce journal comme celui d'une catégorie qui n'a rien retenu,
         et les laisser à leur valeur de configuration ferait croire à un tri qui n'a
-        pas eu lieu. Ce qui explique le contenu, ici, c'est la liste des composants —
+        pas eu lieu. Ce qui explique le contenu, ici, c'est la liste des composants -
         d'où son empreinte, qui dit si deux journées ont été appariées contre la même.
         """
         stack = self._certfr_service.stack
@@ -330,7 +330,7 @@ class DigestService:
         - `selected` ne porte que les avis qui touchent la stack. `CategoryDigest.links`
           en dérive, et ils remontent dans la liste « À lire » de l'email ;
         - `audio_path` reste `None` : une phrase ne se raconte pas. `newsletter.py` sait
-          déjà présenter une section sans audio — pas de badge de durée, pas de pièce
+          déjà présenter une section sans audio, pas de badge de durée, pas de pièce
           jointe, et `Section.racontee` suit `selected`, pas le fichier.
 
         Aucun tag n'est écrit non plus : il n'y a ni note à mettre en cache, ni prompt
@@ -410,7 +410,7 @@ class DigestService:
         journal.set_seuil_applique(selection.seuil)
         # Enrichis ici et non chez le résumeur : les avis de vulnérabilité arrivent
         # souvent réduits à leur titre, et leur page est maintenant lue par trois
-        # lecteurs — le résumé de la catégorie, l'appariement sur la stack, et l'audio
+        # lecteurs, le résumé de la catégorie, l'appariement sur la stack, et l'audio
         # de journée. La lire une fois et garder le texte dans `selected` évite d'aller
         # la chercher trois fois, et surtout évite que l'un des trois travaille sur un
         # titre là où les deux autres ont l'avis complet.
@@ -418,7 +418,7 @@ class DigestService:
 
         if not selected:
             # Rien au-dessus du seuil : même marqueur, mais qui liste les scores obtenus.
-            # Ni résumé ni synthèse vocale — l'audio n'aurait rien à dire.
+            # Ni résumé ni synthèse vocale, l'audio n'aurait rien à dire.
             marker_path = self._write_marker(
                 day_dir, slug, self._score_listing(articles_a_traiter, notes, selection.seuil)
             )
@@ -444,7 +444,7 @@ class DigestService:
         summary_text = self._summary_generator.summarize(category, selected, notes)
         # En mode global, la catégorie n'a pas d'audio à elle : son texte partira au
         # montage, qui l'enchaînera aux autres. Le résumé, lui, est produit dans les deux
-        # modes — c'est lui que l'email montre, et le montage ne le remplace pas.
+        # modes, c'est lui que l'email montre, et le montage ne le remplace pas.
         audio_path = None
         if not self._audio_global:
             audio_path = self._audio_generator.synthesize(
@@ -498,7 +498,7 @@ class DigestService:
 
         Ils sont déjà payés : lus, notés, écartés. Les taire revenait à jeter la moitié
         de ce que la journée coûte, alors qu'un titre et un lien suffisent à les rendre
-        utiles — c'est exactement la zone où l'on veut savoir sans vouloir écouter.
+        utiles, c'est exactement la zone où l'on veut savoir sans vouloir écouter.
 
         Dérivés du score et non d'un second passage du modèle : la fourchette est une
         règle d'affichage, pas un jugement de plus.
@@ -595,7 +595,7 @@ class DigestService:
         # Un article que le modèle a sauté ressort avec `notee` à faux et un score de
         # remplissage. Il est écarté ici, et de la journée : entrer avec un zéro le
         # ferait taguer `score-00` sous l'empreinte courante, donc relire de ce cache
-        # à chaque passage suivant — un accident de lot deviendrait définitif. Sans
+        # à chaque passage suivant, un accident de lot deviendrait définitif. Sans
         # tag, un rejeu de la journée (`--include-read`) le note de nouveau, et le
         # journal de la catégorie le montre sans note.
         perdues = [note for note in calculees if not note.get("notee", True)]
@@ -629,7 +629,7 @@ class DigestService:
     ) -> Selection[Article]:
         """Ce que la règle de la catégorie retient de la journée.
 
-        Sans noteur — aucune API de scoring configurée — il n'y a ni seuil ni plafond à
+        Sans noteur, aucune API de scoring configurée, il n'y a ni seuil ni plafond à
         appliquer : tout entre, et le seuil rapporté est zéro. La condition porte sur le
         noteur et non sur les notes : une journée dont le scoring a tout perdu doit rendre
         un digest vide, surtout pas la journée entière racontée sans avoir été triée.
@@ -688,7 +688,7 @@ class DigestService:
     ) -> None:
         """Compose la lettre et la confie à l'expéditeur, sous ses deux formes.
 
-        L'audio ne porte aucun lien — une URL lue à voix haute est inutilisable, et une
+        L'audio ne porte aucun lien, une URL lue à voix haute est inutilisable, et une
         URL dans le contexte du modèle est une URL qu'il peut inventer. L'email est donc
         le seul endroit où retrouver l'article derrière un sujet entendu, et c'est
         `newsletter.Lettre` qui décide comment il les présente.

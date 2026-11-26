@@ -17,7 +17,7 @@ class _VisibleText(HTMLParser):
     """Le texte visible d'un fragment HTML, blocs non textuels compris.
 
     Écrit contre une regex `<[^>]+>` : elle retirait bien les balises, mais gardait leur
-    corps — le JavaScript d'un `<script>` partait au modèle — et un chevron dans un
+    corps, le JavaScript d'un `<script>` partait au modèle, et un chevron dans un
     attribut lui faisait couper la balise au mauvais endroit. Le parseur de la
     bibliothèque standard connaît ces deux cas, et les commentaires HTML avec.
     """
@@ -53,8 +53,8 @@ class _VisibleText(HTMLParser):
 def strip_html(value: str) -> str:
     """Texte lisible d'un fragment de flux comme d'une page HTML complète.
 
-    Ce texte finit dans un prompt : tout ce qui n'est pas destiné à être lu — script,
-    style, commentaire, balisage inerte — n'a rien à y faire.
+    Ce texte finit dans un prompt : tout ce qui n'est pas destiné à être lu, script,
+    style, commentaire, balisage inerte, n'a rien à y faire.
     """
     parser = _VisibleText()
     parser.feed(value or "")
@@ -75,7 +75,7 @@ def truncate_sentences(value: str, limit: int) -> str:
     """`value` ramené sous `limit` caractères, coupé à la dernière phrase entière.
 
     Couper au caractère laisse une phrase en l'air, et une phrase en l'air, un modèle la
-    termine tout seul — c'est-à-dire l'invente. On recule donc jusqu'à la dernière
+    termine tout seul, c'est-à-dire l'invente. On recule donc jusqu'à la dernière
     ponctuation forte, sauf si elle est si tôt qu'il ne resterait presque rien.
 
     Un `limit` nul ou négatif ne plafonne rien : c'est ainsi que le plafond se désactive.
@@ -101,7 +101,7 @@ PARAGRAPH_END = re.compile(r"(?<=\n\n)")
 def decouper(value: str, limit: int) -> list[str]:
     """`value` en morceaux d'au plus `limit` caractères, coupés là où la voix respire.
 
-    Les endpoints de synthèse plafonnent leur entrée — 4096 caractères chez OpenAI — et
+    Les endpoints de synthèse plafonnent leur entrée, 4096 caractères chez OpenAI, et
     un texte qui dépasse n'est pas tronqué : il est refusé, ce qui fait perdre la journée.
     Le texte part donc en plusieurs appels, dont les audios sont raboutés.
 
@@ -193,7 +193,7 @@ def casefold_ascii(value: str) -> str:
     """Texte replié pour comparaison : casse repliée ET accents retirés.
 
     `casefold()` seul ne suffit pas partout. Il replie la casse mais laisse les accents,
-    et les libellés de catégorie FreshRSS en portent — « 1 - Alertes et avis CERT-FR
+    et les libellés de catégorie FreshRSS en portent, « 1 - Alertes et avis CERT-FR
     ANSSI ». Or un libellé recopié dans une variable d'environnement, puis collé dans le
     panneau d'un hébergeur, y perd régulièrement ses accents : `.env.local` porte déjà un
     `RSSRESUME_CATEGORY_THRESHOLDS` écrit sans. La comparaison échouait alors sans rien
@@ -218,7 +218,7 @@ def cle_tri_naturel(libelle: str) -> tuple[int, int, str]:
     est donc comparé comme un nombre, et non comme du texte.
 
     Une catégorie sans préfixe numérique se classe après celles qui en ont un, par
-    ordre alphabétique — un classement « en dur » des sans-préfixe en tête aurait mis
+    ordre alphabétique, un classement « en dur » des sans-préfixe en tête aurait mis
     en premier ce que la numérotation pousse en dernier. À numéro égal, le reste du
     libellé départage, replié comme ailleurs pour que la casse et les accents ne
     comptent pas.
@@ -244,7 +244,7 @@ def contains_words(haystack: tuple[str, ...], needle: tuple[str, ...]) -> bool:
     """Vrai si `needle` apparaît dans `haystack` comme une suite de mots contigus.
 
     Contigus et dans l'ordre : « Apache Tomcat » ne doit pas se reconnaître dans un texte
-    qui cite Apache d'un côté et Tomcat de l'autre. Un motif vide ne reconnaît rien —
+    qui cite Apache d'un côté et Tomcat de l'autre. Un motif vide ne reconnaît rien -
     sans quoi un alias sans la moindre lettre apparierait tous les textes.
     """
     if not needle or len(needle) > len(haystack):

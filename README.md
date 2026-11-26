@@ -4,7 +4,7 @@ RSSResume génère un résumé quotidien de vos articles FreshRSS, catégorie pa
 la version audio et peut envoyer le tout par email.
 
 Deux façons d'écouter, au choix (`RSSRESUME_AUDIO_MODE`) : **un fichier par catégorie**, ou **un
-seul fichier pour toute la journée** — salutation, éphéméride, les catégories enchaînées et une
+seul fichier pour toute la journée**, salutation, éphéméride, les catégories enchaînées et une
 conclusion sur ce qui reste à faire. Voir [Les deux modes audio](#les-deux-modes-audio).
 
 ## Fonctionnement
@@ -12,12 +12,12 @@ conclusion sur ce qui reste à faire. Voir [Les deux modes audio](#les-deux-mode
 1. connexion à l'API Google Reader compatible de FreshRSS
 2. lecture des articles du jour pour chaque catégorie ciblée (les flux hors catégorie sont ignorés)
 3. notation de chaque article : score de 0 à 10, thématique et angle, sur titre + extrait court
-4. sélection des articles au-dessus du seuil — celui de la catégorie, abaissé les jours
-   creux — puis regroupement par thématique pour l'écoute
+4. sélection des articles au-dessus du seuil, celui de la catégorie, abaissé les jours
+   creux, puis regroupement par thématique pour l'écoute
 5. pour les avis de vulnérabilité trop courts, lecture de la page de l'avis pour en avoir le détail
 6. résumé texte de la sélection, en prose continue, sans lien ni liste (le texte part en audio),
    ouvert et fermé par une phrase courte qui juge la journée, et sans jamais nommer le média
-7. synthèse audio (fournisseur configuré — OpenAI ou Mistral —, sinon `espeak` en local) : par
+7. synthèse audio (fournisseur configuré, OpenAI ou Mistral, sinon `espeak` en local) : par
    catégorie, ou en un seul fichier une fois toutes les catégories traitées
 8. écriture des tags de la catégorie, préfixés par le profil : `<username>-score-NN`,
    `<username>-theme-<thematique>`, `<username>-scoring-<hash>`, `<username>-digested` sur les retenus
@@ -25,7 +25,7 @@ conclusion sur ce qui reste à faire. Voir [Les deux modes audio](#les-deux-mode
 10. marquage comme lu de tous les articles récupérés, une fois **tous** les profils servis
 
 Les étapes 2 à 9 se répètent pour chaque profil (voir [Plusieurs profils](#plusieurs-profils)),
-et les étapes 2 à 8 par catégorie. Les tags sont écrits au fil de l'eau — ce sont des
+et les étapes 2 à 8 par catégorie. Les tags sont écrits au fil de l'eau, ce sont des
 données de cache, une panne en cours de route ne doit pas faire repayer le scoring déjà effectué.
 Le marquage comme lu, lui, n'intervient qu'après l'envoi de tous les profils : un échec laisse les
 articles non lus, et le prochain passage les reprend sans repayer le scoring.
@@ -78,7 +78,7 @@ Dans le conteneur, voir [todo-dockploy.md](todo-dockploy.md).
 En mode `global`, les `<categorie>.mp3` laissent la place à un seul `journee.mp3`, dont le texte
 est conservé dans `journee.json`. Tout le reste est identique.
 
-Toute catégorie qui a lu au moins un article a son **journal** `<categorie>.log.json` — y
+Toute catégorie qui a lu au moins un article a son **journal** `<categorie>.log.json`, y
 compris sans sélection, et même après une erreur en cours de route.
 
 Le marqueur d'une catégorie dont rien n'a passé le seuil ressemble à ceci :
@@ -100,7 +100,7 @@ Seuls les fichiers audio sont joints à l'email.
 | Bloc | Contenu |
 | --- | --- |
 | `articles` | tous les articles lus, les mieux notés en tête : score, thématique, angle, retenu ou non, et si la note a été calculée ou relue des tags |
-| `couts` | le coût des appels IA, détaillé **par typologie** — somme des scorings, somme des résumés, somme de la synthèse vocale — puis appel par appel |
+| `couts` | le coût des appels IA, détaillé **par typologie**, somme des scorings, somme des résumés, somme de la synthèse vocale, puis appel par appel |
 | `parametres`, `resultat` | seuil de la catégorie, seuil de repli, plafond, modèles, empreinte de scoring ; statut, compteurs, **seuil réellement appliqué** ce jour-là, fichier produit |
 
 ```json
@@ -135,7 +135,7 @@ Les prix viennent d'une grille statique ([llm/providers.json](rssresume/llm/prov
 de chaque fournisseur), **à revérifier** :
 un tarif périmé s'y lit comme un coût réel. Un modèle absent de la grille n'est pas facturé à zéro :
 son coût passe à `null`, son nom est listé dans `modeles_sans_tarif`, `tarification_complete` passe
-à `false`, et le total de son poste comme le total général passent à `null` eux aussi — une somme
+à `false`, et le total de son poste comme le total général passent à `null` eux aussi, une somme
 partielle se lit exactement comme une somme complète. Un nom daté (`gpt-4o-mini-2024-07-18`) retombe
 sur sa famille, mais un simple préfixe commun ne suffit pas : `gpt-5.6-luna` n'est pas `gpt-5`, et
 n'est donc pas tarifé par défaut.
@@ -163,33 +163,33 @@ Variables optionnelles :
 - `RSSRESUME_EXCLUDED_CATEGORIES=Non classé`
 - `RSSRESUME_OUTPUT_DIR=output`
 - `RSSRESUME_SUMMARY_LANGUAGE=fr`
-- `RSSRESUME_TIMEZONE=Europe/Paris` — fuseau dans lequel une journée commence et finit.
+- `RSSRESUME_TIMEZONE=Europe/Paris`, fuseau dans lequel une journée commence et finit.
   En UTC, un article publié à 1 h du matin à Paris en heure d'été tombe dans la veille,
   donc dans une journée déjà livrée : il n'apparaît dans aucun digest
-- `RSSRESUME_PROFILES_DIR=/data/profils` — le dossier des profils, un `{username}.json` par
+- `RSSRESUME_PROFILES_DIR=/data/profils`, le dossier des profils, un `{username}.json` par
   personne (voir [Plusieurs profils](#plusieurs-profils)). Exclusif des deux suivantes
-- `RSSRESUME_PROFILE_FILE=input/moi/adrien.json` — le document d'une seule personne : profil de
+- `RSSRESUME_PROFILE_FILE=input/moi/adrien.json`, le document d'une seule personne : profil de
   pertinence, stack surveillée, destinataire du digest (voir ci-dessous). Le nom du fichier
   devient le nom du profil
 - sans l'une ni l'autre, aucun profil : le passage ne fait rien. `RSSRESUME_PROFILE` (le profil
   en clair) n'est plus lue, et fait échouer le lancement si elle est posée
-- `RSSRESUME_SCORE_THRESHOLD=7` — score minimal pour entrer dans le digest
-- `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5` — seuil propre à une catégorie, sous
+- `RSSRESUME_SCORE_THRESHOLD=7`, score minimal pour entrer dans le digest
+- `RSSRESUME_CATEGORY_THRESHOLDS=Tech generaliste=5`, seuil propre à une catégorie, sous
   la forme `Catégorie=score`, plusieurs entrées séparées par des virgules
-- `RSSRESUME_MIN_DIGEST_ITEMS=5` — en dessous de ce nombre de retenus, le seuil de la
+- `RSSRESUME_MIN_DIGEST_ITEMS=5`, en dessous de ce nombre de retenus, le seuil de la
   catégorie tombe à `RSSRESUME_FALLBACK_THRESHOLD` pour la journée ; `0` désactive le repli
-- `RSSRESUME_FALLBACK_THRESHOLD=5` — le seuil de repli
-- `RSSRESUME_MAX_DIGEST_ITEMS=12` — nombre maximum d'articles retenus par catégorie
-- `RSSRESUME_ARTICLE_CHAR_LIMIT=8000` — plafond de caractères envoyés au résumeur par
+- `RSSRESUME_FALLBACK_THRESHOLD=5`, le seuil de repli
+- `RSSRESUME_MAX_DIGEST_ITEMS=12`, nombre maximum d'articles retenus par catégorie
+- `RSSRESUME_ARTICLE_CHAR_LIMIT=8000`, plafond de caractères envoyés au résumeur par
   article, coupé à la dernière phrase entière ; `0` le désactive. À ne pas descendre sous
   6000 : c'est ce que `tools/cve.py` lit sur la page d'un avis, versions touchées comprises
-- `RSSRESUME_PRICES` — grille de tarifs JSON, pour les modèles absents de `providers.json`
-- `RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI` — catégories routées
+- `RSSRESUME_PRICES`, grille de tarifs JSON, pour les modèles absents de `providers.json`
+- `RSSRESUME_CERTFR_CATEGORIES=1 - Alertes et avis CERT-FR ANSSI`, catégories routées
   vers le traitement déterministe, sans aucun appel IA (voir ci-dessous)
-- `RSSRESUME_AUDIO_MODE=category` — `category` (défaut) rend un fichier audio par
+- `RSSRESUME_AUDIO_MODE=category`, `category` (défaut) rend un fichier audio par
   catégorie, `global` un seul pour toute la journée (voir ci-dessous). Une valeur
   inconnue fait échouer le lancement
-- `RSSRESUME_DEBUG=true` — imprime le bilan de la journée en fin de passage, articles
+- `RSSRESUME_DEBUG=true`, imprime le bilan de la journée en fin de passage, articles
   compris, sur la sortie standard (voir [Suivre une journée dans le conteneur](#suivre-une-journée-dans-le-conteneur))
 
 ### Les deux modes audio
@@ -198,11 +198,11 @@ Variables optionnelles :
 RSSRESUME_AUDIO_MODE=global
 ```
 
-En `category` — le défaut, et le comportement historique — chaque catégorie qui a des
+En `category`, le défaut, et le comportement historique, chaque catégorie qui a des
 articles retenus produit son `<slug>.mp3`, et l'email les joint tous.
 
 En `global`, aucune catégorie ne produit de fichier. Une fois toutes les catégories
-traitées, les articles retenus de la journée — **toutes catégories confondues** — sont
+traitées, les articles retenus de la journée, **toutes catégories confondues**, sont
 remis dans un seul ordre et racontés d'une traite :
 
 - une salutation, qui vous nomme si la clé `prenom` du document de profil est remplie ;
@@ -218,7 +218,7 @@ regroupement par thématique, à l'échelle de la journée et non d'une catégor
 qui évite qu'un sujet grave passe en huitième position parce que son dossier FreshRSS
 est le dernier, et ce qui rapproche deux dépêches du même fait venues de deux catégories.
 
-L'email, lui, ne change pas — il continue de montrer les résumés de chaque catégorie mot
+L'email, lui, ne change pas, il continue de montrer les résumés de chaque catégorie mot
 pour mot, avec leurs liens et leur liste « à surveiller ». Seule la pièce jointe est
 différente : un `journee.mp3` unique, nommé une fois sous l'introduction.
 
@@ -231,7 +231,7 @@ bout sans transitions ni conclusion : l'audio du jour sort quand même, et
 `journee.json` le dit (`"origine": "assemblage"` au lieu de `"montage"`).
 
 Pour comparer les deux sur une même journée, `--audio-mode` l'emporte sur la variable
-sans qu'il y ait à toucher à l'environnement — et le scoring n'est pas repayé :
+sans qu'il y ait à toucher à l'environnement, et le scoring n'est pas repayé :
 
 ```bash
 python -m rssresume --date 2026-08-30 --include-read --no-mark-read --no-email --audio-mode global
@@ -240,7 +240,7 @@ python -m rssresume --date 2026-08-30 --include-read --no-mark-read --no-email -
 ### Les avis CERT-FR, sans IA
 
 Le flux des avis de l'ANSSI ne ressemble à aucune autre catégorie : cinq à dix articles par
-jour, tous bâtis sur le même moule — « Multiples vulnérabilités dans *X* (JJ mois AAAA) » et
+jour, tous bâtis sur le même moule, « Multiples vulnérabilités dans *X* (JJ mois AAAA) » et
 une phrase de description. Le pipeline LLM y était à contre-emploi : cher, répétitif, et sept
 paragraphes qui commencent tous pareil sont exactement ce qu'on n'écoute pas. La seule réponse
 utile tient en une ligne : est-ce que ça touche ma stack.
@@ -253,22 +253,22 @@ La catégorie saute alors le scoring, le résumé et la synthèse vocale, et ren
 
 ```
 7 avis CERT-FR aujourd'hui, 2 touchent la stack :
-  Keycloak — exécution de code arbitraire à distance ; OpenSSL — déni de service à distance.
+  Keycloak, exécution de code arbitraire à distance ; OpenSSL, déni de service à distance.
 ```
 
 Les avis appariés remontent dans la liste « À lire » de l'email, les plus graves en tête ;
 **tous** les avis sont marqués lus, appariés ou non. Le journal de la catégorie est écrit
-comme les autres, avec `couts.total` à `0.0` — c'est le signal recherché — et `--send-only`
+comme les autres, avec `couts.total` à `0.0`, c'est le signal recherché, et `--send-only`
 le relit sans traitement particulier.
 
 Le routage est **explicite** : aucune catégorie n'y tombe parce qu'elle s'appelle CERT-FR. Le
-libellé est comparé sans tenir compte de la casse **ni des accents** — le libellé réel en
+libellé est comparé sans tenir compte de la casse **ni des accents**, le libellé réel en
 porte, une variable d'environnement les perd volontiers en route, et une catégorie qu'on croit
 routée et qui ne l'est pas repasse par le LLM tous les matins sans que rien ne le dise.
 
 **La liste des composants est à remplir**, à la clé `stack` du document de profil : rien n'est
 livré, un exemple qui apparierait un vrai avis serait un faux positif offert le jour de
-l'installation. Une entrée par composant — une **chaîne** pour le cas courant, un **objet**
+l'installation. Une entrée par composant, une **chaîne** pour le cas courant, un **objet**
 quand les avis emploient plusieurs écritures, `nom` étant celui qui sera écrit dans la phrase :
 
 ```json
@@ -280,21 +280,21 @@ quand les avis emploient plusieurs écritures, `nom` étant celui qui sera écri
 ```
 
 L'appariement porte sur des **mots entiers**, casse et accents ignorés : « Go » ne reconnaît
-pas « Google », et un alias de plusieurs mots exige les mots à la suite — « Apache Tomcat » ne
+pas « Google », et un alias de plusieurs mots exige les mots à la suite, « Apache Tomcat » ne
 se reconnaît pas dans un avis qui cite Apache d'un côté et Tomcat de l'autre. Éviter les alias
 d'un seul mot courant (« Cloud », « Vault », « Core ») : ils ramènent des faux positifs, et un
 composant qui ressort tous les jours finit par rendre la phrase entière inutile.
 
 La criticité est lue dans l'avis lui-même. Un avis CERT-FR ne porte ni score CVSS ni cotation
-de gravité : il nomme ce que la faille permet, dans un vocabulaire fixe — « exécution de code
+de gravité : il nomme ce que la faille permet, dans un vocabulaire fixe, « exécution de code
 arbitraire à distance », « élévation de privilèges », « déni de service ». C'est ce vocabulaire
 qui est reconnu, et le plus grave des impacts annoncés qui est retenu ; quand rien n'est
 reconnu, la phrase le dit (« impact non précisé par l'avis ») plutôt que de laisser croire à
-une faille bénigne. Rien n'est déduit, rien n'est inventé — sur un avis de sécurité, une
+une faille bénigne. Rien n'est déduit, rien n'est inventé, sur un avis de sécurité, une
 information fabriquée est pire que pas d'information.
 
 La liste n'a pas de variable d'environnement à elle : ce qu'on exploite est aussi personnel que
-ce qu'on veut lire, et se déclare au même endroit — le document que `RSSRESUME_PROFILE_FILE`
+ce qu'on veut lire, et se déclare au même endroit, le document que `RSSRESUME_PROFILE_FILE`
 désigne, hors du dépôt. Elle est lue au lancement, avec le profil : une entrée fautive fait
 échouer le démarrage plutôt que la catégorie d'avis d'un matin.
 
@@ -315,10 +315,10 @@ Les actions sont `SCORING` (notation), `ARTICLE` (résumé d'un article), `DIGES
 de catégorie), `EPHEMERIDE` (le fait du jour), `MONTAGE` (l'audio de journée, en mode
 `global` seulement) et `TTS` (synthèse vocale) ; chacune accepte un
 `RSSRESUME_<ACTION>_PROVIDER`. Chaque fournisseur n'utilise que **sa** clé : sans
-`MISTRAL_API_KEY`, une action confiée à Mistral retombe sur le local — résumé extractif,
-ou `espeak` pour la voix — plutôt que d'emprunter celle d'OpenAI.
+`MISTRAL_API_KEY`, une action confiée à Mistral retombe sur le local, résumé extractif,
+ou `espeak` pour la voix, plutôt que d'emprunter celle d'OpenAI.
 
-Tout le reste — endpoint, modèle et réglages par action, voix, format audio, tarifs —
+Tout le reste, endpoint, modèle et réglages par action, voix, format audio, tarifs -
 n'est pas secret et vit dans [llm/providers.json](rssresume/llm/providers.json) :
 
 ```json
@@ -333,26 +333,26 @@ n'est pas secret et vit dans [llm/providers.json](rssresume/llm/providers.json) 
 }
 ```
 
-- `RSSRESUME_PROVIDERS_FILE=providers.json` — un fichier fusionné par-dessus, clé à clé :
+- `RSSRESUME_PROVIDERS_FILE=providers.json`, un fichier fusionné par-dessus, clé à clé :
   on n'y redéclare que ce que l'on change.
 
 Les consignes de diction d'OpenAI (`instructions` du bloc `tts`) y ont leur place : le
-rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas — son
+rythme se joue là autant que dans le texte du résumé. Mistral n'en a pas, son
 `/v1/audio/speech` n'a pas de champ pour elles, tout se joue dans le choix de la voix.
 
 Le même bloc porte `input_limit`, le plafond d'entrée de l'endpoint de synthèse en
-caractères (4000 chez OpenAI, dont l'API refuse au-delà de 4096 — le texte n'est pas
+caractères (4000 chez OpenAI, dont l'API refuse au-delà de 4096, le texte n'est pas
 tronqué, l'appel échoue). Au-delà, le texte est découpé entre deux paragraphes, sinon
-entre deux phrases, et les audios sont raboutés en un seul fichier. La clé absente —
-c'est le cas de Mistral, qui n'annonce pas le sien — envoie le texte d'un seul tenant.
+entre deux phrases, et les audios sont raboutés en un seul fichier. La clé absente -
+c'est le cas de Mistral, qui n'annonce pas le sien, envoie le texte d'un seul tenant.
 
 ### Envoi de l'email
 
 Le digest part par SMTP, ou par l'API HTTPS de Resend. Deux implémentations du même
 contrat, que `RSSRESUME_MAIL_TRANSPORT` départage :
 
-- `RSSRESUME_MAIL_TRANSPORT=smtp` (défaut) — le chemin naturel ;
-- `RSSRESUME_MAIL_TRANSPORT=resend` — quand l'hébergeur filtre les ports SMTP en sortie.
+- `RSSRESUME_MAIL_TRANSPORT=smtp` (défaut), le chemin naturel ;
+- `RSSRESUME_MAIL_TRANSPORT=resend`, quand l'hébergeur filtre les ports SMTP en sortie.
 
 Beaucoup d'hébergeurs de VPS ferment 25, 465 et 587 en sortie pour ne pas héberger de
 spam. La panne est muette : la connexion expire sur un `TimeoutError(110)` sans que rien
@@ -363,14 +363,14 @@ depuis le conteneur tranche en dix secondes, et la trace dit tout :
 python -c "import socket; socket.create_connection(('smtp.example.com',587),10)"
 ```
 
-Un échec sur `sock.connect()` — donc après la résolution DNS — sur les trois ports, c'est
+Un échec sur `sock.connect()`, donc après la résolution DNS, sur les trois ports, c'est
 un filtrage réseau. Le 443 sort forcément, lui : c'est déjà par là que passent FreshRSS
 et les fournisseurs de LLM. D'où `resend`, qui emprunte le même chemin qu'eux.
 
 `SMTP_FROM` vaut pour les deux transports : l'expéditeur ne change pas de nature parce que
 le chemin change. Le reste ne sert qu'au transport `smtp`. Le **destinataire**, lui, n'est
 plus une variable : il se déclare à la clé `email` du document de profil. `SMTP_TO` n'est
-plus lue et **fait échouer le lancement** tant qu'elle traîne dans l'environnement —
+plus lue et **fait échouer le lancement** tant qu'elle traîne dans l'environnement -
 ignorée, elle laisserait croire à un destinataire configuré et le digest ne partirait plus
 sans que rien ne le dise.
 
@@ -381,7 +381,7 @@ sans que rien ne le dise.
 - `SMTP_PASSWORD`
 - `SMTP_USE_TLS=true`
 - `SMTP_USE_SSL=false`
-- `RESEND_API_KEY` — requise par le transport `resend` seulement.
+- `RESEND_API_KEY`, requise par le transport `resend` seulement.
 
 Resend n'accepte d'expéditeur que sur un domaine vérifié chez lui, vérification qui passe
 par des enregistrements DNS : un domaine qui ne résout pas ne peut pas l'être. Le compte
@@ -389,7 +389,7 @@ de test `onboarding@resend.dev` fait exception, mais n'écrit qu'au propriétair
 
 #### Le pied de la lettre et le désabonnement
 
-- `RSSRESUME_SITE_URL` — l'adresse publique du site, schéma compris
+- `RSSRESUME_SITE_URL`, l'adresse publique du site, schéma compris
   (`https://veille.example.com`), égale à l'`ORIGIN` du site. Le pied de la lettre dit alors
   qui l'envoie (le nom d'affichage de `SMTP_FROM`, « RSSResume » à défaut), pourquoi
   l'adresse la reçoit, et porte trois liens : « Mes résumés », « Modifier mon profil », « Se
@@ -405,7 +405,7 @@ retours, les plus récents d'abord.
 Le lien de désabonnement est signé avec `RSSRESUME_API_TOKEN`, le jeton de l'[API](#api-http),
 qui doit donc être aussi dans l'environnement du travailleur : sans lui, les deux autres liens
 restent et le désabonnement disparaît, avec les liens de vote, signés de la même façon. Avec lui, le message porte aussi les en-têtes
-`List-Unsubscribe` et `List-Unsubscribe-Post` — le désabonnement en un clic que Gmail et Yahoo
+`List-Unsubscribe` et `List-Unsubscribe-Post`, le désabonnement en un clic que Gmail et Yahoo
 exigent des expéditeurs en volume. Le lien ne demande aucune connexion, vide les destinataires
 du profil, et ne sert qu'une fois (voir [FONCTIONNEMENT.md](FONCTIONNEMENT.md#7-email)).
 
@@ -463,8 +463,8 @@ Les trois axes sont indépendants et se cumulent :
 | `--dry-run` | non | non | non |
 
 `--include-read` est d'un autre ordre : il ne décide pas de ce qu'on écrit, mais de ce qu'on
-demande. Les articles du jour sont récupérés **non lus uniquement** — l'API les filtre, ce qui
-évite de paginer tout le flux —, donc rejouer une journée déjà livrée exige de les redemander :
+demande. Les articles du jour sont récupérés **non lus uniquement**, l'API les filtre, ce qui
+évite de paginer tout le flux, donc rejouer une journée déjà livrée exige de les redemander :
 
 ```bash
 python -m rssresume --date 2026-08-23 --include-read --no-email
@@ -488,12 +488,12 @@ Chaque passage digère la journée pour chaque profil, dans l'ordre alphabétiqu
   message qui demande de le convertir en JSON. Deux documents au même `id` sont sautés tous les
   deux, pour ne pas mélanger leurs journées ;
 - les tags FreshRSS sont **préfixés** par le nom (`adrien-score-07`) : deux personnes ne
-  notent pas un article pareil. Les anciens tags sans préfixe sont ignorés — passer aux
+  notent pas un article pareil. Les anciens tags sans préfixe sont ignorés : passer aux
   profils coûte donc **un re-scoring unique** des articles relus ;
 - un profil qui échoue (document fautif, fournisseur en panne) est journalisé, et les
   suivants sont servis ;
 - les catégories et les articles ne sont lus qu'une fois pour tous les profils, et le
-  marquage comme lu n'intervient qu'**une fois tous les profils servis** — sans quoi le
+  marquage comme lu n'intervient qu'**une fois tous les profils servis**, sans quoi le
   premier viderait la journée des suivants. Si l'un d'eux a échoué, rien n'est marqué : il
   peut rejouer sa journée avec `--profil` sans `--include-read`. Un passage `--profil` ne
   marque rien non plus tant que d'autres profils existent ; les articles restés non lus ne
@@ -507,15 +507,15 @@ font échouer le lancement : déplacer le document dans le dossier et retirer la
 
 Avec `RSSRESUME_PROFILES_DB`, les profils viennent d'une base SQLite plutôt que d'un dossier :
 c'est elle qu'édite l'[API HTTP](#api-http), et le passage la sert exactement comme le dossier
-— même validation, même `--profil`, sortie sous `output/<id>/`. Elle est exclusive des trois
+,même validation, même `--profil`, sortie sous `output/<id>/`. Elle est exclusive des trois
 autres variables.
 
 #### Le catalogue des catégories
 
 Tout ce que contient le FreshRSS partagé n'est pas à tout le monde : une veille concurrentielle
 d'entreprise ne doit être ni notée, ni résumée, ni montrée à quelqu'un d'extérieur. Le
-**catalogue** décrit chaque catégorie FreshRSS — description lisible, métiers concernés,
-visibilité — dans une table `categories` de la base des profils. Il s'écrit en JSON, hors du
+**catalogue** décrit chaque catégorie FreshRSS, description lisible, métiers concernés,
+visibilité, dans une table `categories` de la base des profils. Il s'écrit en JSON, hors du
 dépôt (par exemple `input/categories.json`), sur le modèle de
 [docs/categories.exemple.json](docs/categories.exemple.json) :
 
@@ -528,7 +528,7 @@ dépôt (par exemple `input/categories.json`), sur le modèle de
 ```
 
 - la clé est le libellé FreshRSS, comparé rogné, sans casse ni accents ; une clé qui commence
-  par `_` et dont la valeur est un texte ou une liste est un commentaire — avec un objet pour
+  par `_` et dont la valeur est un texte ou une liste est un commentaire, avec un objet pour
   valeur, c'est une catégorie (`_Archive` en est une) ;
 - `description` (texte non vide), `metiers` (liste de textes, libre pour l'instant) et
   `visibilite` sont exigés ; `publique` est servie à tout le monde, `privee` aux seuls
@@ -537,7 +537,7 @@ dépôt (par exemple `input/categories.json`), sur le modèle de
   FreshRSS n'apparaît chez personne tant qu'on ne l'a pas décrite, et une faute de recopie
   dans un libellé prive la catégorie de lecteurs au lieu de la donner à tous. Le passage
   le dit dans ses logs (`Catalogue : hors catalogue, servies à personne : …`) quand il
-  marque la journée lue — pas lors d'un `--dry-run`, d'un `--no-mark-read` ni d'un
+  marque la journée lue, pas lors d'un `--dry-run`, d'un `--no-mark-read` ni d'un
   `--profil` qui ne marque pas.
 
 Il se charge dans la base par :
@@ -546,22 +546,22 @@ Il se charge dans la base par :
 python -m rssresume.api importer-catalogue input/categories.json
 ```
 
-Le fichier est validé **en entier** avant toute écriture — une clé inconnue, une visibilité
+Le fichier est validé **en entier** avant toute écriture, une clé inconnue, une visibilité
 hors liste, une catégorie privée sans propriétaire ou publique avec, un propriétaire qui n'est
 pas un nom de profil valide, deux libellés identiques une fois casse et accents retirés : rien
 n'est écrit, le message nomme le libellé, code de sortie 2. Accepté, il **remplace** le
 catalogue : une catégorie retirée du fichier disparaît de la base. Le passage revalide la table
 à chaque lancement, et une ligne corrompue à la main le fait échouer.
 
-Sans catalogue — pas de base, ou table vide —, tout est servi à tout le monde, comme avant :
+Sans catalogue, pas de base, ou table vide, tout est servi à tout le monde, comme avant :
 c'est accepté pour **un seul profil**, avec un avertissement à chaque passage ; dès **deux
 profils**, le passage refuse de démarrer (message d'erreur, code de sortie 2) et dit quoi faire :
 
 - en base, importer le catalogue (`importer-catalogue`) ;
 - avec un dossier de profils (`RSSRESUME_PROFILES_DIR`) ou un document unique, il n'existe
-  **pas** de catalogue hors de la base : passer d'abord à la base — poser
+  **pas** de catalogue hors de la base : passer d'abord à la base, poser
   `RSSRESUME_PROFILES_DB`, `python -m rssresume.api importer <dossier>`, retirer
-  `RSSRESUME_PROFILES_DIR` —, puis importer le catalogue. Une installation à plusieurs profils
+  `RSSRESUME_PROFILES_DIR`, puis importer le catalogue. Une installation à plusieurs profils
   en mode dossier ne tourne donc plus tant que cette migration n'est pas faite.
 
 Le catalogue dit *à qui* ; les variables d'environnement continuent de dire *quoi* et
@@ -574,8 +574,8 @@ Le catalogue dit *à qui* ; les variables d'environnement continuent de dire *qu
 | `RSSRESUME_CERTFR_CATEGORIES` | dit *comment* traiter la catégorie ; elle doit figurer au catalogue pour être servie |
 | `RSSRESUME_CATEGORY_THRESHOLDS` | inchangée, s'applique aux catégories servies |
 
-Le marquage comme lu ne change pas : une catégorie servie à personne — hors catalogue, ou
-privée sans propriétaire parmi les profils — est lue à la fin du passage pour être marquée
+Le marquage comme lu ne change pas : une catégorie servie à personne, hors catalogue, ou
+privée sans propriétaire parmi les profils, est lue à la fin du passage pour être marquée
 avec le reste, une fois, et seulement quand tout le monde a été servi. Si cette lecture
 échoue, l'erreur est journalisée et ce qui a été servi est marqué quand même : les emails sont
 partis, un rejeu ne doit pas les renvoyer.
@@ -586,7 +586,7 @@ l'import du catalogue peut contenir des catégories devenues privées.
 ### Renvoyer l'email d'une journée
 
 Une journée coûte du scoring, des résumés et de la synthèse vocale. Quand c'est l'envoi
-seul qui a échoué — un port SMTP filtré, une clé refusée, un domaine non vérifié — la
+seul qui a échoué, un port SMTP filtré, une clé refusée, un domaine non vérifié, la
 repayer pour retrouver un texte déjà écrit sur le disque n'aurait aucun sens :
 
 ```bash
@@ -595,13 +595,13 @@ python -m rssresume --send-only --date 2026-08-29
 
 Tout ce que l'email porte est relu de `output/<id>/<date>/*.log.json` : le résumé, les liens
 des articles retenus dans l'ordre du digest, et les `.mp3` en pièces jointes. Ni FreshRSS
-ni le moindre fournisseur n'est appelé, et **rien n'est marqué comme lu** — le renvoi ne
+ni le moindre fournisseur n'est appelé, et **rien n'est marqué comme lu**, le renvoi ne
 touche à aucun état.
 
 Deux limites à connaître :
 
-- une catégorie sans le moindre article n'écrit pas de journal — elle n'a rien lu ni rien
-  dépensé — et sa ligne « aucun article » manque donc au corps du renvoi ;
+- une catégorie sans le moindre article n'écrit pas de journal, elle n'a rien lu ni rien
+  dépensé, et sa ligne « aucun article » manque donc au corps du renvoi ;
 - les journées produites avant que le journal ne garde le texte du résumé se renvoient
   sans lui : les liens et l'audio sont là, le texte est vide.
 
@@ -622,7 +622,7 @@ docker exec <conteneur> python -m rssresume --journal --date 2026-08-30
 ```
 
 ```
-Journée du 2026-08-30 — /data/output/5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f/2026-08-30
+Journée du 2026-08-30, /data/output/5f0c2d8e-7a1b-4c3d-9e8f-0a1b2c3d4e5f/2026-08-30
 audio : journee.mp3 (montage)
 
 catégorie                               statut                art.  ret.  seuil       coût
@@ -642,14 +642,14 @@ Consommation IA :
 
 Trois colonnes portent l'essentiel :
 
-- **`seuil`** est celui qui a **réellement** trié, repli compris — pas celui de la
+- **`seuil`** est celui qui a **réellement** trié, repli compris, pas celui de la
   configuration. C'est lui qui explique une journée maigre ;
 - **`coût`** vaut `?` et non `0.000000` quand le modèle n'est pas dans la grille de
   tarifs : « on ne sait pas » et « rien dépensé » ne se lisent pas pareil ;
 - **`statut`** distingue une catégorie vide (`aucun-article-retenu`) d'une catégorie
   montée dans l'audio de la journée (`monte`) d'une catégorie interrompue (`interrompu`).
 
-`--debug` ajoute chaque article sous sa catégorie — score, thématique, retenu ou non, et
+`--debug` ajoute chaque article sous sa catégorie, score, thématique, retenu ou non, et
 si sa note a été calculée ou relue des tags :
 
 ```
@@ -669,7 +669,7 @@ disque, et aucun appel n'est fait.
 ### Le document de la personne
 
 Le profil de pertinence décide ce qui monte au-dessus du seuil, ce qui est raconté et sous quel
-angle : les trois prompts l'utilisent — notation, résumé d'article, digest audio. La stack décide
+angle : les trois prompts l'utilisent, notation, résumé d'article, digest audio. La stack décide
 quels avis CERT-FR font lever la tête. L'adresse décide où tout cela arrive. Les trois sont
 personnelles, et **ne vont pas dans le dépôt** : elles tiennent dans un document unique, sous
 `input/`, gitignoré.
@@ -699,13 +699,13 @@ Seule `profil` est exigée. `stack` absente, aucun avis n'est apparié et le dig
 `email` absente, aucun email ne part. `email` accepte une adresse ou une liste d'adresses.
 `prenom` ne sert qu'à la salutation de l'audio en mode `global` : absente, le montage
 ouvre sans nommer personne. Remplie avec autre chose qu'un texte, elle fait échouer le
-lancement — une salutation qui se trompe ne se découvrirait qu'à l'écoute.
+lancement, une salutation qui se trompe ne se découvrirait qu'à l'écoute.
 `securite` règle ce que l'audio dit des vulnérabilités : `exploitant` (le défaut) donne les
 versions, graduées sur la stack ; `decideur` une phrase par faille sans versions, sauf sur un
 composant de la stack ; `curieux` seulement les failles déjà exploitées ou qui font
 l'actualité. Une autre valeur fait échouer le lancement.
-`flux_exclus` liste les flux qui ne se résument pas — un podcast sans transcription, un
-journal des versions — par leur **titre exact** dans FreshRSS, casse et accents ignorés :
+`flux_exclus` liste les flux qui ne se résument pas, un podcast sans transcription, un
+journal des versions, par leur **titre exact** dans FreshRSS, casse et accents ignorés :
 `nolimitsecu` exclut « NoLimitSecu », mais « Go » n'exclut pas « Google Cloud Blog ». Le
 titre du flux, pas celui de sa catégorie. Leurs articles ne sont ni notés ni résumés, et
 sont écartés avant `--limit` ; ils restent **marqués lus** avec le reste de la journée. Les
@@ -720,14 +720,14 @@ présent mais mal formé, il fait échouer ce profil.
 Le document doit être un **objet JSON** : un texte brut ne peut pas porter son `id`, et le profil
 est alors sauté avec un message qui demande de le convertir.
 
-Sans document déclaré, **rien ne tourne** : ni lecture FreshRSS, ni résumé, ni email — le
+Sans document déclaré, **rien ne tourne** : ni lecture FreshRSS, ni résumé, ni email, le
 passage journalise « aucun profil ». `RSSRESUME_PROFILE`, le profil en clair sur une ligne,
 n'est plus lue : posée, elle fait échouer le lancement, pour qu'on la remplace par un document.
 
 Le document est résolu **une fois au démarrage** : annoncé mais illisible, vide, au JSON cassé,
 sans texte à la clé `profil`, avec une entrée de stack fautive ou une adresse qui n'en est pas
 une, il fait échouer le lancement plutôt que de retomber en silence sur un autre profil. Et comme l'empreinte de scoring inclut le profil, en changer renote
-automatiquement les articles concernés : aucun score calculé contre l'ancien profil ne survit —
+automatiquement les articles concernés : aucun score calculé contre l'ancien profil ne survit -
 sortir un profil du code vers un fichier ne coûte donc rien tant que le texte est repris à
 l'identique.
 
@@ -737,7 +737,7 @@ l'identique.
 python -m rssresume --no-email --no-mark-read
 ```
 
-Les scores sont écrits — donc mis en cache — mais les articles restent non lus et aucun email ne
+Les scores sont écrits, donc mis en cache, mais les articles restent non lus et aucun email ne
 part. Tant que le profil et le barème ne changent pas, les essais suivants ne repaient pas le
 scoring. Modifier l'un des deux change l'empreinte et déclenche la renotation des seuls articles
 concernés.
@@ -783,7 +783,7 @@ hors de la suite unittest ; celle-ci utilise une doublure de noteur et ne fait a
 
 ### Divers
 
-- sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées — pour
+- sans `RSSRESUME_CATEGORIES`, toutes les catégories FreshRSS détectées sont traitées, pour
   chaque profil, celles que le [catalogue](#le-catalogue-des-catégories) lui sert.
 - `RSSRESUME_EXCLUDED_CATEGORIES` retire des catégories de la liste traitée (comparaison insensible à la casse et aux accents).
 - tester le scoring seul sur trois articles en dur, sans FreshRSS ni email :
@@ -793,7 +793,7 @@ hors de la suite unittest ; celle-ci utilise une doublure de noteur et ne fait a
 
 Le conteneur ne sert rien et n'écoute sur aucun port : il dort jusqu'à l'heure dite,
 envoie le digest de la veille, et se rendort. C'est [`rssresume/scheduler.py`](rssresume/scheduler.py)
-qui tient la boucle — pas un `cron`, qui n'hérite ni des variables d'environnement du
+qui tient la boucle, pas un `cron`, qui n'hérite ni des variables d'environnement du
 conteneur ni de `RSSRESUME_TIMEZONE`.
 
 | Variable | Effet | Défaut |
@@ -805,14 +805,14 @@ conteneur ni de `RSSRESUME_TIMEZONE`.
 articles parus depuis minuit. Un passage du matin raconte la veille (`1`) ; un passage
 du soir raconte la journée qui s'achève (`0`).
 
-Une journée qui échoue — FreshRSS injoignable, fournisseur en panne — est journalisée
+Une journée qui échoue, FreshRSS injoignable, fournisseur en panne, est journalisée
 et la boucle continue. Un conteneur arrêté au moment du passage ne le rattrape pas : le
 suivant a lieu le lendemain à la même heure.
 
 ### L'image
 
 [`Dockerfile`](Dockerfile) : `python:3.14-alpine`, la base de fuseaux d'Alpine, et
-`rssresume/`. Rien d'autre — pas de `pip` dans le résultat, puisqu'il n'y a rien à
+`rssresume/`. Rien d'autre, pas de `pip` dans le résultat, puisqu'il n'y a rien à
 installer. La sortie va dans `/data`, monté en volume : `RSSRESUME_OUTPUT_DIR` y est
 déjà pointé par l'image.
 
@@ -823,7 +823,7 @@ L'ajouter, si besoin : `apk add --no-cache espeak`.
 ### Dokploy
 
 1. **Create Service → Compose**, dépôt Git de ce projet, `docker-compose.yml` à la racine.
-2. Onglet **Environment** : y coller le contenu de son `.env` local — clés FreshRSS,
+2. Onglet **Environment** : y coller le contenu de son `.env` local, clés FreshRSS,
    clés d'API, SMTP, seuils, `RSSRESUME_SCHEDULE`. C'est le seul endroit où les secrets
    sont saisis, et ils ne passent jamais par le dépôt.
 3. Onglet **General → Watch Paths**, une entrée par motif :
@@ -843,12 +843,12 @@ Le bloc `environment:` du compose ne sert qu'à deux choses par-dessus : poser l
 défauts de l'horaire, et imposer `RSSRESUME_OUTPUT_DIR=/data`. Il l'emporte sur
 `env_file`, ce qui est voulu : un `RSSRESUME_OUTPUT_DIR=output` recopié du poste de
 travail ferait sinon écrire le conteneur dans `/app`, que l'utilisateur non-root ne
-possède pas — et la sortie du jour n'atterrirait pas dans le volume.
+possède pas, et la sortie du jour n'atterrirait pas dans le volume.
 
 Le compose impose aussi `RSSRESUME_PROFILES_DB=/data/profils.sqlite3` : les profils vivent
 en base dans le volume, là où l'API les édite (voir [API HTTP](#api-http)). La base remplace
 le dossier `/data/profils` : `RSSRESUME_PROFILES_DIR`, `RSSRESUME_PROFILE_FILE` et
-`RSSRESUME_PROFILE` doivent **quitter** l'onglet Environment — posées avec la base, elles font
+`RSSRESUME_PROFILE` doivent **quitter** l'onglet Environment, posées avec la base, elles font
 échouer le lancement. Migrer des documents existants, une fois, puis retirer la variable :
 
 ```bash
@@ -861,8 +861,8 @@ les fichiers, et se rejoue sans rien réécrire. Tant qu'il n'a pas eu lieu, la 
 et le passage ne sert personne.
 
 Dès que la base compte deux profils, le passage exige le
-[catalogue des catégories](#le-catalogue-des-catégories) : l'importer avant — ou en même temps
-que — la mise en production, sans quoi le passage refuse de démarrer :
+[catalogue des catégories](#le-catalogue-des-catégories) : l'importer avant, ou en même temps
+que, la mise en production, sans quoi le passage refuse de démarrer :
 
 ```bash
 docker cp input/categories.json <conteneur-api>:/data/categories.json
@@ -873,7 +873,7 @@ docker exec <conteneur-api> python -m rssresume.api importer-catalogue /data/cat
 `rssresume/`, et le répertoire est gitignoré, donc absent du dépôt.
 
 Un document fautif ou un fichier mal nommé ne coûtent que la journée de leur personne, et se
-lisent dans les logs ; un dossier absent fait échouer le lancement — un conteneur qui ne démarre
+lisent dans les logs ; un dossier absent fait échouer le lancement, un conteneur qui ne démarre
 pas se voit, un matin sans digest non. Les actions manuelles du déploiement sont listées dans
 [todo-dockploy.md](todo-dockploy.md).
 
@@ -887,14 +887,14 @@ docker exec -it <conteneur> python -m rssresume --date 2026-08-23
 ## API HTTP
 
 Le site qui édite les profils et fait écouter les journées parle à un second processus,
-`python -m rssresume.api` — le service `api` du compose, même image, même volume. Il ne lance
+`python -m rssresume.api`, le service `api` du compose, même image, même volume. Il ne lance
 aucun digest et n'appelle aucun fournisseur : il écrit la base que le passage relit, et sert
 les audios que le passage a écrits. Bibliothèque standard seulement (`http.server`, `sqlite3`).
 
 | Variable | Effet | Défaut |
 | --- | --- | --- |
-| `RSSRESUME_API_TOKEN` | jeton exigé en `Authorization: Bearer …` ; absent ou < 32 caractères, le serveur ne démarre pas | — |
-| `RSSRESUME_PROFILES_DB` | la base des profils (obligatoire pour l'API) | — |
+| `RSSRESUME_API_TOKEN` | jeton exigé en `Authorization: Bearer …` ; absent ou < 32 caractères, le serveur ne démarre pas |, |
+| `RSSRESUME_PROFILES_DB` | la base des profils (obligatoire pour l'API) |, |
 | `RSSRESUME_OUTPUT_DIR` | où lire les journées, `<id>/<date>/` | `output` |
 | `RSSRESUME_API_HOST` / `RSSRESUME_API_PORT` | adresse d'écoute | `0.0.0.0` / `8080` |
 
@@ -908,12 +908,12 @@ document la nomme en plus : `{"erreur": "…", "champ": "securite"}`.
 | `POST /api/v1/profils` | corps `{"username","profil","stack","email","prenom","securite"}` → 201 profil complet, id généré ; 409 nom pris ; 422 invalide |
 | `GET /api/v1/profils/{username}` | `{"id","username","profil","stack","email","prenom","securite","modifie_le"}` ; 404 |
 | `PUT /api/v1/profils/{username}` | corps `{"profil","stack","email","prenom","securite"}` → 200 ; 404 ; 422 (id et nom ne changent pas) |
-| `DELETE /api/v1/profils/{username}` | 204 ; 404 — les journées restent sur le disque |
+| `DELETE /api/v1/profils/{username}` | 204 ; 404, les journées restent sur le disque |
 | `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord |
 | `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |
 | `GET /api/v1/profils/{username}/journees/{date}` | le contenu de la journée relu de ses journaux, comme `--send-only` : résumés, articles « à lire » et « à surveiller » (`url` à `null` hors http(s)), audios, `raison` d'une journée sans article ; 404 |
 | `GET /api/v1/passage` | `{"heure","fuseau","prochain"}`, lus de `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` comme le travailleur |
-| `GET /api/v1/profils/{username}/categories` | `{"ouvert", "categories": [{"libelle","description","privee"}]}` : les catégories que ce nom peut suivre — publiques et privées dont il est propriétaire —, jamais les propriétaires ; vide quand le catalogue est ouvert ; le profil n'a pas à exister ; 404 nom invalide |
+| `GET /api/v1/profils/{username}/categories` | `{"ouvert", "categories": [{"libelle","description","privee"}]}` : les catégories que ce nom peut suivre, publiques et privées dont il est propriétaire, jamais les propriétaires ; vide quand le catalogue est ouvert ; le profil n'a pas à exister ; 404 nom invalide |
 | `POST /api/v1/desabonnements/lecture` | corps `{"jeton"}` → `{"username","destinataires"}` sans rien modifier ; 404 lien invalide ou déjà utilisé |
 | `POST /api/v1/desabonnements` | corps `{"jeton"}` → `{"username"}`, les destinataires du profil vidés ; 404 lien invalide ou déjà utilisé |
 | `POST /api/v1/retours/lecture` | corps `{"jeton"}` → `{"username","jour","retour"}`, le vote déjà donné ou `null`, sans rien écrire ; 404 lien de vote invalide |
@@ -994,8 +994,8 @@ FreshRSS : 3 catégorie(s) découverte(s)
 [Tech] 24 article(s)
   scoring : 18 score(s) relu(s) des tags, 6 à calculer
   sélection : 5 article(s) retenu(s) sur 24 (seuil 7)
-  résumé via openai — gpt-5.6-luna (5 article(s), 31428 caractère(s) envoyés, 1 tronqué(s) à 8000)
-  synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
+  résumé via openai, gpt-5.6-luna (5 article(s), 31428 caractère(s) envoyés, 1 tronqué(s) à 8000)
+  synthèse vocale via openai, gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : notation de 6 article(s) sur 4 valeur(s) de score et 3 thématique(s)
 FreshRSS : tag 'digested' sur 5 article(s)

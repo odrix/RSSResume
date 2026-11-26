@@ -24,7 +24,7 @@
 </script>
 
 <svelte:head>
-	<title>{titre} — RSSResume</title>
+	<title>{titre}, RSSResume</title>
 </svelte:head>
 
 <p class="retour"><a class="bouton bouton-secondaire" href="/resumes/{encodeURIComponent(data.username)}">← {data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</a></p>

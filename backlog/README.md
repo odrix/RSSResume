@@ -8,7 +8,7 @@ Le seul backlog du dépôt : **un fichier par item**. `todo/` porte ce qui reste
 
 Deux branches traitées en parallèle ne touchent jamais le même fichier : traiter un item, c'est
 déplacer `todo/BL-NNN.md` vers `done/BL-NNN.md`, et rien d'autre. Un backlog en un seul fichier
-entrait en conflit à chaque PR — le pilote `merge=union` de `.gitattributes` ne joue qu'en local,
+entrait en conflit à chaque PR, le pilote `merge=union` de `.gitattributes` ne joue qu'en local,
 GitHub ne l'applique pas à son bouton « Merge ».
 
 ## Règles
@@ -18,7 +18,7 @@ GitHub ne l'applique pas à son bouton « Merge ».
   partagé était lui-même une source de conflit. Deux items créés en parallèle dans deux branches
   peuvent se disputer un numéro : l'orchestrateur réserve les identifiants avant de lancer les
   agents.
-- **Fichier** `BL-NNN.md`, qui s'ouvre sur `# BL-NNN — titre`, puis les champs ci-dessous.
+- **Fichier** `BL-NNN.md`, qui s'ouvre sur `# BL-NNN - titre`, puis les champs ci-dessous.
 - **Priorité** de 1 (la plus urgente) à 5. `/backlog-pop` prend la plus petite, puis
   l'identifiant le plus bas à priorité égale.
 - **Catégorie** = la zone du code touchée. Deux items de catégories différentes peuvent se

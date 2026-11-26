@@ -22,8 +22,8 @@ CONNUE = dt.date(2026, 12, 9)  # Log4Shell
 INCONNUE = dt.date(2026, 3, 3)
 
 #: Ce qui signe une entrée de chronique sécurité. Bornes de mot des deux côtés : sans
-#: elles, « ver » attrape « version » et « verse ». Les racines larges — sécurité,
-#: attaquant, compromission, espionnage, surveillance — rattrapent les incidents que le
+#: elles, « ver » attrape « version » et « verse ». Les racines larges, sécurité,
+#: attaquant, compromission, espionnage, surveillance, rattrapent les incidents que le
 #: vocabulaire du logiciel malveillant ne nomme pas (PRISM, CrowdStrike, SolarWinds).
 #: EternalBlue : l'entrée WannaCry ne porte aucun autre mot du domaine.
 SECURITE = re.compile(
@@ -72,16 +72,16 @@ class SansFournisseurTests(unittest.TestCase):
 
 class AvecFournisseurTests(unittest.TestCase):
     def test_the_model_wins_when_it_knows_something(self):
-        provider = FakeProvider("2021 — Log4Shell est rendue publique.")
+        provider = FakeProvider("2021, Log4Shell est rendue publique.")
 
         resultat = EphemerideService(provider).of(INCONNUE)
 
         self.assertEqual("llm", resultat.origine)
-        self.assertEqual("2021 — Log4Shell est rendue publique.", resultat.texte)
+        self.assertEqual("2021, Log4Shell est rendue publique.", resultat.texte)
         self.assertEqual([INCONNUE], provider.appels)
 
     def test_the_model_is_asked_once_per_sending_day_not_per_category(self):
-        provider = FakeProvider("2000 — quelque chose.")
+        provider = FakeProvider("2000, quelque chose.")
         service = EphemerideService(provider)
 
         service.of(CONNUE)
@@ -125,7 +125,7 @@ class FeteTests(unittest.TestCase):
     """La fête accompagne toujours l'éphéméride, quelle que soit sa source."""
 
     def test_the_feast_comes_along_whatever_the_source(self):
-        provider = FakeProvider("2021 — quelque chose.")
+        provider = FakeProvider("2021, quelque chose.")
         for service, attendue in ((EphemerideService(provider), "llm"), (EphemerideService(), "table")):
             with self.subTest(origine=attendue):
                 resultat = service.of(CONNUE)
@@ -188,7 +188,7 @@ class TableTests(unittest.TestCase):
             with self.subTest(date=f"{jour:02d}/{mois:02d}"):
                 self.assertTrue(1 <= mois <= 12)
                 self.assertTrue(1 <= jour <= 31)
-                self.assertRegex(texte, r"^(19|20)\d{2} — ")
+                self.assertRegex(texte, r"^(19|20)\d{2}, ")
                 self.assertGreater(len(texte), 40)
                 self.assertLess(len(texte), ephemeride.LONGUEUR_MAX)
 

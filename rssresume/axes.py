@@ -1,13 +1,13 @@
 """Les axes de veille : les rubriques entre lesquelles le scoring range un article.
 
-Les cinq thématiques d'origine — reglementaire, cyber, marche, stack, autre — sont la
+Les cinq thématiques d'origine, reglementaire, cyber, marche, stack, autre, sont la
 taxonomie d'un directeur technique d'éditeur. Pour un QA, un PO ou un designer, tout
 tombait dans `autre`, et le regroupement à l'écoute ne voulait plus rien dire. La
 personne déclare donc les siennes, dans son document (`profil.py`, clé `axes`) :
 
     {"axes": [{"slug": "tests", "libelle": "Tests", "description": "outillage, méthodes"}, …]}
 
-Le procédé reste ici, la liste là-bas — le découpage de `certfr/stack.py`. Sans la clé,
+Le procédé reste ici, la liste là-bas, le découpage de `certfr/stack.py`. Sans la clé,
 ce sont les cinq d'origine, et le prompt comme son empreinte restent ceux d'avant à
 l'octet près : un profil existant n'est pas renoté pour une clé qu'il ne porte pas.
 """
@@ -32,7 +32,7 @@ NOMBRE_MIN = 3
 NOMBRE_MAX = 6
 
 #: Les exemples du barème 7-8 tant que le profil n'a rien déclaré : la phrase d'origine,
-#: caractère pour caractère, retour à la ligne compris — elle entre dans l'empreinte.
+#: caractère pour caractère, retour à la ligne compris, elle entre dans l'empreinte.
 EXEMPLES_PAR_DEFAUT = (
     "obligation à respecter, faille sur ses propres outils,\n"
     "     mouvement d'un concurrent direct"
@@ -65,7 +65,7 @@ class Axe:
 class Axes:
     """Les axes d'un profil, et ce qu'en font le prompt de scoring et sa relecture.
 
-    La base porte ce qui ne dépend pas de leur origine — reconnaître un slug, rabattre
+    La base porte ce qui ne dépend pas de leur origine, reconnaître un slug, rabattre
     une réponse hors liste, se rendre en document ; les deux sous-classes ne disent que
     ce que le prompt en montre. Le repli est le dernier axe, comme `autre` l'était.
     """
@@ -101,7 +101,7 @@ class Axes:
         doublons = sorted({slug for slug in slugs if slugs.count(slug) > 1})
         if doublons:
             raise AxesError(
-                f"« {CLE_AXES} » : le slug {', '.join(doublons)} est déclaré deux fois — "
+                f"« {CLE_AXES} » : le slug {', '.join(doublons)} est déclaré deux fois, "
                 "deux axes ne peuvent pas porter le même tag."
             )
         return AxesDeclares(axes)
@@ -152,7 +152,7 @@ class AxesParDefaut(Axes):
 class AxesDeclares(Axes):
     """Les axes écrits par la personne : le modèle doit lire ce que chacun couvre.
 
-    Un slug seul ne dit rien à qui range — `qualite` couvre-t-il l'accessibilité ? —,
+    Un slug seul ne dit rien à qui range, `qualite` couvre-t-il l'accessibilité ?,
     d'où une ligne par axe avec son libellé et sa description.
     """
 
@@ -178,14 +178,14 @@ def _axe(entree: object) -> Axe:
     if not isinstance(slug, str) or not MOTIF_SLUG.match(slug):
         raise AxesError(
             f"« {CLE_AXES} » : slug invalide « {slug} ». Attendu : 2 à 24 caractères, "
-            "minuscules, chiffres ou « - », commençant par une lettre — il devient le tag "
+            "minuscules, chiffres ou « - », commençant par une lettre, il devient le tag "
             "FreshRSS theme-<slug>."
         )
     for champ in ("libelle", "description"):
         texte = entree.get(champ)
         if not isinstance(texte, str) or not texte.strip():
             raise AxesError(
-                f"Axe « {slug} » : « {champ} » attend un texte non vide — c'est en le "
+                f"Axe « {slug} » : « {champ} » attend un texte non vide, c'est en le "
                 "lisant que le modèle sait quoi ranger sous cet axe."
             )
     return Axe(slug, entree["libelle"].strip(), entree["description"].strip())

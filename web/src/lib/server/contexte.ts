@@ -1,5 +1,5 @@
 /**
- * Le seul endroit où l'environnement est lu et les collaborateurs assemblés — l'équivalent
+ * Le seul endroit où l'environnement est lu et les collaborateurs assemblés, l'équivalent
  * de `build_service()` dans l'appli de résumé. Les classes reçoivent leur configuration au
  * constructeur et ne lisent jamais l'environnement : c'est ce qui les rend testables.
  *
@@ -102,7 +102,7 @@ export class Contexte {
 	}
 }
 
-/** Resend s'il est configuré. Sinon, en développement, la console ; en production, rien —
+/** Resend s'il est configuré. Sinon, en développement, la console ; en production, rien -
  * et les inscriptions sont refusées plutôt que de créer des comptes impossibles à activer. */
 function choisirCourrier(): Courrier {
 	if (RESEND_API_KEY && MAIL_FROM) {

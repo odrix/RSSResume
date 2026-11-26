@@ -2,7 +2,7 @@
 
 La catégorie des avis de l'ANSSI ne ressemble à aucune autre du digest : cinq à dix
 articles par jour, tous bâtis sur le même moule, dont la réponse utile tient en une
-ligne — est-ce que ça touche ma stack. Le pipeline LLM y était à contre-emploi : cher,
+ligne, est-ce que ça touche ma stack. Le pipeline LLM y était à contre-emploi : cher,
 répétitif, et illisible à l'oreille.
 
     from rssresume import certfr

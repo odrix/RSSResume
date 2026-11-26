@@ -164,7 +164,7 @@ describe('page des résumés, journées lues', () => {
 	});
 });
 
-describe('/resumes/[username] — le chargement des journées lues', () => {
+describe('/resumes/[username], le chargement des journées lues', () => {
 	let env: ReturnType<typeof monter>;
 	let bea: Utilisateur;
 	let admin: Utilisateur;

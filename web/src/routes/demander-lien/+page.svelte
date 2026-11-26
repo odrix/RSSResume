@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Recevoir un lien de connexion — RSSResume</title>
+	<title>Recevoir un lien de connexion, RSSResume</title>
 </svelte:head>
 
 <h1>Recevoir un lien de connexion</h1>

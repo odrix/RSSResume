@@ -15,7 +15,7 @@ export const LIEN_DESABONNEMENT_INVALIDE = 'Ce lien de désabonnement est invali
 export class ErreurDesabonnement extends Error {}
 
 /** De quoi écarter sans appel ce qui ne peut pas être un jeton : les champs signés, séparés
- * par des points, dans l'alphabet d'URL — et une longueur bornée. */
+ * par des points, dans l'alphabet d'URL, et une longueur bornée. */
 const MOTIF_JETON = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/;
 /** Le jeton porte huit caractères par destinataire de la lettre, en plus d'environ 85 fixes,
  * et un profil n'a pas de plafond de destinataires : la borne laisse passer quelque

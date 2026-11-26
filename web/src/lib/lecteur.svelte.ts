@@ -3,7 +3,7 @@
  *
  * Un `<audio>` posé dans une page meurt avec elle : SvelteKit démonte la page au changement
  * de route, et le son s'arrête. L'élément vit donc ici, hors de tout markup, créé à la
- * première écoute et réutilisé ensuite — d'où « un seul audio à la fois » sans rien à
+ * première écoute et réutilisé ensuite, d'où « un seul audio à la fois » sans rien à
  * coordonner. Les pages ne font que le piloter (`LecteurPlein`) ; le layout montre le
  * mini-lecteur (`LecteurGlobal`) quand aucune page n'offre d'emplacement à la piste en cours.
  */
@@ -21,7 +21,7 @@ export class PisteAudio {
 	) {}
 
 	/** La piste d'un fichier de la journée, présentée comme la journée entière seulement si
-	 * c'est son montage — la règle de la page de la journée (`contenu.montage.audio`). En mode
+	 * c'est son montage, la règle de la page de la journée (`contenu.montage.audio`). En mode
 	 * par catégorie, le premier fichier n'est qu'une catégorie : le titre le dit, sans quoi le
 	 * mini-lecteur annoncerait la journée en ne jouant qu'un morceau. */
 	static pourFichier(

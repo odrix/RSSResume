@@ -2,7 +2,7 @@
  * Les sessions : un jeton aléatoire dans un cookie, son empreinte SHA-256 en base.
  *
  * Seule l'empreinte est stockée : une copie de la base ne suffit pas à se faire passer
- * pour quelqu'un. SHA-256 et non Argon2 parce que le jeton a 256 bits d'entropie — rien à
+ * pour quelqu'un. SHA-256 et non Argon2 parce que le jeton a 256 bits d'entropie, rien à
  * deviner, donc rien à ralentir, et la vérification a lieu à chaque requête.
  */
 

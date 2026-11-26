@@ -23,7 +23,7 @@ interface LigneAdmin {
 
 /** Profils de l'API et comptes du site, réunis par username. Les deux listes peuvent
  * différer : un profil créé à la main côté appli n'a pas de compte, un compte dont l'API a
- * perdu le profil n'a plus de profil — l'administrateur doit voir les deux cas. */
+ * perdu le profil n'a plus de profil, l'administrateur doit voir les deux cas. */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	exigerAdmin(locals.utilisateur, url);
 	const ctx = contexte();

@@ -197,7 +197,7 @@ class PromptTests(PromptCase):
         self.assertIn("deux vulnérabilités différentes", prompt)
 
     def test_an_enriched_advisory_travels_whole(self):
-        """L'avis arrive déjà complété par sa page — `digest.py` la lit une fois pour tous.
+        """L'avis arrive déjà complété par sa page, `digest.py` la lit une fois pour tous.
 
         Ce que ce test garde ici : le résumeur n'ampute pas ce complément. La lecture de
         la page, elle, se vérifie dans le pipeline (`test_digest`), là où elle a lieu.
@@ -222,7 +222,7 @@ class PromptTests(PromptCase):
     def test_the_score_travels_with_the_subject_for_depth(self):
         """Le score notait déjà l'article ; sans lui dans le payload, rien ne pouvait
 
-        graduer la profondeur du résumé dessus — la consigne qui le lit resterait sans
+        graduer la profondeur du résumé dessus, la consigne qui le lit resterait sans
         rien à lire.
         """
         prompt = self._prompt([make_article()], {"item-1": Note(9, "cyber", "Un angle.")})
@@ -237,7 +237,7 @@ class PromptTests(PromptCase):
         self.assertIn("Les articles arrivent regroupés par thématique", prompt)
         self.assertIn("garde cet ordre", prompt)
         self.assertIn("une transition d'une poignée de mots", prompt)
-        # Écart assumé : les thématiques s'enchaînent, elles ne s'annoncent pas — ni en
+        # Écart assumé : les thématiques s'enchaînent, elles ne s'annoncent pas, ni en
         # rubrique au fil du texte, ni en plan dans la phrase d'ouverture.
         self.assertIn("sans les annoncer comme une rubrique", prompt)
         self.assertIn("pas d'annonce du plan", prompt)
@@ -270,7 +270,7 @@ class PromptTests(PromptCase):
 class CveStackTests(PromptCase):
     """Le détail des versions, gradué sur ce que la personne exploite vraiment.
 
-    Une CVE sur un produit qu'on n'a pas ne se tait pas — elle situe l'actualité — mais
+    Une CVE sur un produit qu'on n'a pas ne se tait pas, elle situe l'actualité, mais
     ses six numéros de version récités à voix haute enterrent la seule de la matinée qui
     demandait une action. La graduation est déterministe : le code apparie, le prompt
     n'a plus qu'à lire un champ présent ou absent.
@@ -331,7 +331,7 @@ class CveStackTests(PromptCase):
         """Le point qui se déduirait mal des articles : la stack existe, rien ne la touche.
 
         Déduire la graduation de la présence du champ rendrait le détail complet à tout
-        le monde exactement les jours où aucune CVE ne concerne l'auditeur — l'inverse
+        le monde exactement les jours où aucune CVE ne concerne l'auditeur, l'inverse
         de ce qu'on veut.
         """
         prompt = self._prompt(
@@ -354,7 +354,7 @@ class CveStackTests(PromptCase):
 class RegimeSecuriteTests(PromptCase):
     """Le régime de sécurité du document : qui écoute, et donc ce qu'une CVE garde.
 
-    Sans stack, le régime d'avant récitait toutes les versions de toutes les CVE — le
+    Sans stack, le régime d'avant récitait toutes les versions de toutes les CVE, le
     détail le plus fin échoyait justement à qui n'exploite rien. Le choix est fait par
     le code, à partir du document ; le modèle ne reçoit qu'une consigne déjà tranchée.
     """
@@ -610,7 +610,7 @@ class CharLimitTests(unittest.TestCase):
     """Le plafond d'entrée : le résumé était le seul chemin du pipeline sans borne.
 
     Le scoring lit 400 caractères par article ; le résumé, lui, envoyait le texte
-    intégral de douze articles — cent mille caractères une journée chargée.
+    intégral de douze articles, cent mille caractères une journée chargée.
     """
 
     @staticmethod

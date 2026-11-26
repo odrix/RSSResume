@@ -14,7 +14,7 @@ export const LIBELLES_AVIS: Record<Avis, string> = {
 	pas_utile: 'Pas utile'
 };
 
-/** En caractères — points de code, comme Python les compte : un emoji vaut un. */
+/** En caractères, points de code, comme Python les compte : un emoji vaut un. */
 export const LONGUEUR_MAX_COMMENTAIRE = 2000;
 
 export function estAvis(valeur: unknown): valeur is Avis {

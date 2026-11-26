@@ -2,7 +2,7 @@
 
 Digest quotidien des articles FreshRSS : notation par LLM, résumé, synthèse vocale, envoi
 par email. Ce que fait le produit est écrit dans [README.md](README.md) et le détail de
-chaque étape dans [FONCTIONNEMENT.md](FONCTIONNEMENT.md) — les lire, ne pas les redemander.
+chaque étape dans [FONCTIONNEMENT.md](FONCTIONNEMENT.md), les lire, ne pas les redemander.
 
 Ce fichier ne dit que ce que le code ne montre pas.
 
@@ -17,7 +17,7 @@ Ce fichier ne dit que ce que le code ne montre pas.
 
 ## Tests
 
-Le projet tourne sur **unittest**, pas pytest — il n'y a ni `pytest.ini`, ni `pyproject.toml`,
+Le projet tourne sur **unittest**, pas pytest, il n'y a ni `pytest.ini`, ni `pyproject.toml`,
 ni pytest installé. La commande, depuis la racine :
 
 ```
@@ -39,7 +39,7 @@ qu'une partie. Le site a la sienne : `npm run check` et `npm test` dans `web/`.
   redirection shell : un `sed -i` a déjà réécrit tout le dépôt en LF, et les heredocs mangent
   les échappements. `.gitattributes` protège désormais l'index ; le hook `pre` refuse ces
   commandes, ainsi que tout accès à `.env` / `.env.local`.
-- Lire et chercher avec Read/Grep/Glob. Bash sert à **exécuter** — tests, git, docker — pas
+- Lire et chercher avec Read/Grep/Glob. Bash sert à **exécuter**, tests, git, docker, pas
   à éditer ni à inspecter.
 
 ## Secrets
@@ -54,7 +54,7 @@ inactif tant que ce n'est pas fait.
 - **Objet ou fonctionnel.** Une classe de base qui porte les opérations métier, des
   sous-classes qui ne redéfinissent que ce qui diffère, la configuration injectée au
   constructeur : le modèle est [llm/base.py](rssresume/llm/base.py). Pas de dispatch par
-  dict de fonctions, pas de dicts ni de tuples passés de module en module — un tel design
+  dict de fonctions, pas de dicts ni de tuples passés de module en module, un tel design
   a déjà été rejeté en bloc ici.
 - Les données de configuration hors du code ([llm/providers.json](rssresume/llm/providers.json)),
   l'environnement pour les seuls secrets et le choix du fournisseur.
@@ -63,8 +63,8 @@ inactif tant que ce n'est pas fait.
   Mistral : les appels passent par `urllib` dans `llm/base.py`.
 - Rester dans le périmètre demandé : pas de refactor opportuniste, pas de reformatage d'un
   fichier qu'on n'avait pas à toucher.
-- **Au-delà de deux fichiers touchés, proposer un plan d'abord** — structure des classes,
-  liste exacte des fichiers, dépendances éventuelles — et attendre l'accord avant d'écrire.
+- **Au-delà de deux fichiers touchés, proposer un plan d'abord**, structure des classes,
+  liste exacte des fichiers, dépendances éventuelles, et attendre l'accord avant d'écrire.
 
 ## Backlog et branches
 
@@ -81,21 +81,21 @@ inactif tant que ce n'est pas fait.
 
 ## Repères dans le code
 
-- [cli.py](rssresume/cli.py) — les arguments, et `build_service()`, le **seul** endroit où
+- [cli.py](rssresume/cli.py), les arguments, et `build_service()`, le **seul** endroit où
   les fournisseurs sont choisis et les collaborateurs injectés.
-- [digest.py](rssresume/digest.py) — `DigestService` : ce que la journée contient. Pas de
+- [digest.py](rssresume/digest.py), `DigestService` : ce que la journée contient. Pas de
   quoi elle a l'air.
-- [profil.py](rssresume/profil.py) — le document unique de la personne, hors du dépôt
+- [profil.py](rssresume/profil.py), le document unique de la personne, hors du dépôt
   (`input/`, gitignoré) : profil de pertinence, stack surveillée, destinataire du digest.
   Rien de personnel ne se déclare ailleurs, et surtout pas dans l'environnement.
-- [newsletter.py](rssresume/newsletter.py) — `Lettre` : la mise en forme de l'email, partagée
+- [newsletter.py](rssresume/newsletter.py), `Lettre` : la mise en forme de l'email, partagée
   par la production du jour et le renvoi `--send-only`.
-- [llm/](rssresume/llm/) — `base.py` le contrat et le transport, `openai.py` / `mistral.py`
+- [llm/](rssresume/llm/), `base.py` le contrat et le transport, `openai.py` / `mistral.py`
   les seuls dialectes, `prompts.py` les prompts, `providers.json` les réglages non secrets.
-- [runlog.py](rssresume/runlog.py) — les journaux `<categorie>.log.json` : ils portent tout
+- [runlog.py](rssresume/runlog.py), les journaux `<categorie>.log.json` : ils portent tout
   ce que l'email montre, ce qui permet `--send-only` sans aucun appel IA.
-- [external/](rssresume/external/) — FreshRSS et les deux transports d'email.
-- [protocols.py](rssresume/protocols.py) — les contrats des collaborateurs injectés.
+- [external/](rssresume/external/), FreshRSS et les deux transports d'email.
+- [protocols.py](rssresume/protocols.py), les contrats des collaborateurs injectés.
 
 ## Exploitation
 

@@ -1,6 +1,6 @@
 """La liste « à surveiller » : ce qui a été lu et noté sans être raconté.
 
-Ce que ces tests protègent : les articles notés entre 4 et 6 sont déjà payés — lus,
+Ce que ces tests protègent : les articles notés entre 4 et 6 sont déjà payés, lus,
 notés, écartés. Les taire revenait à jeter la moitié de ce qu'une journée coûte. Ils
 n'entrent pas dans l'audio pour autant : un titre et un lien, rien de plus.
 """

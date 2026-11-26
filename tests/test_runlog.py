@@ -148,7 +148,7 @@ class DayAggregationTests(unittest.TestCase):
 
     Chaque catégorie écrit son fichier, la journée écrit le sien, et personne
     n'additionne les uns aux autres. Le cumul est la seule vue qui dise ce que la
-    matinée entière a coûté — et il ne doit rien changer aux fichiers écrits.
+    matinée entière a coûté, et il ne doit rien changer aux fichiers écrits.
     """
 
     @staticmethod
@@ -190,8 +190,8 @@ class DayAggregationTests(unittest.TestCase):
     def test_the_written_files_still_bill_only_what_each_journal_spent(self):
         """Le cumul vit en mémoire : `journee.json` ne doit pas hériter des catégories.
 
-        Sans quoi additionner les fichiers d'une journée — ce que fait n'importe qui
-        devant un répertoire de sortie — compterait deux fois chaque catégorie.
+        Sans quoi additionner les fichiers d'une journée, ce que fait n'importe qui
+        devant un répertoire de sortie, compterait deux fois chaque catégorie.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             racine = pathlib.Path(tmpdir)
@@ -385,7 +385,7 @@ class PipelineTests(unittest.TestCase):
             config = dataclasses.replace(
                 make_config(tmpdir), categories=list(articles_by_category), **overrides
             )
-            # Un vrai fournisseur pour la synthèse — c'est lui qui tient la comptabilité
+            # Un vrai fournisseur pour la synthèse, c'est lui qui tient la comptabilité
             # du TTS ; seul son POST est coupé. Le noteur et le résumeur sont simulés,
             # et facturent à la main ce que le vrai facturerait.
             voix = OpenAIProvider(
@@ -420,7 +420,7 @@ class PipelineTests(unittest.TestCase):
         """Note tout à 9, et facture un appel de scoring comme le vrai le ferait.
 
         Le noteur est simulé : sa comptabilité l'est donc aussi, à l'identique de ce
-        qu'un `LLMProvider` enregistre — un appel par lot d'articles.
+        qu'un `LLMProvider` enregistre, un appel par lot d'articles.
         """
         runlog.record_chat("scoring", "gpt-4o-mini", USAGE)
         return [
@@ -522,7 +522,7 @@ class CertfrJournalTests(unittest.TestCase):
 
     Le journal sert à deux choses ici, et aucune n'est le coût : dire contre quelle
     liste de composants la journée a été appariée, et rester relisible par
-    `--send-only`. C'est ce dernier point qui impose la forme — `retenu`, `rang_digest`,
+    `--send-only`. C'est ce dernier point qui impose la forme, `retenu`, `rang_digest`,
     et un `score` à `null` pour qu'aucun avis n'entre par erreur dans la liste de veille.
     """
 

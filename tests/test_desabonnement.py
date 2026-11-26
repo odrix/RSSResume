@@ -1,7 +1,7 @@
 """Le jeton du lien de désabonnement : signé, relu, et lié aux destinataires.
 
 Ce que ces tests protègent : un lien qu'on ne peut ni forger ni détourner, qui se
-recalcule à l'identique — `--send-only` doit rendre la même lettre — et qui cesse de
+recalcule à l'identique, `--send-only` doit rendre la même lettre, et qui cesse de
 valoir dès que les destinataires qu'il désigne ont changé.
 """
 

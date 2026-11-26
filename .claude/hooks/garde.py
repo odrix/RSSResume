@@ -46,7 +46,7 @@ REFUS_ENV = (
     "écriture. Une nouvelle variable se documente dans .env.example."
 )
 REFUS_EDITION_SHELL = (
-    "Édition de fichier au shell refusée (CLAUDE.md, « Outils ») : {motif}. Utiliser Edit/Write — "
+    "Édition de fichier au shell refusée (CLAUDE.md, « Outils ») : {motif}. Utiliser Edit/Write, "
     "core.autocrlf=true, un sed -i a déjà réécrit le dépôt en LF. Le shell sert à exécuter."
 )
 

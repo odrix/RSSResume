@@ -1,7 +1,7 @@
 """Chargement du document de profil, et effets de son injection.
 
 Un seul fichier porte tout ce qui est personnel : le critère de pertinence, la stack
-surveillée, le destinataire du digest. Ces tests protègent les deux extrémités — que le
+surveillée, le destinataire du digest. Ces tests protègent les deux extrémités, que le
 document soit lu en entier, et qu'un document fautif fasse échouer le lancement plutôt
 que de laisser noter une journée contre un critère qui n'est pas celui qu'on croit.
 """
@@ -222,7 +222,7 @@ class EmailTests(unittest.TestCase):
 
 class PrenomTests(unittest.TestCase):
     """La clé `prenom` : par quel nom l'audio de journée ouvre. Facultative, mais pas
-    permissive — une salutation qui se trompe ne se voit qu'à l'écoute, un matin."""
+    permissive, une salutation qui se trompe ne se voit qu'à l'écoute, un matin."""
 
     def _prenom(self, valeur):
         return charge({CLE_PROFIL: AUTRE_PROFIL, CLE_PRENOM: valeur}).prenom
@@ -385,7 +385,7 @@ class ChampInvalideTests(unittest.TestCase):
                 self.assertIsInstance(leve.exception, ValueError)
                 self.assertIn("bea", str(leve.exception))
 
-        # Refusée par le catalogue — inconnue ou privée d'un autre : même champ.
+        # Refusée par le catalogue, inconnue ou privée d'un autre : même champ.
         for categorie in ("Inconnue", "Veille marché"):
             with self.subTest(categorie=categorie):
                 with self.assertRaises(ChampInvalide) as leve:

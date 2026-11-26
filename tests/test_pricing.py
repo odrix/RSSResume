@@ -25,7 +25,7 @@ class TarifTests(unittest.TestCase):
         """`gpt-5.6-luna` commence par `gpt-5` sans en être une version datée.
 
         Le facturer au tarif de `gpt-5` rendrait un coût faux et vraisemblable, que
-        rien ne signalerait — pire qu'un coût absent.
+        rien ne signalerait, pire qu'un coût absent.
         """
         for modele in ("gpt-5-turbo-inconnu", "gpt-4o-maison"):
             self.assertIsNone(pricing.tarif(modele), modele)

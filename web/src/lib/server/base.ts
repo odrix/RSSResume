@@ -3,7 +3,7 @@
  *
  * Même parti que l'appli Python, qui tient sur la bibliothèque standard : pas de module
  * compilé à reconstruire à chaque version de Node ni dans l'image alpine, et une API
- * synchrone qui suffit à quelques comptes. Les profils ne sont pas ici — ils appartiennent
+ * synchrone qui suffit à quelques comptes. Les profils ne sont pas ici, ils appartiennent
  * à l'appli de résumé ; le site ne garde que de quoi authentifier.
  */
 

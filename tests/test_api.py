@@ -64,7 +64,7 @@ class ServeurTestCase(unittest.TestCase):
         self._tmp.cleanup()
 
     def appel(self, methode, chemin, corps=None, jeton=JETON, entetes=None):
-        """(statut, en-têtes, corps brut) — les erreurs HTTP sont des réponses comme les autres."""
+        """(statut, en-têtes, corps brut), les erreurs HTTP sont des réponses comme les autres."""
         donnees = None if corps is None else json.dumps(corps).encode("utf-8")
         requete = urllib.request.Request(self.base + chemin, data=donnees, method=methode)
         if jeton is not None:
@@ -251,7 +251,7 @@ class ProfilsTests(ServeurTestCase):
 
     def test_put_keeps_a_followed_category_since_removed_from_the_catalogue(self):
         """Seul ce qu'on ajoute se vérifie : confirmer une adresse ne doit pas échouer parce
-        qu'une catégorie suivie a quitté le catalogue — la tournée la refiltre."""
+        qu'une catégorie suivie a quitté le catalogue, la tournée la refiltre."""
         self.annuaire.remplacer_catalogue(Catalogue([
             CategorieCatalogue("Tech", "Tech.", ["developpeur"]),
             CategorieCatalogue("Ancienne", "Retirée ensuite.", ["cto"]),
@@ -305,7 +305,7 @@ class ProfilsTests(ServeurTestCase):
         self.json("POST", "/api/v1/profils", {"username": "zoe", "profil": "Z"})
 
         self.assertEqual("decideur", self.json("GET", "/api/v1/profils/bea")[1]["securite"])
-        # Sans clé, le défaut — celui que la tournée servira.
+        # Sans clé, le défaut, celui que la tournée servira.
         self.assertEqual("exploitant", self.json("GET", "/api/v1/profils/zoe")[1]["securite"])
 
     def test_an_empty_axes_list_returns_to_default_axes(self):
@@ -366,7 +366,7 @@ class ProfilsTests(ServeurTestCase):
 
     def test_put_conserve_une_cle_non_editee_par_le_site(self):
         """La fusion préserve ce que le site n'édite pas ; une clé hors format, même
-        renvoyée dans le corps, reste hors document — pas de fuite."""
+        renvoyée dans le corps, reste hors document, pas de fuite."""
         self.json("POST", "/api/v1/profils", self.BEA)
         self.json("PUT", "/api/v1/profils/bea", {**self.BEA, "flux_exclus": ["NoLimitSecu"]})
 
@@ -896,7 +896,7 @@ class RetoursApiTests(ServeurTestCase):
 
     Ce que ces tests protègent : un jeton signé par le travailleur vaut pour son profil et sa
     journée et pour rien d'autre, un jeton altéré ou d'un profil disparu reçoit le même 404,
-    la lecture n'écrit rien, et un second vote — d'où qu'il vienne — remplace le premier."""
+    la lecture n'écrit rien, et un second vote, d'où qu'il vienne, remplace le premier."""
 
     JOUR = datetime.date(2026, 11, 22)
 

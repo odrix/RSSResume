@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 /** Le bouton de la page, et le POST en un clic de Gmail ou Yahoo (`List-Unsubscribe-Post`).
- * Les deux arrivent ici ; le corps — `List-Unsubscribe=One-Click` pour le second — n'est
+ * Les deux arrivent ici ; le corps, `List-Unsubscribe=One-Click` pour le second, n'est
  * pas lu : il ne dit rien que l'URL ne dise déjà. */
 export const actions: Actions = {
 	default: async ({ params }) => {

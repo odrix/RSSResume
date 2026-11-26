@@ -2,7 +2,7 @@
 
 Ce que ces tests protègent :
 
-- la base refuse ce que la tournée refuserait — mêmes messages que `profil_depuis_dict` ;
+- la base refuse ce que la tournée refuserait, mêmes messages que `profil_depuis_dict` ;
 - un nom n'est pris qu'une fois, un identifiant ne change jamais ;
 - la tournée sert les profils de la base sans rien savoir d'elle ;
 - la base exclut toute autre source de profils, au lancement ;
@@ -134,7 +134,7 @@ class AnnuaireSqliteTests(Base):
         self.assertEqual([], self.annuaire.usernames())
 
     def test_the_database_is_in_wal_mode(self):
-        """Deux processus — la tournée, l'API — lisent et écrivent ensemble."""
+        """Deux processus, la tournée, l'API, lisent et écrivent ensemble."""
         with self.annuaire._connexion() as connexion:
             self.assertEqual("wal", connexion.execute("PRAGMA journal_mode").fetchone()[0])
 
@@ -181,7 +181,7 @@ class TestModifier(Base):
     """Le PUT fusionne : un réglage déclaré par une autre voie survit à une édition partielle."""
 
     def test_modifier_fusionne_les_cles_absentes(self):
-        """Un `flux_exclus` écrit par une autre voie — l'API, un gabarit — survit à un PUT
+        """Un `flux_exclus` écrit par une autre voie, l'API, un gabarit, survit à un PUT
         partiel ; un `[]` explicite reste lui l'effacement (axes ici)."""
         self.annuaire.creer(
             "bea",

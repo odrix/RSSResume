@@ -3,7 +3,7 @@
  *
  * Partagé entre le serveur et la page : la page affiche la stack que le serveur a lue, le
  * serveur relit ce que la page a envoyé, et les deux doivent s'entendre sur ce qu'est un
- * composant. Le format est celui de `rssresume/profil.py` — un composant est un nom seul,
+ * composant. Le format est celui de `rssresume/profil.py`, un composant est un nom seul,
  * ou un nom suivi de ses alias.
  */
 
@@ -128,7 +128,7 @@ export interface ProfilSaisi {
 	 * Liste vide : retour aux rubriques par défaut. */
 	axes?: Axe[];
 	/** `undefined` : la section n'a pas été montrée, l'enregistrement garde la valeur
-	 * actuelle. `null` : tout est coché, la clé est retirée — le profil suit alors tout le
+	 * actuelle. `null` : tout est coché, la clé est retirée, le profil suit alors tout le
 	 * catalogue, y compris les catégories ajoutées plus tard. Une liste : celles cochées. */
 	categories?: string[] | null;
 }
@@ -197,7 +197,7 @@ export function versLignesAxes(axes: Axe[] | undefined, nombre = NOMBRE_MAX_AXES
 }
 
 /** Les axes saisis. Une ligne sans libellé ni description est ignorée ; un axe existant
- * garde son slug même renommé — le changer séparerait l'axe des articles déjà tagués —,
+ * garde son slug même renommé, le changer séparerait l'axe des articles déjà tagués,
  * un nouveau en reçoit un tiré de son libellé, distinct des autres. */
 export function depuisLignesAxes(lignes: LigneAxe[]): Axe[] {
 	const remplies = lignes
@@ -246,8 +246,8 @@ function couperSlug(slug: string, longueur: number): string {
 }
 
 /** Les catégories que la page peut faire cocher, dans l'ordre d'affichage : le tri naturel
- * du libellé — « 2 … » avant « 11 … » —, le même que celui de la journée et de l'email.
- * Aucune quand le catalogue est ouvert ou que la liste n'a pas pu être lue — la section
+ * du libellé, « 2 … » avant « 11 … », le même que celui de la journée et de l'email.
+ * Aucune quand le catalogue est ouvert ou que la liste n'a pas pu être lue, la section
  * est alors masquée. */
 export function categoriesACocher(proposees: CategoriesProposees | null): CategorieProposee[] {
 	if (!proposees || proposees.ouvert) return [];
@@ -261,7 +261,7 @@ export function categoriesACocher(proposees: CategoriesProposees | null): Catego
  * Ses catégories ne sont reprises que parmi celles proposées à la personne, sous leur
  * libellé proposé : un gabarit est écrit pour tout le monde, et une catégorie qu'elle ne
  * peut pas suivre ne doit ni apparaître cochée ni partir à l'API. Si aucune ne reste, tout
- * est coché plutôt que rien — rien serait refusé à l'enregistrement. Sans catégories à
+ * est coché plutôt que rien, rien serait refusé à l'enregistrement. Sans catégories à
  * cocher, la page ne les montre pas : celles du profil sont gardées telles quelles. */
 export function depuisGabarit(
 	profil: ProfilSaisi | null,
@@ -299,7 +299,7 @@ function cleCategorie(libelle: string): string {
 }
 
 /** Ce que le site refuse avant l'API. Aucune catégorie cochée : l'API lirait la liste vide
- * comme une clé absente, c'est-à-dire « tout » — l'exact contraire de ce qui a été coché. */
+ * comme une clé absente, c'est-à-dire « tout », l'exact contraire de ce qui a été coché. */
 export function erreurSaisieProfil(saisie: ProfilSaisi): RefusSaisie | null {
 	if (saisie.categories && !saisie.categories.length) {
 		return {

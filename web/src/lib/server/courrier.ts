@@ -7,7 +7,7 @@
  *
  * - `CourrierResend` : l'API HTTP de Resend, par `fetch` et sans SDK. HTTP et non SMTP
  *   parce que le VPS filtre les ports SMTP sortants ;
- * - `CourrierJournal` : en développement sans clé, le message — lien compris — va dans la
+ * - `CourrierJournal` : en développement sans clé, le message, lien compris, va dans la
  *   console, de quoi tester l'inscription sans compte Resend ;
  * - `CourrierAbsent` : en production sans clé. Rien ne part, et `disponible` est faux : une
  *   inscription dont le lien de confirmation ne peut pas partir est refusée d'emblée.
@@ -172,7 +172,7 @@ export abstract class Courrier {
 
 /** L'heure du passage, dans son fuseau et non celui du serveur : c'est l'heure où le
  * travailleur passe. Le début du passage, pas l'arrivée du résumé, que la durée de la
- * tournée repousse d'autant — d'où « suivra ». */
+ * tournée repousse d'autant, d'où « suivra ». */
 function quand(passage: Passage | null): string {
 	const sansHeure = 'Votre résumé arrive chaque matin, après le passage quotidien.';
 	if (!passage) return sansHeure;
@@ -259,7 +259,7 @@ export class CourrierJournal extends Courrier {
 
 	protected async transmettre(destinataire: string, sujet: string, texte: string): Promise<boolean> {
 		this.envoyes.push({ destinataire, sujet, texte });
-		if (this.journaliser) console.info(`[email non envoyé — RESEND_API_KEY absente] À : ${destinataire}\n${sujet}\n\n${texte}`);
+		if (this.journaliser) console.info(`[email non envoyé, RESEND_API_KEY absente] À : ${destinataire}\n${sujet}\n\n${texte}`);
 		return true;
 	}
 }

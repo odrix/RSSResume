@@ -2,10 +2,10 @@
 
 `http.server` et non un framework : l'image n'embarque pas pip, et l'API n'a que neuf
 routes, toutes derrière un même jeton. `ThreadingHTTPServer` sert chaque requête dans son
-fil — un audio long à télécharger ne bloque pas la liste des profils.
+fil, un audio long à télécharger ne bloque pas la liste des profils.
 
 L'API n'est pas exposée sur Internet : seul le site l'appelle, par le réseau interne du
-déploiement. Le jeton n'en est pas moins exigé partout — un réseau interne finit toujours
+déploiement. Le jeton n'en est pas moins exigé partout, un réseau interne finit toujours
 par accueillir un conteneur de plus.
 """
 
@@ -198,7 +198,7 @@ class GestionnaireApi(BaseHTTPRequestHandler):
             appel(route, parametres)
         except ErreurApi as erreur:
             self._repondre_erreur(erreur)
-        except Exception as exc:  # noqa: BLE001 — une requête perdue, pas le serveur
+        except Exception as exc:  # noqa: BLE001, une requête perdue, pas le serveur
             console.error(f"API : erreur sur {self.command} {self._chemin_journal()} : {exc!r}")
             self._repondre_erreur(ErreurApi(500, "Erreur interne."))
 
@@ -295,7 +295,7 @@ class GestionnaireApi(BaseHTTPRequestHandler):
     def _ecarter_corps(self) -> None:
         """Lit et jette un corps resté dans le tuyau, s'il est petit ; sinon ferme.
 
-        Le petit corps est lu pour que la connexion resserve — un 401 ne doit pas coûter
+        Le petit corps est lu pour que la connexion resserve, un 401 ne doit pas coûter
         une reconnexion au site. Un gros n'est pas lu, c'est tout l'objet du 413.
         """
         texte = self.headers.get("Content-Length")
@@ -320,7 +320,7 @@ class GestionnaireApi(BaseHTTPRequestHandler):
         return urllib.parse.urlsplit(self.path).path
 
     def log_request(self, code="-", size="-") -> None:
-        """Une ligne sobre par requête. Ni en-têtes — le jeton y est —, ni chaîne de requête."""
+        """Une ligne sobre par requête. Ni en-têtes, le jeton y est, ni chaîne de requête."""
         statut = getattr(code, "value", code)
         console.log(f"API {self.address_string()} {self.command} {self._chemin_journal()} {statut}")
 

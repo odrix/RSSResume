@@ -1,7 +1,7 @@
 """Poser les liens des articles dans le texte du résumé.
 
 Ce que ces tests protègent : un lien mal posé est pire que pas de lien. Il mène à un
-article qui n'est pas celui dont la phrase parle, et rien ne le signale au lecteur —
+article qui n'est pas celui dont la phrase parle, et rien ne le signale au lecteur -
 alors qu'un article non ancré reste, lui, dans la liste « À lire ».
 """
 

@@ -1,4 +1,4 @@
-# Coût et passage à l'échelle — combien coûte un inscrit
+# Coût et passage à l'échelle - combien coûte un inscrit
 
 Étude BL-052, **mesurée en septembre 2026, sur un profil**. L'inscription est ouverte : chaque
 profil note tous les articles de ses catégories, se fait résumer les siens, monter et lire sa
@@ -16,13 +16,13 @@ budget de BL-057 se règle sur une mesure refaite (BL-061), pas sur eux.
   Son vrai tarif manque à la grille : c'est le premier chiffre à obtenir (BL-055).
 - La facture n'est **pas** le scoring (2 %) : c'est la synthèse vocale (41 %), le résumé (32 %) et
   le montage (23 %). Mutualiser la notation n'économise presque rien.
-- BL-038 (abonnements) ramène un profil métier à **0,11–0,12 $ par jour de semaine** : un socle
+- BL-038 (abonnements) ramène un profil métier à **0,11-0,12 $ par jour de semaine** : un socle
   de ~0,06 $ (montage, voix, éphéméride) que rien ne réduit, plus ~0,06 $ par catégorie active.
 - Ce qui casse en premier n'est pas l'argent : ce sont les **libellés FreshRSS**, au moins 18 par
   profil. Dès 3 à 5 profils la barre latérale est illisible : le cache de scoring doit sortir vers
   SQLite **avant l'ouverture** (BL-056).
 - Recommandation : cache SQLite et plafond de profils avec budget journalier avant d'ouvrir ;
-  l'audio à la demande vers 20–30 profils ; la tournée parallèle et la rétention vers 40–50.
+  l'audio à la demande vers 20-30 profils ; la tournée parallèle et la rétention vers 40-50.
 
 ## 2. Sources et méthode
 
@@ -45,10 +45,10 @@ Pièges, et ce qui en a été fait :
    `notes_calculees = articles` pour chaque catégorie notée ; `2026-08-27` (partielle) est écartée.
 3. **Le montage lit le texte des articles depuis le 2026-09-07** : 10 à 23 k tokens d'entrée en
    semaine, contre 3 à 5 k avant. Le régime actuel se mesure donc à partir de cette date.
-4. **Semaine et week-end** n'ont rien à voir : 66–96 articles notés un jour de semaine, 14–16 le
+4. **Semaine et week-end** n'ont rien à voir : 66-96 articles notés un jour de semaine, 14-16 le
    week-end. Les deux sont donnés.
 5. **Un seul profil, arrêté au 2026-09-18.** Pour rejouer l'étude : rapatrier du VPS
-   (répertoire de sortie du conteneur) `output/<id>/<date>/` de chaque profil sur deux semaines, et appliquer les mêmes filtres —
+   (répertoire de sortie du conteneur) `output/<id>/<date>/` de chaque profil sur deux semaines, et appliquer les mêmes filtres -
    ou, une fois BL-061 fait, `--couts`.
 
 ## 3. Coût mesuré
@@ -68,7 +68,7 @@ Pièges, et ce qui en a été fait :
 
 | | Articles notés | Retenus | Caractères lus | Total haut | Total bas |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Jour de semaine (8 j.) | 79,5 (66–96) | 24,6 | 4 775 | **0,187 $** | **0,102 $** |
+| Jour de semaine (8 j.) | 79,5 (66-96) | 24,6 | 4 775 | **0,187 $** | **0,102 $** |
 | Week-end (2 j.) | 15 | 2,5 | 2 346 | 0,081 $ | 0,047 $ |
 | Moyenne (10 j.) | 66,6 | 20,2 | 4 289 | 0,166 $ | 0,091 $ |
 
@@ -94,7 +94,7 @@ la voix pesait 57 %, à 7 000 caractères par jour.
 | Tech généraliste | 34,1 | 8,0 | 0,022 $ |
 | Concurrence EFSS et MFT | 4,2 | 2,0 | 0,007 $ |
 | Alertes CERT-FR / ANSSI | 8,2 | 0,5 | 0 $ (déterministe) |
-| Optionnel, conformité, cloud souverain, side business | 1–3 | ~0 | < 0,001 $ |
+| Optionnel, conformité, cloud souverain, side business | 1-3 | ~0 | < 0,001 $ |
 
 ### Partagé ou payé par profil
 
@@ -157,7 +157,7 @@ Vérifié dans [`external/freshrss.py`](../rssresume/external/freshrss.py) (`Eti
   `disable-tag` ne supprime le libellé lui-même. Ils s'accumulent (c'est BL-025).
 - Écritures : `tag_notes` fait un `edit-tag` par valeur de score et par thème, plus l'empreinte,
   puis `mark_digested` : **7 appels par catégorie et par profil en moyenne, 12 sur une grosse
-  catégorie, 15 au plus** — 30 à 50 par profil et par jour.
+  catégorie, 15 au plus**, 30 à 50 par profil et par jour.
 
 À 3 profils : 54 libellés ; à 30 : plus de 540. Au-delà de quelques profils, la barre latérale de
 FreshRSS ne sert plus à rien à l'administrateur, et les tags ne disent rien qu'un lecteur humain
@@ -167,31 +167,31 @@ utilise : ils ne sont qu'un cache.
 
 | Limite | Mesure | Où elle casse |
 | --- | --- | --- |
-| Durée | 104–149 s par profil un jour de semaine (écart de `genere_le` à 05:00), 48–63 s le week-end ; tournée **séquentielle** | Fenêtre de 2 h : ~50 profils au pire jour mesuré, davantage avec des profils étroits |
+| Durée | 104-149 s par profil un jour de semaine (écart de `genere_le` à 05:00), 48-63 s le week-end ; tournée **séquentielle** | Fenêtre de 2 h : ~50 profils au pire jour mesuré, davantage avec des profils étroits |
 | Disque | 1,9 Mo par jour et par profil (mp3 à 96 %), 2,1 Mo en semaine | 0,7 Go par an et par profil : **35 Go/an à 50 profils** |
 | Email | un envoi par profil et par jour ; `journee.mp3` de 0,8 à 2,7 Mo en pièce jointe | Quota journalier et mensuel de Resend, et taille des pièces jointes : **à vérifier** sur l'offre souscrite (non consulté ici) |
-| Appels FreshRSS | 30–50 `edit-tag` par profil et par jour | Supportable, mais disparaît avec le cache SQLite |
+| Appels FreshRSS | 30-50 `edit-tag` par profil et par jour | Supportable, mais disparaît avec le cache SQLite |
 
 ## 7. Options comparées
 
 | | Option | Gain | Effort | Risque | Devient nécessaire |
 | --- | --- | --- | --- | --- | --- |
 | A | **Plafond de profils servis + budget journalier** de la tournée (`N_max = budget / c`) | Borne la facture, quel que soit le nombre d'inscrits | Faible | Exige le tarif de luna, sinon le budget est aveugle | **Dès l'ouverture** |
-| B | Scoring mutualisé par gabarit (une note par gabarit et par article) | ≤ 2 % du coût (0,0035 $/profil/jour) | Moyen | Contredit BL-041 : le gabarit pré-remplit, il n'y reste pas lié — dès la première retouche, la note n'est plus celle de la personne | **Non retenue.** À revoir si le scoring dépasse 20 % du coût, soit ~600 articles notés par profil et par jour |
-| C | **Cache de scoring en SQLite**, clé `(item_id, empreinte)` → note, thème, angle | Plus aucun libellé ni `edit-tag` de notation ; l'angle est enfin persisté ; deux profils au texte identique partagent la même empreinte, donc le bénéfice de B gratuitement | Moyen (la base existe : `annuaire_sqlite.py`) | Migration : les notes des tags sont perdues une fois, d'où une journée renotée (~0,004 $/profil) | **Dès 3–5 profils**, donc avant l'ouverture |
+| B | Scoring mutualisé par gabarit (une note par gabarit et par article) | ≤ 2 % du coût (0,0035 $/profil/jour) | Moyen | Contredit BL-041 : le gabarit pré-remplit, il n'y reste pas lié, dès la première retouche, la note n'est plus celle de la personne | **Non retenue.** À revoir si le scoring dépasse 20 % du coût, soit ~600 articles notés par profil et par jour |
+| C | **Cache de scoring en SQLite**, clé `(item_id, empreinte)` → note, thème, angle | Plus aucun libellé ni `edit-tag` de notation ; l'angle est enfin persisté ; deux profils au texte identique partagent la même empreinte, donc le bénéfice de B gratuitement | Moyen (la base existe : `annuaire_sqlite.py`) | Migration : les notes des tags sont perdues une fois, d'où une journée renotée (~0,004 $/profil) | **Dès 3-5 profils**, donc avant l'ouverture |
 | D | Éphéméride une fois par tournée | 0,003 $/profil/jour (haut) | Très faible | Aucun tant que l'éphéméride n'est pas personnelle (BL-042) | Maintenant, au passage |
-| E | Audio de journée en option ou à la demande | 41 % (haut) à 76 % (bas) du coût d'un profil qui n'écoute pas | Moyen ; s'appuie sur le lien audio de BL-044 | Latence à la première écoute si synthèse à la demande | **Vers 20–30 profils**, ou au premier dépassement du budget |
-| F | Tournée en parallèle | Divise la durée | Élevé : `runlog` tient le journal actif dans un état de module (`_actif`), à rendre local | Limites de débit des fournisseurs | **Vers 40–50 profils** (fenêtre de 2 h) |
-| G | Rétention des sorties par profil (mp3 purgés après N jours, journaux gardés) | 96 % du disque | Faible | Le site ne rejoue plus un vieil audio | **Vers 30–50 profils**, selon le disque du VPS |
+| E | Audio de journée en option ou à la demande | 41 % (haut) à 76 % (bas) du coût d'un profil qui n'écoute pas | Moyen ; s'appuie sur le lien audio de BL-044 | Latence à la première écoute si synthèse à la demande | **Vers 20-30 profils**, ou au premier dépassement du budget |
+| F | Tournée en parallèle | Divise la durée | Élevé : `runlog` tient le journal actif dans un état de module (`_actif`), à rendre local | Limites de débit des fournisseurs | **Vers 40-50 profils** (fenêtre de 2 h) |
+| G | Rétention des sorties par profil (mp3 purgés après N jours, journaux gardés) | 96 % du disque | Faible | Le site ne rejoue plus un vieil audio | **Vers 30-50 profils**, selon le disque du VPS |
 
 ## 8. Recommandation et seuils de bascule
 
 | À … | Faire |
 | --- | --- |
 | **Maintenant** | Tarifer `gpt-5.6-luna` (BL-055) : sans lui, aucun budget n'est calculable. Mesurer par profil (BL-061). Éphéméride une fois par tournée (BL-059), au passage |
-| **Avant l'ouverture** (3–5 profils) | Cache de scoring en SQLite (BL-056), puis ménage des libellés existants (BL-025). Plafond de profils et budget journalier (BL-057), et l'inscription qui se ferme ou passe en liste d'attente au plafond (BL-058) |
-| **20–30 profils** (borne haute : 100 à 150 $/mois avant BL-038, 56 à 84 $ après) | Audio en option ou à la demande (BL-060) |
-| **40–50 profils** | Tournée en parallèle (BL-062) quand la tournée dépasse sa fenêtre ; rétention des sorties (BL-063) quand le disque l'exige |
+| **Avant l'ouverture** (3-5 profils) | Cache de scoring en SQLite (BL-056), puis ménage des libellés existants (BL-025). Plafond de profils et budget journalier (BL-057), et l'inscription qui se ferme ou passe en liste d'attente au plafond (BL-058) |
+| **20-30 profils** (borne haute : 100 à 150 $/mois avant BL-038, 56 à 84 $ après) | Audio en option ou à la demande (BL-060) |
+| **40-50 profils** | Tournée en parallèle (BL-062) quand la tournée dépasse sa fenêtre ; rétention des sorties (BL-063) quand le disque l'exige |
 | **Jamais, dans cet horizon** | Scoring mutualisé par gabarit (B) |
 
 Ordre de grandeur pour régler le plafond, en borne haute : **un budget de 1 $ par jour sert

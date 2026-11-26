@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Connexion — RSSResume</title>
+	<title>Connexion, RSSResume</title>
 </svelte:head>
 
 <h1>Connexion</h1>

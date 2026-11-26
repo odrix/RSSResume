@@ -293,7 +293,7 @@ export class FausseApi {
 
 	/**
 	 * Un jeton de désabonnement valable pour `username`. L'API le vérifie par sa signature ;
-	 * ici, il suffit qu'il ait été déclaré, et il cesse de valoir une fois servi — ou dès que
+	 * ici, il suffit qu'il ait été déclaré, et il cesse de valoir une fois servi, ou dès que
 	 * le profil n'a plus de destinataire, comme le jeton lié aux adresses de l'API.
 	 * @param {string} jeton
 	 * @param {string} username
@@ -429,7 +429,7 @@ export class FausseApi {
 		const invalide = this.#valider(corps, profil.username);
 		if (invalide) return erreur(422, invalide.message, invalide.champ);
 		// Fusion, comme l'API : une clé absente du corps garde sa valeur stockée, un
-		// `null` ou une liste vide la remet au défaut — ôtée du profil. Le site n'envoie
+		// `null` ou une liste vide la remet au défaut, ôtée du profil. Le site n'envoie
 		// axes et categories que lorsqu'il les édite.
 		const applique = (/** @type {'axes' | 'categories'} */ cle) => {
 			const valeur = corps[cle];

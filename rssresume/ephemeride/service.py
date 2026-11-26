@@ -9,13 +9,13 @@ qu'il peut se tromper à rendre. Elle n'a donc aucune marche à descendre.
 Le **fait historique**, lui, en a trois :
 
 1. le modèle, à qui l'on demande un événement de l'histoire de l'informatique et du
-   numérique survenu à cette date — un appel par journée, pas par catégorie ;
+   numérique survenu à cette date, un appel par journée, pas par catégorie ;
 2. la table de `histoire`, qui couvre les dates marquantes du domaine ;
 3. le calendrier, qui ne se trompe jamais : rang du jour, semaine, jours restants.
 
 Le modèle est interrogé le premier parce qu'il couvre les 365 jours ; il est aussi le
 seul des trois qui puisse inventer, d'où la consigne de répondre `AUCUN` plutôt que de
-combler — c'est cette réponse-là qui fait descendre à la table.
+combler, c'est cette réponse-là qui fait descendre à la table.
 """
 
 from __future__ import annotations
@@ -31,14 +31,14 @@ from rssresume.tools import console
 AUCUNE = "aucun"
 
 #: Longueur au-delà de laquelle la réponse n'est plus une éphéméride mais un paragraphe.
-#: Le modèle qui déborde n'est pas repris — on garde la table, qui tient en une ligne.
+#: Le modèle qui déborde n'est pas repris, on garde la table, qui tient en une ligne.
 LONGUEUR_MAX = 400
 
 
 class EphemerideService:
     """Rend l'éphéméride d'une journée, avec ou sans fournisseur.
 
-    Sans fournisseur — aucune clé d'API pour cette action — le service ne tombe pas en
+    Sans fournisseur, aucune clé d'API pour cette action, le service ne tombe pas en
     panne : il descend d'un cran, comme il le fait déjà quand le modèle ne sait rien
     dire de cette date. L'email a toujours son introduction.
     """
@@ -51,7 +51,7 @@ class EphemerideService:
         """L'éphéméride du jour de l'envoi : sa fête, et le fait que l'on sait de cette date.
 
         `day` est le jour de l'ENVOI. L'appelant qui lui passerait la journée digérée
-        obtiendrait une lettre datée de la veille — c'est précisément le défaut que
+        obtiendrait une lettre datée de la veille, c'est précisément le défaut que
         cette signature rend visible.
         """
         return self._du_modele(day) or table(day) or calendrier(day)
@@ -60,7 +60,7 @@ class EphemerideService:
         """Ce que le modèle sait de cette date, `None` s'il ne sait rien ou s'il échoue.
 
         L'échec est rattrapé et non propagé : une éphéméride est un ornement, et perdre
-        la journée entière — scoring, résumés, synthèse vocale — pour une phrase
+        la journée entière, scoring, résumés, synthèse vocale, pour une phrase
         d'introduction serait hors de proportion.
         """
         if self._provider is None:
@@ -86,7 +86,7 @@ def table(day: dt.date) -> Ephemeride | None:
 def calendrier(day: dt.date) -> Ephemeride:
     """Le repli qui ne peut pas échouer : ce que la date dit d'elle-même.
 
-    Sans intérêt historique, mais jamais faux et jamais vide — et c'est tout ce qu'on
+    Sans intérêt historique, mais jamais faux et jamais vide, et c'est tout ce qu'on
     demande à la dernière marche. La fête, elle, reste celle du jour : elle vient d'une
     table complète, et n'a donc pas de marche à descendre.
     """
@@ -107,7 +107,7 @@ def calendrier(day: dt.date) -> Ephemeride:
 def pour_envoi(relue: Ephemeride | None, envoi: dt.date) -> Ephemeride:
     """L'éphéméride à mettre dans une lettre renvoyée, sans rappeler le moindre modèle.
 
-    Celle du journal ne sert que si elle parle bien du jour où l'on renvoie — le cas
+    Celle du journal ne sert que si elle parle bien du jour où l'on renvoie, le cas
     courant : l'envoi a échoué ce matin, on relance une heure plus tard. Renvoyée
     trois jours après, elle daterait la lettre du mauvais jour et annoncerait la fête
     d'un autre : on recalcule alors sur la table et le calendrier, qui ne coûtent rien.

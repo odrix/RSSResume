@@ -2,7 +2,7 @@
  * Le contenu d'une journée tel que l'API le rend, et les deux règles qui le mettent en page.
  *
  * Partagé entre le serveur et la page : le serveur filtre les liens avant de les passer, la
- * page les refiltre avant d'en faire des `href` — la même fonction des deux côtés, pour
+ * page les refiltre avant d'en faire des `href`, la même fonction des deux côtés, pour
  * qu'aucun des deux n'ait à faire confiance à l'autre.
  */
 
@@ -65,7 +65,7 @@ export function dateLisible(iso: string): string {
  *
  * Svelte échappe le texte d'un attribut, pas son sens : un `href="javascript:…"` reste
  * exécutable au clic. Les URL viennent des flux, que n'importe qui écrit ; seul http(s)
- * passe, avec un hôte — la même règle que `lien_sur` côté API. */
+ * passe, avec un hôte, la même règle que `lien_sur` côté API. */
 export function urlSure(url: string | null | undefined): string | null {
 	if (typeof url !== 'string') return null;
 	const texte = url.trim();

@@ -1,7 +1,7 @@
-# RSSResume — image d'exécution quotidienne.
+# RSSResume, image d'exécution quotidienne.
 #
 # Rien à compiler, rien à installer : le projet tourne sur la bibliothèque standard, et
-# sa seule dépendance déclarée — `tzdata` — est fournie par Alpine sous forme de base de
+# sa seule dépendance déclarée, `tzdata`, est fournie par Alpine sous forme de base de
 # fuseaux système, celle-là même que lit `zoneinfo`. Passer par `apk` plutôt que par
 # `pip` évite d'emporter une roue et un gestionnaire de paquets dans le résultat.
 #
@@ -9,9 +9,9 @@
 FROM python:3.14-alpine
 
 # `PYTHONUNBUFFERED` : sans lui, les logs du digest resteraient dans un tampon et
-# n'arriveraient dans Dokploy qu'à la fin — or l'exécution dure plusieurs minutes.
+# n'arriveraient dans Dokploy qu'à la fin, or l'exécution dure plusieurs minutes.
 # `PYTHONIOENCODING` : le suivi d'exécution est en français, et la locale d'un conteneur
-# Alpine ne dit rien de l'encodage — les accents ne doivent pas en dépendre.
+# Alpine ne dit rien de l'encodage, les accents ne doivent pas en dépendre.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=utf-8 \
@@ -28,7 +28,7 @@ RUN apk add --no-cache tzdata \
 WORKDIR /app
 COPY rssresume ./rssresume
 
-# Les fichiers du jour — audio, journaux — appartiennent au volume, pas à l'image.
+# Les fichiers du jour, audio, journaux, appartiennent au volume, pas à l'image.
 RUN adduser -D -u 10001 rssresume && mkdir -p /data && chown rssresume:rssresume /data
 USER rssresume
 VOLUME ["/data"]

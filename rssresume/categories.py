@@ -1,10 +1,10 @@
 """Le catalogue des catégories : qui reçoit quoi, parmi ce que le FreshRSS partagé contient.
 
 Un seul FreshRSS sert plusieurs personnes, et tout ce qu'il contient n'est pas à tout le
-monde : la veille concurrentielle d'une entreprise — alertes Google, « Veille marché » — ne
+monde : la veille concurrentielle d'une entreprise, alertes Google, « Veille marché » : ne
 doit ni être notée, ni résumée, ni montrée à quelqu'un d'extérieur. Le catalogue décrit
 chaque catégorie : libellé FreshRSS, description lisible, métiers concernés, et visibilité
-— publique, ou privée avec ses propriétaires.
+,publique, ou privée avec ses propriétaires.
 
 La règle par défaut est la fermeture : une catégorie absente du catalogue n'est servie à
 personne. Une catégorie créée dans FreshRSS ne doit pas apparaître chez tout le monde parce
@@ -13,7 +13,7 @@ de lecteurs, jamais la donner à tous.
 
 Le catalogue vit dans la base des profils (`annuaire_sqlite`), pas dans le dépôt : son
 contenu réel nomme la veille d'une entreprise et ses propriétaires. Il s'échange en JSON
-(`docs/categories.exemple.json`), dans la forme de `llm/providers.json` — un objet dont les
+(`docs/categories.exemple.json`), dans la forme de `llm/providers.json`, un objet dont les
 clés sont les libellés, `_` en tête pour un commentaire.
 """
 
@@ -45,7 +45,7 @@ class CategorieCatalogue:
 
     La visibilité se déduit des propriétaires et n'est pas stockée à part : une catégorie
     privée sans propriétaire, ou publique avec, est une contradiction que la lecture refuse
-    — il n'y a donc qu'une seule source pour « qui la lit ».
+,    il n'y a donc qu'une seule source pour « qui la lit ».
     """
 
     def __init__(
@@ -94,7 +94,7 @@ class Catalogue:
 
     Les libellés se comparent repliés en casse et en accents, comme `est_deterministe` :
     un libellé recopié perd ses accents en route. Une faute plus grave rend la catégorie
-    absente, donc servie à personne — l'erreur ferme, elle ne fuit pas.
+    absente, donc servie à personne, l'erreur ferme, elle ne fuit pas.
     """
 
     def __init__(self, entrees: Iterable[CategorieCatalogue] = ()):
@@ -132,7 +132,7 @@ class Catalogue:
         return any(self.visible(categorie, username) for username in usernames)
 
     def hors_catalogue(self, categories: list[str]) -> list[str]:
-        """Les catégories que le catalogue ne décrit pas — servies à personne."""
+        """Les catégories que le catalogue ne décrit pas, servies à personne."""
         return [categorie for categorie in categories if self.entree(categorie) is None]
 
     def proposables(self, username: str) -> list[CategorieCatalogue]:
@@ -205,7 +205,7 @@ class Catalogue:
         dans la base ne passe pas plus facilement qu'un fichier.
 
         Tout ou rien, et non une entrée fautive sautée : sautée, une catégorie privée mal
-        écrite disparaîtrait du catalogue sans bruit — et c'est son propriétaire qui la
+        écrite disparaîtrait du catalogue sans bruit, et c'est son propriétaire qui la
         perdrait, sans comprendre pourquoi.
 
         Un propriétaire inconnu de l'annuaire n'est pas une faute : la personne peut
@@ -251,7 +251,7 @@ class CatalogueOuvert(Catalogue):
 
     def proposables(self, username: str) -> list[CategorieCatalogue]:
         """Aucune : sans catalogue, rien ne dit quelles catégories existent, et tout est
-        déjà suivi — il n'y a rien à cocher."""
+        déjà suivi, il n'y a rien à cocher."""
         return []
 
     def abonnement(
@@ -268,8 +268,8 @@ class CatalogueOuvert(Catalogue):
 def cle_categorie(libelle: str) -> str:
     """La forme sous laquelle deux libellés se comparent : rognée, sans casse ni accents.
 
-    La même des deux côtés — le libellé décrit, rogné à la lecture, et celui que FreshRSS
-    renvoie — sans quoi un espace de trop d'un seul côté suffirait à fermer la catégorie.
+    La même des deux côtés, le libellé décrit, rogné à la lecture, et celui que FreshRSS
+    renvoie, sans quoi un espace de trop d'un seul côté suffirait à fermer la catégorie.
     """
     return casefold_ascii(libelle.strip())
 
@@ -322,7 +322,7 @@ def _entree(libelle: object, valeur: object, origine: str) -> CategorieCatalogue
     if visibilite == VISIBILITE_PUBLIQUE:
         if proprietaires:
             raise ValueError(
-                f"{lieu} : une catégorie publique n'a pas de « {CLE_PROPRIETAIRES} » — "
+                f"{lieu} : une catégorie publique n'a pas de « {CLE_PROPRIETAIRES} », "
                 f"la déclarer {VISIBILITE_PRIVEE}, ou retirer la liste."
             )
         proprietaires = []

@@ -1,7 +1,7 @@
 """Envoi du digest par l'API HTTPS de Resend, quand le SMTP ne sort pas.
 
-Un hébergeur qui filtre 25, 465 et 587 en sortie — la règle plutôt que l'exception sur
-les VPS — rend `mailer.EmailSender` inutilisable sans que rien dans la configuration ne
+Un hébergeur qui filtre 25, 465 et 587 en sortie, la règle plutôt que l'exception sur
+les VPS, rend `mailer.EmailSender` inutilisable sans que rien dans la configuration ne
 soit fautif : la connexion meurt sur un `TimeoutError` avant d'avoir dit un mot. Le 443,
 lui, sort forcément, puisque c'est déjà par là que passent FreshRSS et les fournisseurs
 de LLM. Ce module envoie donc le même digest par le même chemin qu'eux.
@@ -9,7 +9,7 @@ de LLM. Ce module envoie donc le même digest par le même chemin qu'eux.
 Le contrat est celui de `mailer.EmailSender`, à la lettre : `DigestService` ne voit qu'un
 `EmailSenderProtocol` et n'a pas à savoir lequel des deux il tient.
 
-Resend n'accepte d'expéditeur que sur un domaine vérifié chez lui — vérification qui
+Resend n'accepte d'expéditeur que sur un domaine vérifié chez lui, vérification qui
 passe par des enregistrements DNS, donc par un domaine qui résout. Le compte de test
 `onboarding@resend.dev` fait exception, mais n'écrit qu'au propriétaire du compte.
 """
@@ -81,7 +81,7 @@ class ResendEmailSender:
 
         Pas de `Date` ni de `Message-ID` à poser ici, contrairement au SMTP : c'est
         Resend qui compose le message final et les ajoute. Il assemble aussi le
-        `multipart/alternative` dès que `text` et `html` sont là tous les deux — c'est
+        `multipart/alternative` dès que `text` et `html` sont là tous les deux, c'est
         pourquoi l'ordre des clés n'a, ici, aucune importance.
         """
         payload = {
@@ -132,7 +132,7 @@ class ResendEmailSender:
                 "Authorization": f"Bearer {self._config.resend_api_key}",
                 "Content-Type": "application/json",
                 # L'API est derrière Cloudflare, qui bannit la signature par défaut
-                # d'`urllib` avant que Resend ne voie la requête — d'où un 403 « error
+                # d'`urllib` avant que Resend ne voie la requête, d'où un 403 « error
                 # code: 1010 » qui n'est pas un message du service et n'a rien à voir
                 # avec la clé.
                 "User-Agent": http.USER_AGENT,

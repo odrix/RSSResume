@@ -3,8 +3,8 @@
 	sur celle des résumés : deux façons de voter qui se remplacent l'une l'autre doivent
 	demander la même chose.
 
-	Rien n'est compté avant l'envoi, et la page le dit : ouvrir le lien — ce que fait aussi un
-	antivirus de messagerie — ne vote pas.
+	Rien n'est compté avant l'envoi, et la page le dit : ouvrir le lien, ce que fait aussi un
+	antivirus de messagerie : ne vote pas.
 -->
 <script lang="ts">
 	import { AVIS, LIBELLES_AVIS, LONGUEUR_MAX_COMMENTAIRE, type Avis } from '#lib/retour.js';

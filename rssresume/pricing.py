@@ -9,9 +9,9 @@ donc aussi lui donner ses prix, au même endroit et sans toucher au code.
 
 Deux formes de tarif, unifiées sous la même clé de modèle :
 
-- ``{"input": x, "output": y}`` — dollars par million de tokens. Un tarif sans
+- ``{"input": x, "output": y}``, dollars par million de tokens. Un tarif sans
   ``output`` (les modèles de synthèse vocale récents) ne facture que l'entrée.
-- ``{"characters": z}`` — dollars par million de caractères, la facturation
+- ``{"characters": z}``, dollars par million de caractères, la facturation
   au caractère de la synthèse vocale.
 
 Un modèle absent de la table ne produit pas un coût faux : il produit ``None``,
@@ -48,7 +48,7 @@ PRICES_ENV = "RSSRESUME_PRICES"
 
 #: Suffixe d'instantané daté, la seule chose qu'un nom de modèle peut porter en plus
 #: sans changer de tarif : `gpt-4o-mini-2024-07-18`, `gpt-4o-2024-11-20`, `-0613`.
-#: Tout autre suffixe désigne un AUTRE modèle — `gpt-5.6-luna` n'est pas `gpt-5`, et le
+#: Tout autre suffixe désigne un AUTRE modèle, `gpt-5.6-luna` n'est pas `gpt-5`, et le
 #: facturer au tarif de `gpt-5` produirait un coût faux, plus nuisible qu'un coût absent.
 SNAPSHOT_SUFFIX = re.compile(r"^-\d{4}(-\d{2}-\d{2})?$")
 
@@ -88,7 +88,7 @@ def prices() -> dict[str, dict[str, float]]:
 def tarif(model: str) -> dict[str, float] | None:
     """Tarif d'un modèle, `None` s'il est inconnu.
 
-    Le nom exact d'abord, puis — et seulement — le même nom suivi d'un instantané
+    Le nom exact d'abord, puis, et seulement, le même nom suivi d'un instantané
     daté : lister toutes les dates de publication serait intenable, et elles ne
     changent pas le prix. Un suffixe qui n'est pas une date n'est pas rattaché,
     même s'il commence par un modèle connu : `gpt-5.6-luna` commence par `gpt-5`

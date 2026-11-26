@@ -14,8 +14,8 @@
 
 	let { data, form }: PageProps = $props();
 
-	/** Les champs sous lesquels un refus s'affiche. Un refus d'un autre champ — ou d'une
-	 * section que la page ne montre pas (les adresses de réception) — reste un message en
+	/** Les champs sous lesquels un refus s'affiche. Un refus d'un autre champ, ou d'une
+	 * section que la page ne montre pas (les adresses de réception), reste un message en
 	 * tête de page. */
 	const CHAMPS_AFFICHES = ['profil', 'prenom', 'securite', 'stack', 'axes'];
 
@@ -69,7 +69,7 @@
 </script>
 
 <svelte:head>
-	<title>Mon profil — RSSResume</title>
+	<title>Mon profil, RSSResume</title>
 </svelte:head>
 
 <h1>Mon profil</h1>
@@ -111,7 +111,7 @@
      page rechargée après l'enregistrement ré-appliquerait le gabarit. -->
 <form method="POST" action="/profil" class="formulaire large carte">
 	<label>
-		Prénom <span class="aide">(facultatif — la salutation de l'audio)</span>
+		Prénom <span class="aide">(facultatif, la salutation de l'audio)</span>
 		<input
 			name="prenom"
 			autocomplete="given-name"
@@ -125,13 +125,13 @@
 		<label for="profil">Profil de veille</label>
 		<span class="aide">
 			Écrivez-le comme à un collègue qui ferait votre veille à votre place. Les trois étapes du
-			résumé le lisent — la notation, le résumé de chaque article, l'audio. Trois paragraphes
+			résumé le lisent, la notation, le résumé de chaque article, l'audio. Trois paragraphes
 			suffisent :
 		</span>
 		<ul class="aide rubriques">
-			<li><strong>Mon métier</strong> — ce que vous faites, et dans quel contexte.</li>
-			<li><strong>Ce que je veux suivre</strong> — les sujets qui vous font agir ou décider.</li>
-			<li><strong>Ce qui ne m'intéresse pas</strong> — ce qui encombre sans rien vous apprendre.</li>
+			<li><strong>Mon métier</strong>, ce que vous faites, et dans quel contexte.</li>
+			<li><strong>Ce que je veux suivre</strong>, les sujets qui vous font agir ou décider.</li>
+			<li><strong>Ce qui ne m'intéresse pas</strong>, ce qui encombre sans rien vous apprendre.</li>
 		</ul>
 		{#if exemple}
 			<details class="exemple">
@@ -166,7 +166,7 @@
 					value={regime.valeur}
 					checked={(source?.securite ?? 'exploitant') === regime.valeur}
 				/>
-				<span>{regime.libelle} <span class="aide">— {regime.explication}</span></span>
+				<span>{regime.libelle} <span class="aide">- {regime.explication}</span></span>
 			</label>
 		{/each}
 		{#if erreurDe('securite')}<span class="erreur-champ" id="erreur-securite">{erreurDe('securite')}</span>{/if}
@@ -242,7 +242,7 @@
 	<details class="bloc stack" open={erreurDe('stack') !== null}>
 		<summary>
 			<strong>Stack surveillée</strong>
-			<span class="aide">(facultatif) — si vous exploitez des serveurs ou des logiciels</span>
+			<span class="aide">(facultatif), si vous exploitez des serveurs ou des logiciels</span>
 		</summary>
 		<p class="aide">
 			Les logiciels que vous faites tourner : les avis de sécurité officiels qui les citent vous sont

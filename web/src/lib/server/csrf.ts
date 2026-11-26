@@ -34,7 +34,7 @@ function estFormulaire(request: Request): boolean {
 	return TYPES_FORMULAIRE.has(type.split(';', 1)[0].trim().toLowerCase());
 }
 
-/** Vrai pour un envoi de formulaire d'une autre origine, à refuser en 403 — sauf le POST
+/** Vrai pour un envoi de formulaire d'une autre origine, à refuser en 403, sauf le POST
  * du désabonnement en un clic, qui vient d'un client mail et n'a pas d'origine. */
 export function postIntersiteInterdit(request: Request, url: URL): boolean {
 	if (!METHODES_MUTANTES.has(request.method)) return false;

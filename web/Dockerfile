@@ -2,7 +2,7 @@
 #
 # Deux étapes : la construction a besoin des dépendances de développement (Vite, Svelte),
 # l'image finale seulement de `build/` et des dépendances d'exécution (@node-rs/argon2,
-# dont npm choisit le binaire musl précompilé — aucune chaîne de compilation n'est requise).
+# dont npm choisit le binaire musl précompilé, aucune chaîne de compilation n'est requise).
 
 FROM node:24-alpine AS construction
 WORKDIR /app

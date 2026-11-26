@@ -9,7 +9,7 @@ import { COOKIE_SESSION } from '#lib/server/sessions.js';
  *
  * Le refus vient en tête, avant toute lecture de session : c'est la protection CSRF que
  * SvelteKit n'applique plus (`csrf.trustedOrigins`), et elle doit tomber là où il la
- * faisait tomber — avant que quoi que ce soit ne s'exécute pour la requête. */
+ * faisait tomber, avant que quoi que ce soit ne s'exécute pour la requête. */
 export const handle: Handle = async ({ event, resolve }) => {
 	if (postIntersiteInterdit(event.request, event.url)) {
 		return new Response(`Cross-site ${event.request.method} form submissions are forbidden`, {

@@ -6,7 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 /* Ni `exigerConnexion`, ni session : qui reçoit la lettre n'a pas forcément de compte, et le
  * jeton signé du lien est la seule autorisation. Contrairement au désabonnement, aucun POST
- * d'ailleurs n'est attendu ici — le vote part du formulaire de cette page —, et la route
+ * d'ailleurs n'est attendu ici, le vote part du formulaire de cette page, et la route
  * garde donc la protection CSRF de toutes les autres. */
 
 /** Afficher la page ne vote pas : un antivirus de messagerie qui ouvre le lien ne doit pas

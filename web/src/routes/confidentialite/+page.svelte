@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Confidentialité — RSSResume</title>
+	<title>Confidentialité, RSSResume</title>
 </svelte:head>
 
 <h1>Confidentialité</h1>
@@ -19,8 +19,8 @@
 <h2>Les données conservées</h2>
 <ul>
 	<li>
-		<strong>Votre compte</strong> : adresse email, nom d'utilisateur, mot de passe — dont seule une
-		empreinte Argon2id est gardée, jamais le mot de passe lui-même —, dates de création, de
+		<strong>Votre compte</strong> : adresse email, nom d'utilisateur, mot de passe, dont seule une
+		empreinte Argon2id est gardée, jamais le mot de passe lui-même, dates de création, de
 		confirmation et de dernière connexion, les jours où vous avez consulté vos résumés, et les
 		journées lues ou écoutées.
 	</li>
@@ -65,7 +65,7 @@
 		et produire l'audio. Il ne reçoit ni votre adresse email ni votre mot de passe.
 	</li>
 	<li>
-		<strong>Resend</strong> : il achemine les emails du service — confirmations, nouveaux mots de passe et
+		<strong>Resend</strong> : il achemine les emails du service, confirmations, nouveaux mots de passe et
 		résumé quotidien. Il reçoit votre adresse et le contenu de ces emails.
 	</li>
 </ul>
@@ -77,7 +77,7 @@
 	réception de votre profil.
 </p>
 <p>
-	<strong>La suppression de votre compte</strong> — et avec lui de votre profil et de vos journées —, ou
+	<strong>La suppression de votre compte</strong>, et avec lui de votre profil et de vos journées, ou
 	une copie de vos données, se demande au contact ci-dessous, depuis l'adresse de votre compte.
 </p>
 

@@ -4,7 +4,7 @@
  *
  * Le lien de la lettre se relaie comme celui du désabonnement : signé par le travailleur, le
  * site ne sait pas le vérifier et n'a pas à le savoir. Le vote du site, lui, passe par
- * l'API au nom du profil, après le contrôle d'accès fait ici — l'API n'a qu'un jeton, celui
+ * l'API au nom du profil, après le contrôle d'accès fait ici, l'API n'a qu'un jeton, celui
  * du site, et rend n'importe quel profil à qui le porte.
  */
 
@@ -18,7 +18,7 @@ export const LIEN_RETOUR_INVALIDE = 'Ce lien de vote est invalide.';
 const MOTIF_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Les champs signés, séparés par des points, dans l'alphabet d'URL. Le jeton de vote a une
- * longueur fixe — version, identifiant, date, signature —, d'où une borne serrée. */
+ * longueur fixe, version, identifiant, date, signature, d'où une borne serrée. */
 const MOTIF_JETON = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/;
 const LONGUEUR_MAX_JETON = 256;
 
@@ -37,8 +37,8 @@ export interface SaisieRetour {
 /** Le vote d'un formulaire, vérifié comme l'API le vérifiera.
  *
  * Revérifié ici malgré le `maxlength` du formulaire : un navigateur compte en unités UTF-16,
- * l'API en points de code, et un formulaire se contourne. Compter comme l'API — un emoji
- * vaut un — évite de refuser ici ce qu'elle accepterait. */
+ * l'API en points de code, et un formulaire se contourne. Compter comme l'API, un emoji
+ * vaut un, évite de refuser ici ce qu'elle accepterait. */
 export function saisieRetour(form: FormData): SaisieRetour {
 	const avis = form.get('avis');
 	if (!estAvis(avis)) throw new ErreurRetour('Choisissez « Utile » ou « Pas utile ».');

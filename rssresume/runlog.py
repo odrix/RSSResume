@@ -5,8 +5,8 @@ le fixe, catégorie par catégorie, à côté de l'audio du jour :
 
 - les articles lus et ce que le scoring en a fait (score, thématique, angle, retenu
   ou non, note calculée ou relue des tags) ;
-- le coût des appels IA, détaillé par typologie — la somme des scorings, celle des
-  résumés, celle de la synthèse vocale — et le détail appel par appel.
+- le coût des appels IA, détaillé par typologie, la somme des scorings, celle des
+  résumés, celle de la synthèse vocale, et le détail appel par appel.
 
 Une catégorie sans article du jour n'écrit aucun journal : elle ne lit rien, ne note
 rien et ne dépense rien, et son marqueur `.no-article` dit déjà tout ce qu'il y a à dire.
@@ -17,7 +17,7 @@ s'il a quelque chose à transporter.
 
 Le journal actif est un état de module : les appels partent du fond d'un `LLMProvider`,
 qui n'a aucune raison de savoir quelle catégorie est en cours. Le
-pipeline est séquentiel — une catégorie à la fois — et ce module l'est donc aussi.
+pipeline est séquentiel, une catégorie à la fois, et ce module l'est donc aussi.
 Hors de tout `category_scope`, tout enregistrement est un no-op : `llm/processing.py`
 lancé seul et les tests n'écrivent rien.
 """
@@ -48,7 +48,7 @@ from rssresume.models import (
 LOG_SUFFIX = ".log.json"
 
 #: Le marqueur d'une catégorie sans audio : sans article du tout, ou sans article retenu.
-#: Écrit par `digest.py`, nommé ici avec les autres fichiers d'une journée — c'est le
+#: Écrit par `digest.py`, nommé ici avec les autres fichiers d'une journée, c'est le
 #: bilan qui a besoin de les retrouver, et il ne peut pas importer `digest`.
 NO_ARTICLE_SUFFIX = ".no-article"
 
@@ -78,7 +78,7 @@ TYPOLOGIE_PAR_LABEL = {
 TYPOLOGIE_PAR_DEFAUT = "resume"
 
 #: Comment chaque poste se dit dans le récapitulatif de fin d'exécution. Les clés JSON
-#: restent sans accent — elles sont relues par des outils — mais la console s'adresse à
+#: restent sans accent, elles sont relues par des outils, mais la console s'adresse à
 #: quelqu'un, et « tts » ne dit rien à qui lit son digest du matin.
 LIBELLE_TYPOLOGIE = {
     "scoring": "scoring",
@@ -102,15 +102,15 @@ def read_day(day_dir: pathlib.Path) -> list[CategoryDigest]:
     """Les digests d'une journée, relus de ses journaux.
 
     De quoi renvoyer l'email d'une journée déjà produite sans rappeler ni FreshRSS ni le
-    moindre fournisseur : tout ce que l'email porte — le résumé, les liens des articles
-    retenus, le nom de l'audio — est déjà sur le disque.
+    moindre fournisseur : tout ce que l'email porte, le résumé, les liens des articles
+    retenus, le nom de l'audio, est déjà sur le disque.
 
     L'ordre est celui des noms de fichier, donc celui des catégories quand elles sont
     numérotées comme FreshRSS invite à le faire. `articles` reste vide : la relecture ne
     sert qu'à écrire un email, et surtout pas à remarquer des articles comme lus.
 
-    Une catégorie sans le moindre article n'a pas de journal — elle n'a rien lu ni rien
-    dépensé — et manque donc à la relecture, avec sa ligne « aucun article » dans le corps.
+    Une catégorie sans le moindre article n'a pas de journal, elle n'a rien lu ni rien
+    dépensé, et manque donc à la relecture, avec sa ligne « aucun article » dans le corps.
     """
     if not day_dir.is_dir():
         return []
@@ -146,7 +146,7 @@ def _a_surveiller(journal: dict) -> list[dict]:
 
     Recalculés du journal plutôt que stockés à côté : le score de chaque article y est
     déjà, et la fourchette est une règle d'affichage. Un journal écrit avant cette
-    règle se relit donc avec sa liste de veille, sans avoir rien à convertir — et
+    règle se relit donc avec sa liste de veille, sans avoir rien à convertir, et
     changer la fourchette n'oblige pas à réécrire les journées passées.
     """
     candidats = [
@@ -230,7 +230,7 @@ class Call:
 
         C'est ce qui permet au bilan d'une journée passée de repasser par `Comptes` au
         lieu de refaire ses additions. Refaire la somme ailleurs, c'est deux calculs qui
-        finissent par ne plus donner le même chiffre — et le traitement du coût `None`,
+        finissent par ne plus donner le même chiffre, et le traitement du coût `None`,
         qui contamine tout le total, se serait dédoublé avec eux.
 
         `cout` est relu tel quel et jamais recalculé : la grille de tarifs a pu changer
@@ -253,7 +253,7 @@ class Comptes:
     """La table de coûts d'un ensemble d'appels, d'où qu'ils viennent.
 
     Sortie du `Journal` le jour où la journée entière a eu besoin d'être totalisée : la
-    somme des catégories ne s'écrit dans aucun fichier — chacune a déjà le sien — et
+    somme des catégories ne s'écrit dans aucun fichier, chacune a déjà le sien, et
     n'appartient donc à aucun journal. La compter ailleurs aurait fait deux additions
     qui finissent par ne plus donner le même chiffre, et c'est précisément le genre de
     divergence que personne ne remarque.
@@ -306,7 +306,7 @@ class Comptes:
 
         Un poste sans le moindre appel est tu : le journal garde ses zéros pour qui
         recompte, mais trois lignes à zéro dans la console noient les deux qui portent
-        quelque chose — et une journée relue du cache n'a que des zéros à dire.
+        quelque chose, et une journée relue du cache n'a que des zéros à dire.
         """
         if not self.calls:
             # Ni total ni postes : une journée entièrement relue du cache, ou un
@@ -329,7 +329,7 @@ class Comptes:
     def _volume(calls: list[Call]) -> str:
         """Ce qu'un poste a consommé : appels, tokens, et caractères s'il y en a.
 
-        Les caractères ne s'affichent que là où ils existent — la synthèse vocale
+        Les caractères ne s'affichent que là où ils existent, la synthèse vocale
         facturée à la longueur du texte. Sa ligne se lirait sinon « 0 token en entrée,
         0 en sortie », soit l'exact contraire de ce qu'elle est : le poste le plus cher
         de la journée.
@@ -365,14 +365,14 @@ class Journal:
     """Ce que tout journal tient : les appels au fournisseur et ce qu'ils ont coûté.
 
     Extrait de `CategoryJournal` le jour où l'éphéméride a eu besoin d'être facturée à
-    la journée et non à une catégorie. Deux journaux, la même comptabilité — la
+    la journée et non à une catégorie. Deux journaux, la même comptabilité, la
     dupliquer aurait fait deux tables de coûts qui finissent par ne plus s'additionner
     de la même façon.
     """
 
     def __init__(self):
         self.calls: list[Call] = []
-        #: Les journaux que celui-ci a enveloppés — les catégories, sous la journée.
+        #: Les journaux que celui-ci a enveloppés, les catégories, sous la journée.
         #: Séparés de `calls` et non versés dedans : chaque journal écrit sa propre
         #: dépense, et un `journee.json` qui reprendrait les appels des catégories les
         #: compterait deux fois pour qui additionne les fichiers d'une journée.
@@ -391,8 +391,8 @@ class Journal:
     def cumul(self) -> Comptes:
         """La somme de la journée : ce journal plus ses descendants.
 
-        Rien sur le disque ne la porte — chaque catégorie a écrit la sienne, personne
-        n'additionne — et elle n'a de sens qu'en mémoire, une fois tous les scopes
+        Rien sur le disque ne la porte, chaque catégorie a écrit la sienne, personne
+        n'additionne, et elle n'a de sens qu'en mémoire, une fois tous les scopes
         refermés.
         """
         return Comptes(self.tous_les_appels())
@@ -458,7 +458,7 @@ class Journal:
 class DayJournal(Journal):
     """Le journal de la journée : ce qui n'appartient à aucune catégorie.
 
-    Une seule chose y figure aujourd'hui — l'éphéméride d'ouverture, et l'appel qui l'a
+    Une seule chose y figure aujourd'hui, l'éphéméride d'ouverture, et l'appel qui l'a
     produite. C'est peu, mais c'est ce qui permet à `--send-only` de renvoyer un email
     identique à l'original : sans ce fichier, le renvoi devrait soit repayer l'appel,
     soit ouvrir la lettre sur une autre phrase que celle qui est partie la première fois.
@@ -570,7 +570,7 @@ class CategoryJournal(Journal):
         self.new_notes: dict[str, Note] = {}
         self.selected: list[Article] = []
         #: Le seuil réellement appliqué à la journée, repli compris. `None` tant que la
-        #: sélection n'a pas eu lieu — une catégorie interrompue avant, notamment.
+        #: sélection n'a pas eu lieu, une catégorie interrompue avant, notamment.
         self.seuil_applique: int | None = None
         self.digest: CategoryDigest | None = None
 
@@ -606,7 +606,7 @@ class CategoryJournal(Journal):
 
         Elle n'a rien lu, rien noté, rien dépensé : le journal ne dirait que des zéros,
         là où le marqueur `.no-article` dit déjà tout. Une catégorie interrompue, elle,
-        s'écrit toujours — c'est le cas où le journal sert le plus.
+        s'écrit toujours, c'est le cas où le journal sert le plus.
         """
         return self.digest is None or bool(self.articles)
 
@@ -664,7 +664,7 @@ class CategoryJournal(Journal):
             # Un statut à part, et avant les deux suivants : une catégorie déterministe
             # n'a jamais d'audio et n'a pas toujours d'apparié, ce qui la ferait passer
             # pour une catégorie que le seuil a vidée. Ce n'est pas la même journée :
-            # ici, rien n'a été jugé, tout a été comparé — et `retenus`, à côté, dit
+            # ici, rien n'a été jugé, tout a été comparé, et `retenus`, à côté, dit
             # combien d'avis touchaient la stack.
             return "deterministe"
         if not self.selected:
@@ -673,7 +673,7 @@ class CategoryJournal(Journal):
             # Résumée, mais sans fichier à elle : sa voix est dans celui de la journée.
             # Un statut à part, et pas `sans-audio` : celui-ci dit qu'on attendait un
             # audio et qu'il manque, ce qui se lit comme une panne. Ici il ne manque
-            # rien — il est ailleurs, et `journee.json` dit où.
+            # rien, il est ailleurs, et `journee.json` dit où.
             return "monte"
         return "audio" if self.digest.audio_path else "sans-audio"
 
@@ -726,10 +726,10 @@ def active() -> Journal | None:
 
 @contextlib.contextmanager
 def day_scope(day: dt.date, day_dir: pathlib.Path) -> Iterator[DayJournal]:
-    """Ouvre le journal de la journée, et l'écrit à la sortie — même sur exception.
+    """Ouvre le journal de la journée, et l'écrit à la sortie, même sur exception.
 
     Il enveloppe les `category_scope`, qui prennent la main chacun à leur tour et la
-    lui rendent. Un appel passé hors de toute catégorie — l'éphéméride d'ouverture —
+    lui rendent. Un appel passé hors de toute catégorie, l'éphéméride d'ouverture -
     se range donc ici, là où il n'était compté nulle part avant.
     """
     global _actif
@@ -748,7 +748,7 @@ def read_ephemeride(day_dir: pathlib.Path) -> Ephemeride | None:
 
     `None` n'est pas une anomalie : une journée dont l'éphéméride venait du calendrier
     n'a rien écrit, puisqu'elle se recalcule. C'est à l'appelant de redescendre sur ce
-    repli — voir `ephemeride.calendrier`.
+    repli : voir `ephemeride.calendrier`.
     """
     path = day_dir / DAY_LOG_NAME
     try:
@@ -809,12 +809,12 @@ def category_scope(
     day_dir: pathlib.Path,
     parametres: dict[str, Any] | None = None,
 ) -> Iterator[CategoryJournal]:
-    """Ouvre le journal d'une catégorie, et l'écrit à la sortie — même sur exception.
+    """Ouvre le journal d'une catégorie, et l'écrit à la sortie, même sur exception.
 
     Il se rattache au journal qui l'enveloppe en se refermant : sans ce lien, la journée
     ne saurait à la fin que ce qu'elle a payé elle-même, et la somme des catégories
     n'existerait nulle part ailleurs que dans les fichiers déjà écrits. Le rattachement
-    a lieu même quand la catégorie a échoué — c'est là qu'elle a dépensé sans rendre.
+    a lieu même quand la catégorie a échoué, c'est là qu'elle a dépensé sans rendre.
     """
     global _actif
     precedent = _actif
@@ -870,18 +870,18 @@ def _round(value: float | None) -> float | None:
 # -- le bilan d'une journée déjà produite ------------------------------------
 #
 # Les journaux sont écrits dans un volume, sur un serveur où l'on n'entre que par SSH.
-# La question qu'on se pose devant une journée qui s'est mal passée tient en une ligne —
+# La question qu'on se pose devant une journée qui s'est mal passée tient en une ligne -
 # quel statut, quel seuil a réellement trié, combien ça a coûté, qu'est-ce qui est passé
-# juste à côté — et y répondre demandait d'extraire un JSON de plusieurs centaines de
+# juste à côté, et y répondre demandait d'extraire un JSON de plusieurs centaines de
 # lignes. Le bilan la met en tableau, là où on regarde déjà : la console, donc les logs
 # du conteneur.
 #
 # Il ne passe pas par `read_day` : celui-ci ne garde que ce qu'un email demande et jette
-# précisément ce qu'on cherche ici — les articles, le statut, le seuil appliqué, les
+# précisément ce qu'on cherche ici, les articles, le statut, le seuil appliqué, les
 # coûts. Deux relectures, deux besoins.
 
-#: Ce qu'on affiche à la place d'un chiffre absent. Un coût `None` — modèle hors de la
-#: grille de tarifs — ne doit surtout pas s'écrire `0.000000`, qui se lirait « rien
+#: Ce qu'on affiche à la place d'un chiffre absent. Un coût `None`, modèle hors de la
+#: grille de tarifs : ne doit surtout pas s'écrire `0.000000`, qui se lirait « rien
 #: dépensé » là où la vraie réponse est « on ne sait pas ».
 INCONNU = "?"
 
@@ -901,7 +901,7 @@ class Bilan:
 
     jour: dt.date
     day_dir: pathlib.Path
-    #: Les `<categorie>.log.json`, dans l'ordre des noms de fichier — donc celui des
+    #: Les `<categorie>.log.json`, dans l'ordre des noms de fichier, donc celui des
     #: catégories quand elles sont numérotées, comme FreshRSS invite à le faire.
     categories: list[dict] = dataclasses.field(default_factory=list)
     #: Le `journee.json`, `{}` quand la journée n'en a pas laissé.
@@ -922,7 +922,7 @@ class Bilan:
     # -- les morceaux --------------------------------------------------------
 
     def _entete(self) -> str:
-        lignes = [f"Journée du {self.jour.isoformat()} — {self.day_dir}"]
+        lignes = [f"Journée du {self.jour.isoformat()}, {self.day_dir}"]
         audio = self._audio()
         if audio:
             lignes.append(audio)
@@ -974,7 +974,7 @@ class Bilan:
         )
 
     def _articles(self, journal: dict) -> list[str]:
-        """Les articles lus, dans la forme du marqueur `.no-article` — un seul format à lire.
+        """Les articles lus, dans la forme du marqueur `.no-article`, un seul format à lire.
 
         `origine_note` y figure parce que c'est elle qui explique une journée qui n'a
         rien coûté : tout relu des tags, aucun appel de scoring.
@@ -994,8 +994,8 @@ class Bilan:
     def _orphelins(self) -> str:
         """Les marqueurs qu'aucun journal ne nomme : les catégories sans le moindre article.
 
-        Elles n'ont ni journal ni ligne dans le tableau — elles n'ont rien lu, rien noté,
-        rien dépensé — et disparaîtraient donc du bilan alors qu'elles font partie de la
+        Elles n'ont ni journal ni ligne dans le tableau, elles n'ont rien lu, rien noté,
+        rien dépensé, et disparaîtraient donc du bilan alors qu'elles font partie de la
         journée. Celles qui ont un journal ont déjà leur ligne : leur marqueur est nommé
         dans leur `resultat`, et n'est pas répété ici.
         """
@@ -1040,11 +1040,11 @@ class Bilan:
         """Le seuil qui a RÉELLEMENT trié, pas celui de la configuration.
 
         C'est tout l'intérêt de la colonne : elle dit si le repli des jours creux a joué.
-        Un tiret pour une catégorie déterministe, où le seuil n'a aucun sens — l'écrire
+        Un tiret pour une catégorie déterministe, où le seuil n'a aucun sens, l'écrire
         ferait croire à un tri qui n'a pas eu lieu.
         """
         if (journal.get("parametres") or {}).get("traitement") == TRAITEMENT_DETERMINISTE:
-            return "—"
+            return "-"
         return cls._nombre(cls._resultat(journal).get("seuil_applique"))
 
 

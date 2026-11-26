@@ -1,7 +1,7 @@
 """L'envoi par l'API de Resend, et le choix du transport.
 
 Rien ne sort de la machine : `urlopen` est doublé, et ce que les tests jugent est la
-requête qu'on lui a tendue — l'URL, l'en-tête d'autorisation, et le corps JSON.
+requête qu'on lui a tendue, l'URL, l'en-tête d'autorisation, et le corps JSON.
 """
 
 import base64

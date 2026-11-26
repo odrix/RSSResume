@@ -1,13 +1,13 @@
 """L'audio unique d'une journée : un seul texte pour tous les sujets, toutes catégories.
 
 Le montage enchaînait les résumés de catégorie déjà écrits, dans l'ordre des catégories.
-Un seul fichier, une seule voix — mais l'ordre restait celui des dossiers FreshRSS : le
+Un seul fichier, une seule voix, mais l'ordre restait celui des dossiers FreshRSS : le
 sujet le plus grave de la matinée pouvait tomber en huitième position parce que sa
 catégorie était la dernière, et deux articles qui parlaient de la même chose depuis deux
 catégories différentes restaient séparés par tout le reste de la journée.
 
 Il part donc maintenant des **sujets**, pas des résumés : les articles retenus de toutes
-les catégories, remis dans un seul ordre — score décroissant, sujets connexes côte à
+les catégories, remis dans un seul ordre, score décroissant, sujets connexes côte à
 côte (`models.groupees_par_thematique`). C'est une passe de rédaction sur la source, plus
 un second passage sur du texte déjà résumé : les numéros de version ne traversent plus
 deux réécritures, et la fusion des doublons se fait là où elle a du sens, sur des
@@ -18,12 +18,12 @@ et c'est eux que l'assemblage local remet bout à bout quand aucun modèle n'est
 Ce que l'œil lit et ce que l'oreille entend sont deux textes, écrits pour deux usages.
 
 Les catégories déterministes font exception : leur constat est déjà rédigé, sans modèle,
-et se relaie tel quel plutôt que d'être refait — refaire un tri déterministe avec un LLM
+et se relaie tel quel plutôt que d'être refait, refaire un tri déterministe avec un LLM
 est exactement ce que `rssresume/certfr/` a été écrit pour éviter.
 
 Un module à part de `summaries.py`, et non une méthode de plus dedans : d'un côté le
 résumé d'une catégorie, écrit pour être lu ; de l'autre la journée entière, écrite pour
-être entendue d'une traite — avec sa salutation, son éphéméride et sa conclusion. Et
+être entendue d'une traite, avec sa salutation, son éphéméride et sa conclusion. Et
 deux actions distinctes chez le fournisseur, donc deux postes de dépense.
 
 Le couple `MontageService` / `models.Montage` suit celui de `EphemerideService` /
@@ -55,8 +55,8 @@ from rssresume.tools.text import truncate_sentences
 class MontageService:
     """Écrit le texte que la voix dira, pour la journée entière.
 
-    Sans fournisseur — aucune clé d'API, ou l'action confiée à un fournisseur qui n'en a
-    pas —, l'assemblage local prend la suite : le mode `global` reste utilisable sur une
+    Sans fournisseur, aucune clé d'API, ou l'action confiée à un fournisseur qui n'en a
+    pas, l'assemblage local prend la suite : le mode `global` reste utilisable sur une
     installation sans IA, comme le résumé de catégorie l'est déjà.
     """
 
@@ -91,7 +91,7 @@ class MontageService:
     ) -> Montage:
         """Le texte de la journée, écrit d'une traite depuis les sujets de toutes les catégories.
 
-        Le jour dont il est question est celui de l'éphéméride — le jour de l'ENVOI, pas
+        Le jour dont il est question est celui de l'éphéméride, le jour de l'ENVOI, pas
         celui que le digest raconte. C'est déjà le jour sur lequel l'email s'ouvre, et
         deux dates différentes à l'œil et à l'oreille ne s'expliqueraient pas.
         """
@@ -117,7 +117,7 @@ class MontageService:
             return self._assembler(jour, sections, muettes)
 
         console.detail(
-            f"montage via {self._provider.name} — {self._provider.model('montage')} "
+            f"montage via {self._provider.name}, {self._provider.model('montage')} "
             f"({len(sujets)} sujet(s) toutes catégories, {len(constats)} constat(s))"
         )
         try:
@@ -134,9 +134,9 @@ class MontageService:
             )
         except LLMError as exc:
             # La journée est déjà payée : scoring, résumés, tags. La perdre parce que le
-            # dernier appel a échoué serait le plus cher des abandons — et l'assemblage
+            # dernier appel a échoué serait le plus cher des abandons, et l'assemblage
             # dit la même chose, moins bien. `origine` garde la trace de la marche perdue.
-            console.detail(f"montage indisponible ({exc}) — assemblage local des résumés")
+            console.detail(f"montage indisponible ({exc}), assemblage local des résumés")
             return self._assembler(jour, sections, muettes)
         return Montage(texte=texte.strip(), origine=ORIGINE_MONTAGE)
 
@@ -145,7 +145,7 @@ class MontageService:
 
         L'ordre est refait à l'échelle de la journée et non hérité des catégories : c'est
         toute la différence entre un seul fichier et un seul récit. La catégorie d'origine
-        n'accompagne pas le sujet, délibérément — elle n'a plus rien à décider une fois
+        n'accompagne pas le sujet, délibérément, elle n'a plus rien à décider une fois
         l'ordre posé, et un modèle qui la voit finit par l'annoncer.
         """
         notes: dict[str, Note] = {}
@@ -167,7 +167,7 @@ class MontageService:
 
         Le même, et c'est voulu : les deux textes doivent dire les mêmes faits, et deux
         façons de préparer un article finiraient par ne plus donner à lire et à entendre
-        la même journée. Ni URL ni nom de flux, pour la raison habituelle — ce qui n'est
+        la même journée. Ni URL ni nom de flux, pour la raison habituelle, ce qui n'est
         pas dans le contexte ne peut pas être prononcé.
         """
         sujet = {
@@ -189,7 +189,7 @@ class MontageService:
     def _sections(racontees: list[CategoryDigest]) -> list[dict]:
         """Les résumés déjà écrits, pour le seul assemblage local.
 
-        Ils ne partent plus au modèle — il travaille sur les articles — mais ils restent
+        Ils ne partent plus au modèle, il travaille sur les articles, mais ils restent
         ce que le repli met bout à bout : sans fournisseur, il n'y a personne pour rédiger
         quoi que ce soit, et ces textes-là existent déjà.
         """
@@ -206,10 +206,10 @@ class MontageService:
 
         Le discriminant est `marker_path` et non `selected`. Une catégorie sans article,
         ou dont rien n'a passé le seuil, porte son marqueur `.no-article` et un
-        `summary_text` qui est une phrase de plomberie — « Aucun article retenu sur 3
+        `summary_text` qui est une phrase de plomberie, « Aucun article retenu sur 3
         (seuil 7) » : la donner au montage la ferait lire à voix haute. Une catégorie
         CERT-FR dont aucun avis ne touche la stack, elle, n'a pas de marqueur et sa
-        phrase est un vrai résultat, qui mérite d'être entendu — `selected` l'aurait
+        phrase est un vrai résultat, qui mérite d'être entendu, `selected` l'aurait
         écartée avec les autres.
         """
         racontees, muettes = [], []
@@ -238,7 +238,7 @@ class MontageService:
         """Le repli : la salutation, le jour, les résumés à la suite, et rien de plus.
 
         Ni transitions ni conclusion. Les fabriquer sans modèle produirait exactement la
-        formule passe-partout que le prompt interdit — « restez vigilant » —, et une
+        formule passe-partout que le prompt interdit, « restez vigilant », et une
         conclusion fausse est pire qu'une conclusion absente. L'audio du jour sort quand
         même, et `origine` dit qu'il a été monté à la main.
         """

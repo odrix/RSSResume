@@ -3,7 +3,7 @@
 Ce que ces tests protègent tient en deux phrases. Un avis mal apparié fait ouvrir un
 ticket sur un composant qu'on n'exploite pas, et à la troisième fois plus personne ne
 lit la phrase du matin. Un avis manqué, lui, ne se remarque que le jour où il est trop
-tard — d'où l'attention portée aux deux extrémités : les faux positifs d'un nom court,
+tard, d'où l'attention portée aux deux extrémités : les faux positifs d'un nom court,
 et le composant que seul le corps de l'avis nomme.
 """
 
@@ -199,7 +199,7 @@ class PhraseTests(unittest.TestCase):
 
         self.assertEqual(
             "2 avis CERT-FR aujourd'hui, 1 touche la stack : "
-            "Keycloak — exécution de code arbitraire à distance.",
+            "Keycloak, exécution de code arbitraire à distance.",
             revue.phrase,
         )
 
@@ -220,8 +220,8 @@ class PhraseTests(unittest.TestCase):
 
         self.assertEqual(
             "2 avis CERT-FR aujourd'hui, 2 touchent la stack : "
-            "Keycloak — exécution de code arbitraire à distance ; "
-            "noyau Linux — déni de service.",
+            "Keycloak, exécution de code arbitraire à distance ; "
+            "noyau Linux, déni de service.",
             revue.phrase,
         )
         # Les liens « À lire » de l'email suivent le même ordre que la phrase.
@@ -290,7 +290,7 @@ class StackDeclareeTests(unittest.TestCase):
         )
 
     def test_something_that_is_not_a_list_fails_at_startup(self):
-        """La forme d'avant — un objet nom par nom — ne passe pas pour une liste vide."""
+        """La forme d'avant, un objet nom par nom : ne passe pas pour une liste vide."""
         with self.assertRaises(certfr.StackError):
             certfr.Stack.declaree({"Keycloak": {"alias": ["RH-SSO"]}})
 

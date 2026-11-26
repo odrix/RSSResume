@@ -1,6 +1,6 @@
 """Les réglages d'un fournisseur, lus dans `providers.json`.
 
-Ce module ne fait qu'une chose : rendre un `Settings` — un objet de valeurs, sans
+Ce module ne fait qu'une chose : rendre un `Settings`, un objet de valeurs, sans
 comportement, qu'on injecte dans un `LLMProvider`. Tout ce qui n'est pas un secret
 vient du JSON ; l'environnement ne porte que la clé d'API et le choix du fournisseur.
 
@@ -24,7 +24,7 @@ DIGEST = "digest"
 #: L'éphéméride d'ouverture : un appel par journée, pas un par catégorie.
 EPHEMERIDE = "ephemeride"
 #: Le montage de la journée en un seul texte, quand l'audio est global. Un appel par
-#: journée lui aussi, et seulement dans ce mode — il n'est pas payé en mode `category`.
+#: journée lui aussi, et seulement dans ce mode, il n'est pas payé en mode `category`.
 MONTAGE = "montage"
 TTS = "tts"
 ACTIONS = (SCORING, ARTICLE, DIGEST, EPHEMERIDE, MONTAGE, TTS)
@@ -52,7 +52,7 @@ class Call:
 
     `effort` ne vaut que pour les modèles raisonnants d'OpenAI ; les fournisseurs qui
     l'ignorent ne le déclarent simplement pas. Un `max_tokens` à None laisse le plafond
-    du fournisseur — chez un modèle raisonnant, ce plafond inclut les tokens de
+    du fournisseur, chez un modèle raisonnant, ce plafond inclut les tokens de
     raisonnement, absents de la réponse, et se règle donc plus large qu'il n'y paraît.
     """
 

@@ -1,6 +1,6 @@
 /**
- * L'inscription, en deux temps : un compte en attente ici, puis — au clic sur le lien
- * reçu — le profil côté API, l'alerte à l'administrateur et la bienvenue.
+ * L'inscription, en deux temps : un compte en attente ici, puis, au clic sur le lien
+ * reçu, le profil côté API, l'alerte à l'administrateur et la bienvenue.
  *
  * Le profil n'est créé qu'à la confirmation parce que c'est lui qui fait partir le digest :
  * créé plus tôt, il enverrait chaque matin un email à une adresse que personne n'a prouvé
@@ -32,7 +32,7 @@ export interface SaisieInscription {
 }
 
 /** Le choix de qui ne se reconnaît dans aucun gabarit : son profil n'aura ni axes ni
- * catégories, c'est-à-dire les rubriques par défaut et tout le catalogue — le profil
+ * catégories, c'est-à-dire les rubriques par défaut et tout le catalogue, le profil
  * d'avant les gabarits. */
 export const METIER_AUTRE = 'autre';
 
@@ -195,7 +195,7 @@ export class Inscription {
 	}
 
 	/** Un échec d'envoi ne défait rien : le compte et son profil sont là, le premier digest
-	 * partira quand même. Il n'y a pas de relance — le message n'est qu'un accueil. */
+	 * partira quand même. Il n'y a pas de relance, le message n'est qu'un accueil. */
 	async #souhaiterBienvenue(inscrit: Inscrit, brouillon: Brouillon, origine: string): Promise<void> {
 		const gabarit = brouillon.gabarit;
 		const envoye = await this.courrier.souhaiterBienvenue(inscrit, {

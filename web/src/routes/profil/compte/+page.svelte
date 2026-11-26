@@ -19,7 +19,7 @@
 </script>
 
 <svelte:head>
-	<title>Mon compte — RSSResume</title>
+	<title>Mon compte, RSSResume</title>
 </svelte:head>
 
 <h1>Mon compte</h1>

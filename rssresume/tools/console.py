@@ -6,8 +6,8 @@ Trois niveaux de message pour garder une sortie lisible :
     [Tech] 5 article(s)                     -> category()
       résumé via gpt-4o-mini                -> detail()
 
-Ce qui a échoué sort sur l'erreur standard -> error(). Les agrégateurs de logs — Dokploy
-en tête — classent par flux et non par contenu : un échec écrit sur la sortie standard
+Ce qui a échoué sort sur l'erreur standard -> error(). Les agrégateurs de logs, Dokploy
+en tête, classent par flux et non par contenu : un échec écrit sur la sortie standard
 s'affiche en « info » au milieu du reste, et un matin sans digest ne se remarque pas.
 """
 

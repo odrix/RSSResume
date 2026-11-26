@@ -100,7 +100,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`} — RSSResume</title>
+	<title>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}, RSSResume</title>
 </svelte:head>
 
 <h1>{data.proprietaire ? 'Mes résumés' : `Résumés de ${data.username}`}</h1>

@@ -38,7 +38,7 @@ def signaler_echec(exc: Exception) -> None:
 
     `console.error` écrit sur l'erreur standard, `console.log` sur la sortie standard :
     les agrégateurs classent par flux, et celui de Dokploy peut ne montrer que l'un des
-    deux — une erreur demeurée sur stderr se lit comme un conteneur qui boucle sans
+    deux, une erreur demeurée sur stderr se lit comme un conteneur qui boucle sans
     raison. Le doublon coûte une ligne ; son absence, un débogage à l'aveugle.
     """
     message = f"API RSSResume : démarrage impossible : {type(exc).__name__}: {exc}"

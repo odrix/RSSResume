@@ -26,7 +26,7 @@ from tests.test_send_only import JOUR, FakeSender, ecrire_journee
 AUJOURD_HUI = dt.datetime.now(zoneinfo.ZoneInfo("Europe/Paris")).date()
 
 
-def ephem(texte="1988 — le ver Morris.", jour=JOUR, origine="llm"):
+def ephem(texte="1988, le ver Morris.", jour=JOUR, origine="llm"):
     return Ephemeride(jour=jour, fete=fetes.du_jour(jour), texte=texte, origine=origine)
 
 
@@ -38,7 +38,7 @@ class EcritureTests(unittest.TestCase):
                 journal.set_ephemeride(ephem())
 
             ecrit = json.loads((racine / runlog.DAY_LOG_NAME).read_text(encoding="utf-8"))
-            self.assertEqual("1988 — le ver Morris.", ecrit["ephemeride"]["texte"])
+            self.assertEqual("1988, le ver Morris.", ecrit["ephemeride"]["texte"])
             self.assertEqual("llm", ecrit["ephemeride"]["origine"])
             # Le jour décrit, pour que le renvoi sache si elle parle encore du bon.
             self.assertEqual(JOUR.isoformat(), ecrit["ephemeride"]["jour"])
@@ -79,8 +79,8 @@ class EcritureTests(unittest.TestCase):
     def test_the_category_is_attached_without_entering_the_day_calls(self):
         """Le rattachement sert le cumul, pas le fichier : `journee.json` ne doit pas grossir.
 
-        Les deux vues coexistent — `calls` reste ce que la journée a payé elle-même,
-        `cumul()` ce que la matinée entière a coûté — et c'est ce qui permet d'additionner
+        Les deux vues coexistent, `calls` reste ce que la journée a payé elle-même,
+        `cumul()` ce que la matinée entière a coûté, et c'est ce qui permet d'additionner
         les fichiers d'un répertoire de sortie sans compter deux fois chaque catégorie.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -129,7 +129,7 @@ class RelectureTests(unittest.TestCase):
 
             relue = runlog.read_ephemeride(racine)
 
-            self.assertEqual("1988 — le ver Morris.", relue.texte)
+            self.assertEqual("1988, le ver Morris.", relue.texte)
             self.assertEqual("llm", relue.origine)
             self.assertEqual(JOUR, relue.jour)
             self.assertEqual("sainte Sabine", relue.fete)
@@ -162,7 +162,7 @@ class RenvoiTests(unittest.TestCase):
                     "ephemeride": {
                         "jour": jour.isoformat(),
                         "fete": fetes.du_jour(jour),
-                        "texte": "1988 — le ver Morris.",
+                        "texte": "1988, le ver Morris.",
                         "origine": "llm",
                     },
                 },
@@ -180,8 +180,8 @@ class RenvoiTests(unittest.TestCase):
                 self.assertEqual(0, cli.send_only(self._config(tmpdir), JOUR))
 
             envoi, = sender.envois
-            self.assertIn("1988 — le ver Morris.", envoi["body"])
-            self.assertIn("1988 — le ver Morris.", envoi["html"])
+            self.assertIn("1988, le ver Morris.", envoi["body"])
+            self.assertIn("1988, le ver Morris.", envoi["html"])
 
     def test_resending_later_reopens_on_the_day_of_the_resend(self):
         """Une éphéméride d'un autre jour daterait la lettre et annoncerait la mauvaise fête."""
@@ -194,7 +194,7 @@ class RenvoiTests(unittest.TestCase):
                 self.assertEqual(0, cli.send_only(self._config(tmpdir), JOUR))
 
             envoi, = sender.envois
-            self.assertNotIn("1988 — le ver Morris.", envoi["body"])
+            self.assertNotIn("1988, le ver Morris.", envoi["body"])
             self.assertIn(date_longue(AUJOURD_HUI).capitalize(), envoi["body"])
 
     def test_the_resent_letter_opens_on_today_not_on_the_day_it_covers(self):

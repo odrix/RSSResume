@@ -1,6 +1,6 @@
 """Poser les liens des articles retenus dans le texte du résumé, sur un mot qui les rappelle.
 
-Le résumé ne cite aucune URL — il part aussi en synthèse vocale, et une URL lue à voix
+Le résumé ne cite aucune URL, il part aussi en synthèse vocale, et une URL lue à voix
 haute est inutilisable. Les liens vivaient donc dans une liste, sous le texte : pour
 retrouver l'article derrière un sujet, il fallait relire le titre en bas et faire le
 rapprochement soi-même.
@@ -13,11 +13,11 @@ CERT-FR sans qu'on ait à descendre.
 Rien n'est demandé au modèle, et le texte du résumé n'est pas touché d'un caractère :
 c'est un appariement fait après coup, sur ce qui est déjà écrit. La synthèse vocale lit
 donc exactement le même texte qu'avant, et un lien mal posé ne peut jamais être un lien
-inventé — l'URL vient de la sélection, comme celles de la liste.
+inventé, l'URL vient de la sélection, comme celles de la liste.
 
 L'appariement est au mieux, jamais garanti : un article dont le résumé ne reprend aucun
 nom propre ne s'ancre nulle part. C'est pourquoi la liste « À lire » reste sous le
-texte — elle, ne rate personne.
+texte, elle, ne rate personne.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import Iterable
 from rssresume.models import Link
 
 #: Longueur minimale d'une ancre d'un seul mot. En dessous, le mot est trop court pour
-#: désigner quoi que ce soit — sauf s'il est un sigle, traité à part.
+#: désigner quoi que ce soit, sauf s'il est un sigle, traité à part.
 LONGUEUR_MIN = 4
 
 #: Longueur minimale d'un sigle. « NG », « MF » ne rappellent aucun titre ; « CVE »,
@@ -62,7 +62,7 @@ COURANTS = """
 #: mènerait à un tout autre sujet que celui dont elle parle. C'est le défaut le plus
 #: coûteux que ce module puisse produire, puisqu'il donne un lien plausible et faux.
 #:
-#: Un identifiant complet — CVE-2021-44228 — n'est pas concerné : il porte des chiffres,
+#: Un identifiant complet, CVE-2021-44228, n'est pas concerné : il porte des chiffres,
 #: ne ressemble à rien d'autre, et fait au contraire la meilleure ancre qui soit.
 SIGLES_COURANTS = """
     rce cve dos ddos api vpn saas iaas paas mfa sso os pc it ia ai
@@ -74,7 +74,7 @@ BANALS = frozenset(COURANTS.split()) | frozenset(SIGLES_COURANTS.split())
 #: L'élision française, en tête de mot. Sans elle, « 700 agents d'OpenAI » ne livre que
 #: le mot « d'OpenAI », qui ne commence pas par une majuscule et passe donc pour banal :
 #: le nom propre disparaît derrière son apostrophe, et l'article perd son ancre. La
-#: recherche dans le résumé, elle, n'a pas ce problème — une apostrophe est une
+#: recherche dans le résumé, elle, n'a pas ce problème, une apostrophe est une
 #: frontière de mot, et « OpenAI » s'y retrouve tel quel.
 ELISION = re.compile(r"^(?:qu|[cdjlmnst])['’]", re.IGNORECASE)
 
@@ -123,7 +123,7 @@ def _placer(texte: str, liens: list[Link]) -> list[tuple[int, int, Link]]:
     L'attribution est gourmande et prend les meilleures ancres d'abord : un groupe de
     deux mots désigne bien mieux un article qu'un mot seul, et il doit donc pouvoir
     réserver sa place avant qu'un mot isolé ne la prenne. Deux articles qui visent le
-    même endroit — deux dépêches sur la même faille — sont départagés là : le premier
+    même endroit, deux dépêches sur la même faille, sont départagés là : le premier
     servi le garde, l'autre se rabat sur une autre ancre ou reste dans la liste.
     """
     candidats = []
@@ -152,7 +152,7 @@ def _chercher(texte: str, ancre: str) -> tuple[int, int] | None:
     """La première occurrence de l'ancre dans le texte, aux frontières de mot.
 
     La casse compte : ce sont des noms propres qu'on cherche, et « Ring » n'est pas
-    « ring ». L'espacement, lui, est souple — le titre sépare ses mots d'une espace,
+    « ring ». L'espacement, lui, est souple, le titre sépare ses mots d'une espace,
     le résumé peut passer à la ligne au même endroit. Jamais au travers d'un paragraphe
     en revanche : un lien à cheval sur deux `<p>` ne se referme nulle part.
     """
@@ -170,7 +170,7 @@ def ancres_du_titre(titre: str) -> list[str]:
     de revendiquer aussi.
 
     Les titres anglais sont en casse de titre, où presque tout mot porte une majuscule.
-    Ce n'est pas un problème : les faux candidats qu'elle produit — « Adds », « Flaws » —
+    Ce n'est pas un problème : les faux candidats qu'elle produit, « Adds », « Flaws » -
     ne figurent pas dans un résumé écrit en français, et ne se posent donc nulle part.
     """
     suites = _suites_distinctives(titre)
@@ -222,7 +222,7 @@ def _utilisable(ancre: str) -> bool:
 
     Un mot seul doit être long, ou être un sigle, ou porter un chiffre. En dessous, le
     risque de tomber sur un mot du résumé qui parle d'autre chose l'emporte sur le
-    service rendu — et un lien qui mène ailleurs est pire que pas de lien du tout.
+    service rendu, et un lien qui mène ailleurs est pire que pas de lien du tout.
     """
     mots = ancre.split()
     if len(mots) > 1:

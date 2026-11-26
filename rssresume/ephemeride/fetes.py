@@ -7,14 +7,14 @@ qu'à l'envoi.
 
 Chaque entrée est écrite comme elle apparaît dans la lettre, en apposition derrière la
 date : « Vendredi 28 août 2026, saint Augustin. » Les fêtes civiles et religieuses
-prennent leur article — « la Toussaint », « le Jour de l'An » — et se lisent au même
+prennent leur article, « la Toussaint », « le Jour de l'An », et se lisent au même
 endroit sans que la phrase ait à changer de forme.
 
 C'est le calendrier des postes, celui des agendas français. Les éditions varient sur
-quelques jours — un saint local, un second prénom retenu plutôt qu'un autre. Corriger
+quelques jours, un saint local, un second prénom retenu plutôt qu'un autre. Corriger
 une date se fait ici, et nulle part ailleurs.
 
-Les fêtes mobiles — Pâques, l'Ascension, la Pentecôte — n'y sont pas : elles tombent à
+Les fêtes mobiles, Pâques, l'Ascension, la Pentecôte, n'y sont pas : elles tombent à
 une date différente chaque année et ne se rangent pas dans une table indexée par le
 jour et le mois. Le saint fixe du jour est alors celui qui s'affiche.
 """

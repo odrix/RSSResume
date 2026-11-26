@@ -1,8 +1,8 @@
 """Exécution quotidienne : attendre l'heure dite, lancer le digest, recommencer.
 
 Le conteneur ne fait rien d'autre. Un `cron` aurait pu suffire, mais il n'hérite pas de
-l'environnement du conteneur — c'est justement là que Dokploy pose les clés d'API et les
-identifiants FreshRSS — et il ne connaît pas `RSSRESUME_TIMEZONE`. Une boucle en Python
+l'environnement du conteneur, c'est justement là que Dokploy pose les clés d'API et les
+identifiants FreshRSS, et il ne connaît pas `RSSRESUME_TIMEZONE`. Une boucle en Python
 lit le même environnement que le reste, découpe les journées dans le même fuseau, et
 n'ajoute pas un octet à l'image.
 
@@ -94,7 +94,7 @@ class DailySchedule:
 def stop_on_signal() -> threading.Event:
     """Un drapeau levé par SIGTERM et SIGINT, pour sortir de l'attente sans attendre.
 
-    En PID 1 — ce qu'est le processus dans le conteneur — le noyau n'applique aucune
+    En PID 1, ce qu'est le processus dans le conteneur, le noyau n'applique aucune
     action par défaut aux signaux : sans ce gestionnaire, un `docker stop` serait ignoré
     dix secondes puis suivi d'un SIGKILL.
     """
@@ -113,7 +113,7 @@ def run_forever(
 ) -> int:
     """Boucle : dormir jusqu'au prochain passage, lancer le digest de sa journée.
 
-    `attendre(secondes)` rend vrai quand il faut s'arrêter — c'est l'attente elle-même
+    `attendre(secondes)` rend vrai quand il faut s'arrêter, c'est l'attente elle-même
     qui écoute le signal. `passages` borne la boucle, pour les tests.
 
     Un digest qui échoue est journalisé et la boucle continue : FreshRSS injoignable ou
@@ -139,7 +139,7 @@ def run_forever(
         jour = schedule.target_day(passage)
         try:
             run(["--date", jour.isoformat()])
-        except Exception as exc:  # noqa: BLE001 — un matin perdu, pas tous les suivants
+        except Exception as exc:  # noqa: BLE001, un matin perdu, pas tous les suivants
             console.error(f"Échec du digest du {jour.isoformat()} : {exc!r}")
         curseur = passage
         if restants is not None:
@@ -151,9 +151,9 @@ def main() -> int:
     """La configuration est lue ici, au lancement, pour échouer tout de suite.
 
     Une clé manquante ou un fuseau inconnu doit faire crasher le conteneur au
-    déploiement — visible dans Dokploy — plutôt qu'au premier matin. De même pour les
+    déploiement, visible dans Dokploy, plutôt qu'au premier matin. De même pour les
     profils : deux sources posées ensemble, un dossier absent. Leurs documents, eux, sont
-    relus à chaque passage — le site peut les modifier entre deux — et un document fautif
+    relus à chaque passage, le site peut les modifier entre deux, et un document fautif
     ou mal nommé ne coûte que la journée de sa personne.
     """
     config = AppConfig.from_env()

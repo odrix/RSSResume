@@ -1,7 +1,7 @@
 """Le résumé d'une catégorie : celui du fournisseur, ou le repli extractif local.
 
 Le générateur ne sait rien du fournisseur au-delà de son contrat : il reçoit un
-`LLMProvider` — ou `None`, et c'est alors le repli. Les prompts vivent dans
+`LLMProvider`, ou `None`, et c'est alors le repli. Les prompts vivent dans
 `llm/prompts.py`, la mise en forme du digest est ici, et la requête chez l'adaptateur.
 """
 
@@ -34,8 +34,8 @@ class SummaryGenerator:
         #: d'entrée du pipeline : douze articles de fond partaient intégralement.
         self._char_limit = char_limit
         #: La même liste de composants que celle des avis CERT-FR, et pour le même usage :
-        #: répondre « est-ce que ça me touche ». Ici elle ne trie rien — l'article est
-        #: raconté dans tous les cas — elle règle seulement le détail donné sur les
+        #: répondre « est-ce que ça me touche ». Ici elle ne trie rien, l'article est
+        #: raconté dans tous les cas, elle règle seulement le détail donné sur les
         #: versions d'une CVE. Vide, le résumé reste au régime d'avant : tout, pour toutes.
         self._stack = stack if stack is not None else Stack()
         #: Le régime de sécurité du document : la stack dit ce qui tourne, lui dit qui
@@ -61,7 +61,7 @@ class SummaryGenerator:
             if len(item["content"]) < len(article.content_text)
         )
         console.detail(
-            f"résumé via {self._provider.name} — {self._provider.model('digest')} "
+            f"résumé via {self._provider.name}, {self._provider.model('digest')} "
             f"({len(articles)} article(s), {volume} caractère(s) envoyés"
             + (f", {tronques} tronqué(s) à {self._char_limit})" if tronques else ")")
         )

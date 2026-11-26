@@ -1,4 +1,4 @@
-# RSSResume — site d'administration
+# RSSResume - site d'administration
 
 Le site où chacun crée son compte, écrit son profil de veille et écoute ses résumés audio.
 L'administrateur y voit tous les profils et peut écouter les résumés de chacun.
@@ -28,7 +28,7 @@ La fausse API ([mock/faux-api.js](mock/faux-api.js)) tient le contrat en mémoir
 dans le fichier. Un redémarrage la vide ; les comptes, eux, restent dans `data/comptes.sqlite`.
 
 Sans `RESEND_API_KEY` et hors production (`NODE_ENV` différent de `production`), aucun
-email ne part : chacun — lien de confirmation compris — est écrit dans la console du
+email ne part : chacun, lien de confirmation compris, est écrit dans la console du
 serveur. Copier le lien `…/confirmer/<jeton>` dans le navigateur pour activer un compte.
 
 ## Vérifications
@@ -44,7 +44,7 @@ en base, expiration, prolongation, refus d'un compte en attente), les comptes (d
 d'administrer réservé aux comptes confirmés, purge à sept jours, confirmation et première
 connexion qui ne valent qu'une fois, migration des comptes existants), les jetons de
 confirmation (empreinte, 24 h, usage unique, remplacement), l'inscription en deux temps
-(profil du métier choisi — texte, axes, catégories, régime — ou « Autre », métier inconnu,
+(profil du métier choisi, texte, axes, catégories, régime, ou « Autre », métier inconnu,
 gabarits injoignables ; profil, alerte et bienvenue à la confirmation seulement et une
 seule fois, lien expiré, API indisponible, renvoi, fermeture sans transport d'email), la
 destination après connexion (le profil la première fois), les destinataires (ajout en
@@ -123,7 +123,7 @@ Ce qui n'est **pas** là, volontairement :
 - **Sessions** : cookie `session` en `HttpOnly`, `Secure`, `SameSite=Lax`, 30 jours,
   prolongé quand il reste moins de 15 jours. Seule l'empreinte du jeton est en base.
   Déconnexion par `POST` seulement.
-- **CSRF** : assuré par SvelteKit — en production, tout `POST` de formulaire dont l'en-tête
+- **CSRF** : assuré par SvelteKit, en production, tout `POST` de formulaire dont l'en-tête
   `Origin` n'est pas celui du site est refusé (403). SvelteKit 3 ne permet plus de le
   désactiver ; il faut en revanche que **`ORIGIN`** soit la vraie adresse publique.
   Vérifié à la main : un `POST /connexion` avec `Origin: http://evil.example` → 403.
@@ -169,7 +169,7 @@ Ce qui n'est **pas** là, volontairement :
 - **Mon profil** : le texte de veille avec une aide en trois rubriques (mon métier, ce que je
   veux suivre, ce qui ne m'intéresse pas) et le texte d'un gabarit en exemple ; « Repartir
   d'un gabarit », qui pré-remplit sans rien enregistrer ; les catégories à cocher, celles que
-  l'API autorise et elles seules, avec leur description — tout coché, la personne suit aussi
+  l'API autorise et elles seules, avec leur description, tout coché, la personne suit aussi
   les catégories ajoutées plus tard ; le régime de sécurité expliqué en une ligne par valeur ;
   les rubriques (axes), de 3 à 6, vides pour celles par défaut ; la stack, facultative. Un
   refus de l'API s'affiche sous le champ qu'elle nomme.
@@ -199,15 +199,15 @@ Ce qui n'est **pas** là, volontairement :
 
 Le site est une **application Dokploy distincte** du compose de l'appli de résumé : il se
 déploie, redémarre et se met à jour sans toucher au travailleur du matin. Il appelle l'API
-de résumé — le service `api` du compose (même image que `rssresume`, lancée par
-`python -m rssresume.api`, port 8080 jamais publié) — par l'alias `rssresume-api` que ce
+de résumé, le service `api` du compose (même image que `rssresume`, lancée par
+`python -m rssresume.api`, port 8080 jamais publié), par l'alias `rssresume-api` que ce
 service porte sur `dokploy-network`, le réseau commun à toutes les applications Dokploy.
 
 Dans Dokploy, une application de type **Application** :
 
 1. **Source** : le dépôt, branche `main` ; **Build Type** `Dockerfile`, **Docker File**
    `Dockerfile`, **Docker Context Path** `web` (le contexte est le dossier `web/`, pas la
-   racine) ; **Watch Paths** `web/**` — tout ce que l'image emporte est dans le contexte ;
+   racine) ; **Watch Paths** `web/**`, tout ce que l'image emporte est dans le contexte ;
 2. onglet **Environment** :
    - `RSSRESUME_API_URL=http://rssresume-api:8080`
    - `RSSRESUME_API_TOKEN` : le même que celui du compose de l'appli de résumé

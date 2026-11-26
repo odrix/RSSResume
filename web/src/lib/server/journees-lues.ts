@@ -2,7 +2,7 @@
  * Les journées qu'une personne a déjà lues ou écoutées, pour les distinguer dans sa liste.
  *
  * Un marquage n'appartient qu'à celui qui lit : le compte écrit vient toujours de la session,
- * jamais de l'URL. Le username de l'URL ne sert qu'à refuser — un administrateur qui ouvre la
+ * jamais de l'URL. Le username de l'URL ne sert qu'à refuser, un administrateur qui ouvre la
  * journée d'un autre ne la marque pas, ni pour lui (ce n'est pas sa journée) ni pour l'autre.
  *
  * Sans rapport avec le marquage comme lu des articles dans FreshRSS, qui reste du ressort du

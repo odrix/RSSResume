@@ -17,8 +17,8 @@ from rssresume.tools import console
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
 #: Délai d'ouverture de la connexion SMTP. Sans lui, `smtplib` laisse le noyau décider :
-#: un port sortant filtré — ce que font par défaut beaucoup d'hébergeurs sur 25, 465 et
-#: 587 — ne se voit qu'au bout de deux minutes d'attente muette, et sous la forme d'un
+#: un port sortant filtré, ce que font par défaut beaucoup d'hébergeurs sur 25, 465 et
+#: 587 : ne se voit qu'au bout de deux minutes d'attente muette, et sous la forme d'un
 #: `TimeoutError(110)` qui ne dit pas d'où il vient. Trente secondes suffisent à un
 #: serveur qui répond, et rendent la panne lisible tout de suite.
 CONNECT_TIMEOUT = 30
@@ -75,7 +75,7 @@ class EmailSender:
         message["To"] = ", ".join(self._config.smtp_to)
         # `EmailMessage` ne pose ni `Date` ni `Message-ID`, et `send_message` non plus :
         # un message parti sans eux est un message que la RFC 5322 dit incomplet. Certains
-        # relais les ajoutent, d'autres non — et un message sans eux arrive chez les gros
+        # relais les ajoutent, d'autres non, et un message sans eux arrive chez les gros
         # fournisseurs dans les indésirables, quand il n'est pas refusé. Deux en-têtes
         # posés ici valent mieux qu'un digest silencieusement classé.
         message["Date"] = email.utils.formatdate(localtime=True)
@@ -103,7 +103,7 @@ class EmailSender:
             )
         # Changée après coup, et seulement pour la sérialisation : la politique par défaut
         # plie les en-têtes à 78 caractères, et une URL qui n'a pas d'espace où plier part
-        # alors en mot encodé (`=?utf-8?q?=3Chttps…?=`) — un `List-Unsubscribe` que Gmail
+        # alors en mot encodé (`=?utf-8?q?=3Chttps…?=`), un `List-Unsubscribe` que Gmail
         # et Yahoo ne reconnaissent plus. 998 est la limite de la RFC 5322. Le contenu, lui,
         # a déjà été encodé sous la politique par défaut : le texte et le HTML gardent leur
         # quoted-printable au-delà de 78 caractères, au lieu de partir en 8 bits.

@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Confirmer l'adresse — RSSResume</title>
+	<title>Confirmer l'adresse, RSSResume</title>
 </svelte:head>
 
 <h1>Confirmer l'adresse</h1>

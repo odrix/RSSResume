@@ -1,7 +1,7 @@
 """Le lien de désabonnement de la lettre : un jeton signé, vérifiable sans session.
 
-Qui reçoit la lettre n'a pas forcément de compte sur le site — un destinataire ajouté
-par quelqu'un d'autre n'en a jamais —, et Gmail comme Yahoo exigent d'un expéditeur en
+Qui reçoit la lettre n'a pas forcément de compte sur le site, un destinataire ajouté
+par quelqu'un d'autre n'en a jamais, et Gmail comme Yahoo exigent d'un expéditeur en
 volume un désabonnement en un clic, sans connexion. Le lien porte donc lui-même son
 autorisation : une signature que seuls le travailleur et l'API savent produire, avec le
 secret qu'ils partagent déjà (`RSSRESUME_API_TOKEN`). Le site ne voit jamais la clé, il
@@ -36,8 +36,8 @@ VERSION = "v1"
 LONGUEUR_EMPREINTE = 16
 
 #: Octets gardés de l'empreinte d'UNE adresse : six, soit huit caractères base64url, sans
-#: remplissage. L'empreinte n'a pas à résister à une recherche — elle est à clé, et qui ne
-#: tient pas la clé ne peut en calculer aucune —, seulement à ne pas confondre par hasard
+#: remplissage. L'empreinte n'a pas à résister à une recherche, elle est à clé, et qui ne
+#: tient pas la clé ne peut en calculer aucune, seulement à ne pas confondre par hasard
 #: une adresse ajoutée après l'envoi avec l'une de celles de la lettre : une chance sur
 #: 2^48 par paire, quand une liste en compte quelques-unes. Courte parce qu'il y en a une
 #: par destinataire, et que le lien doit rester un lien.
@@ -132,14 +132,14 @@ class Demande:
     def concerne(self, emails) -> bool:
         """Vrai si l'une des adresses actuelles est l'une de celles à qui la lettre est partie.
 
-        Une seule suffit, et non la liste entière : la liste vit après l'envoi — une
-        invitation confirmée, une adresse retirée —, et exiger qu'elle soit restée
+        Une seule suffit, et non la liste entière : la liste vit après l'envoi, une
+        invitation confirmée, une adresse retirée, et exiger qu'elle soit restée
         identique rendait caducs les liens de toutes les lettres déjà parties. Le
         destinataire qui cliquait alors « Se désabonner » lisait « déjà utilisé », et
         finissait par signaler la lettre comme indésirable.
 
         Faux pour une liste vide ou sans aucune adresse de la lettre : c'est ce qui fait
-        qu'un lien ne sert qu'une fois — les destinataires retirés, il n'y a plus rien à
+        qu'un lien ne sert qu'une fois, les destinataires retirés, il n'y a plus rien à
         désabonner.
         """
         actuelles = {self._desabonnement.empreinte(adresse) for adresse in emails}
@@ -153,8 +153,8 @@ class Demande:
 class Desabonnement:
     """Le jeton de désabonnement d'un profil, son lien, et sa relecture.
 
-    Le jeton porte l'identifiant du profil — stable, contrairement au nom qu'on pourrait
-    un jour changer — et une empreinte courte de chaque adresse à qui la lettre est partie,
+    Le jeton porte l'identifiant du profil, stable, contrairement au nom qu'on pourrait
+    un jour changer, et une empreinte courte de chaque adresse à qui la lettre est partie,
     triées et mises bout à bout. Sans état côté serveur, ce sont elles qui lient le lien à
     ses destinataires : tant que l'une d'elles reçoit encore la lettre, il vaut ; quand il
     n'en reste aucune, il est refusé.
@@ -173,10 +173,10 @@ class Desabonnement:
 
     def jeton(self, profil_id: str, emails) -> str:
         """Le jeton du profil pour ces destinataires. Déterministe : même profil, mêmes
-        adresses, même jeton — c'est ce qui garde `--send-only` fidèle.
+        adresses, même jeton, c'est ce qui garde `--send-only` fidèle.
 
         Les empreintes sont triées, dédoublonnées et concaténées : de longueur fixe, elles
-        se redécoupent sans séparateur, et l'alphabet d'URL n'en a pas de libre — `-` et `_`
+        se redécoupent sans séparateur, et l'alphabet d'URL n'en a pas de libre, `-` et `_`
         appartiennent au base64url, le point sépare les champs signés.
         """
         empreintes = "".join(sorted({self.empreinte(adresse) for adresse in emails}))

@@ -39,8 +39,8 @@ Le dépôt est public : l'inventaire des flux actuels, et donc la liste de ceux 
 3. Conserver le résultat dans `input/` (gitignoré), à côté du catalogue réel
    (`input/categories.json`).
 
-Un flux passe en **privé** — catégorie `"visibilite": "privee"` avec ses `proprietaires` dans le
-catalogue (BL-037) — dès qu'il remplit l'un de ces critères :
+Un flux passe en **privé**, catégorie `"visibilite": "privee"` avec ses `proprietaires` dans le
+catalogue (BL-037), dès qu'il remplit l'un de ces critères :
 
 - c'est une alerte (Google Alerts ou équivalent) sur une entreprise, ses concurrents ou son
   marché ;
@@ -54,8 +54,8 @@ La règle s'applique à la **catégorie**, pas au flux : le catalogue décrit de
 privé rangé dans une catégorie publique doit donc en sortir, vers une catégorie privée. C'est la
 réorganisation de BL-051, qui en profite pour regrouper les flux publics par thématique métier.
 
-La section 4 du prompt (doublons) sert aussi ici : plusieurs flux proposés plus bas — presse IT
-française en particulier — figurent peut-être déjà dans l'instance. Recouper avant d'ajouter.
+La section 4 du prompt (doublons) sert aussi ici : plusieurs flux proposés plus bas, presse IT
+française en particulier, figurent peut-être déjà dans l'instance. Recouper avant d'ajouter.
 
 ## 3. Catégories par métier
 
@@ -63,7 +63,7 @@ française en particulier — figurent peut-être déjà dans l'instance. Recoup
 
 Les neuf métiers de BL-041 et de [categories.exemple.json](categories.exemple.json). Le champ
 `metiers` du catalogue est encore libre ; les identifiants ci-dessous sont une proposition, dans
-la forme de ceux déjà employés (`developpeur`, `cto`) — minuscules, sans accents :
+la forme de ceux déjà employés (`developpeur`, `cto`), minuscules, sans accents :
 
 | Identifiant proposé | Métier |
 |---|---|
@@ -82,11 +82,11 @@ la forme de ceux déjà employés (`developpeur`, `cto`) — minuscules, sans ac
 Vérifiées dans [categories.exemple.json](categories.exemple.json) et le code :
 
 - **Libellé de catégorie** : `N - Libellé`, sans accents (`1 - Alertes et avis CERT-FR ANSSI`,
-  `Tech generaliste`). Les accents ne gênent pas l'appariement — `cle_categorie()`
-  ([categories.py](../rssresume/categories.py)) compare sans casse ni accents — mais ils
+  `Tech generaliste`). Les accents ne gênent pas l'appariement, `cle_categorie()`
+  ([categories.py](../rssresume/categories.py)) compare sans casse ni accents, mais ils
   disparaissent du slug, autant ne pas les mettre. Les nouvelles catégories prennent les numéros
   **11 et suivants**.
-- **Slug** : dérivé du libellé par `slugify()` ([tools/text.py](../rssresume/tools/text.py)) —
+- **Slug** : dérivé du libellé par `slugify()` ([tools/text.py](../rssresume/tools/text.py)) -
   minuscules, toute suite de caractères hors `a-z0-9` devient un `-`. `6 - Tech generaliste`
   donne `6-tech-generaliste`, qui nomme les fichiers de sortie (`<slug>.log.json`, `<slug>.mp3`).
   Un caractère accentué y deviendrait un tiret : `11 - Qualité logicielle` donnerait
@@ -106,13 +106,13 @@ Vérifiées dans [categories.exemple.json](categories.exemple.json) et le code :
 | `15 - Pilotage DSI` | `15-pilotage-dsi` | `dsi`, `cto`, `rssi` | Stratégie et budgets IT, gouvernance, transformation, marché des DSI. |
 
 Les métiers déjà servis (CTO, développeur, ops, RSSI) le restent par les catégories publiques
-actuelles — tech généraliste, avis CERT-FR, cybersécurité, réglementaire — qui ne changent pas
+actuelles, tech généraliste, avis CERT-FR, cybersécurité, réglementaire, qui ne changent pas
 dans cette étude. L'ops n'a pas de catégorie nouvelle : ses besoins (incidents, cloud,
 vulnérabilités) sont ceux de la tech généraliste et de la cyber.
 
 ## 4. Flux proposés
 
-Légende — **Format** : RSS 2.0 sauf mention. **Items 7 j** : items datés du 2026-11-15 au
+Légende, **Format** : RSS 2.0 sauf mention. **Items 7 j** : items datés du 2026-11-15 au
 2026-11-22. **Volume/j** : voir la méthode ; « ≥ » signale un flux plafonné.
 
 ### 4.1. `11 - Qualite logicielle et tests`
@@ -188,8 +188,8 @@ Medium plafonnés ; le français, sur trois flux calmes.
 | MIT Sloan Management Review | `https://sloanreview.mit.edu/feed/` | en | RSS 2.0 | oui | intégral | 2 | 0,3 | Management et stratégie ; déborde du SI. |
 
 Le problème est inverse des autres : **trop** de volume (~30 articles par jour à neuf flux). En
-retenir cinq ou six au départ — IT for Business, Cigref, Le Monde Informatique ou Silicon.fr,
-CIO.com, InformationWeek — et laisser le seuil de la catégorie faire le reste.
+retenir cinq ou six au départ, IT for Business, Cigref, Le Monde Informatique ou Silicon.fr,
+CIO.com, InformationWeek, et laisser le seuil de la catégorie faire le reste.
 
 ### 4.6. Écartés
 
@@ -246,8 +246,8 @@ volume qu'après avoir observé l'absence de limitation.
 | ComputerWeekly - IT management | 15 | ~160 car. | ≥ 5 | après observation |
 | InformationWeek | 15 | ~150 car. | 1,3 | après observation |
 
-Les flux intégraux — Silicon.fr, CIO.com, Scrum.org, Smashing Magazine, UX Collective, les
-Substack — n'en ont pas besoin.
+Les flux intégraux, Silicon.fr, CIO.com, Scrum.org, Smashing Magazine, UX Collective, les
+Substack, n'en ont pas besoin.
 
 ## 6. Correspondance avec les gabarits de BL-041
 
@@ -260,7 +260,7 @@ faite. Un gabarit ne doit citer que des catégories publiques (critère d'accept
 |---|---|---|
 | `cto` | Tech generaliste, avis CERT-FR, cybersécurité, réglementaire | 14, 15, 12 |
 | `developpeur` | Tech generaliste, avis CERT-FR, 11 | 13 |
-| `ops` | Tech generaliste, avis CERT-FR, cybersécurité | — |
+| `ops` | Tech generaliste, avis CERT-FR, cybersécurité |, |
 | `dsi` | 15, réglementaire, cybersécurité | Tech generaliste, 14 |
 | `rssi` | avis CERT-FR, cybersécurité, réglementaire | 15 |
 | `chef-de-projet` | 14, 12 | 15, Tech generaliste |
@@ -270,7 +270,7 @@ faite. Un gabarit ne doit citer que des catégories publiques (critère d'accept
 
 `News` (actualité générale) reste un choix personnel, dans aucun gabarit par défaut.
 
-## Annexe — prompt d'inventaire OPML
+## Annexe - prompt d'inventaire OPML
 
 À soumettre à un chat IA avec l'export OPML joint. Le résultat se conserve dans `input/`.
 

@@ -2,8 +2,8 @@
  * La lecture des résumés d'une personne : qui a le droit de voir quelle journée.
  *
  * L'API n'a qu'un jeton, celui du site : elle rend n'importe quelle journée à qui le porte.
- * Le contrôle « propriétaire ou administrateur » se fait donc ici, avant tout appel —
- * comme pour le relais audio —, et un refus ne se distingue pas d'une journée inexistante.
+ * Le contrôle « propriétaire ou administrateur » se fait donc ici, avant tout appel -
+ * comme pour le relais audio, et un refus ne se distingue pas d'une journée inexistante.
  */
 
 import { urlSure, type ContenuJournee, type LienArticle, type Passage } from '#lib/journee.js';
@@ -21,7 +21,7 @@ export class ConsultationResumes {
 		private readonly maintenant: () => number = Date.now
 	) {}
 
-	/** La journée, ou `null` — à rendre en 404 — si elle n'existe pas ou n'est pas à voir.
+	/** La journée, ou `null`, à rendre en 404, si elle n'existe pas ou n'est pas à voir.
 	 *
 	 * `null` et non une erreur distincte pour qui n'y a pas droit : la page ne doit pas
 	 * confirmer qu'un username existe. Les liens repassent par `urlSure` : l'API les a déjà

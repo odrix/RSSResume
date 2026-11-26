@@ -39,7 +39,7 @@ function listesDemandees(env: Env): number {
 		.length;
 }
 
-describe('/admin — les retours', () => {
+describe('/admin, les retours', () => {
 	let env: Env;
 
 	beforeEach(async () => {

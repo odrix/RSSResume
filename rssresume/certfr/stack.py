@@ -1,6 +1,6 @@
 """Les composants surveillés, et la façon de les repérer dans un texte.
 
-La liste, elle, vient du document de la personne — `profil.py`, clé `stack` — et pas
+La liste, elle, vient du document de la personne, `profil.py`, clé `stack`, et pas
 d'ici : ce qu'on exploite se tient hors du dépôt, avec le profil de pertinence et le
 destinataire du digest. Ce module ne porte que le procédé, qui ne bouge presque jamais
 là où la liste se corrige à chaque changement d'infrastructure. C'est le même découpage
@@ -11,7 +11,7 @@ que `ephemeride/`, pour la même raison.
 
 L'appariement est volontairement pauvre : une suite de mots contigus, casse et accents
 retirés. Rien de flou, rien d'approché. Un avis de sécurité mal apparié est pire qu'un
-avis manqué — il fait ouvrir un ticket sur un composant qu'on n'exploite pas, et la fois
+avis manqué, il fait ouvrir un ticket sur un composant qu'on n'exploite pas, et la fois
 suivante on ne lit plus la phrase.
 """
 
@@ -35,8 +35,8 @@ class Composant:
     """Un composant de la stack : son nom canonique, et les écritures qui le désignent.
 
     Le nom canonique est celui qui sera écrit dans la phrase du digest ; les alias ne
-    servent qu'à reconnaître. Les deux sont gardés tels qu'ils ont été déclarés — c'est
-    sur eux que porte l'empreinte du journal — et découpés une fois à la construction :
+    servent qu'à reconnaître. Les deux sont gardés tels qu'ils ont été déclarés, c'est
+    sur eux que porte l'empreinte du journal, et découpés une fois à la construction :
     l'appariement tourne sur chaque avis de chaque matin, il n'a pas à redécouper.
     """
 
@@ -72,7 +72,7 @@ class Stack:
     def declaree(cls, entrees: object) -> "Stack":
         """La stack telle que le document de profil la déclare, sous la clé `stack`.
 
-        Une entrée est une **chaîne** — le nom canonique, sans alias, le cas courant —
+        Une entrée est une **chaîne**, le nom canonique, sans alias, le cas courant -
         ou un **objet** `{"nom": …, "alias": […]}` quand les avis emploient plusieurs
         écritures. Absente, la clé donne une stack vide : c'est l'état de départ de
         quiconque installe l'outil, et le digest le dit en toutes lettres.
@@ -135,7 +135,7 @@ def _composant(entree: object) -> Composant:
         nom = entree.get("nom")
         if not isinstance(nom, str) or not nom.strip():
             raise StackError(
-                f"« {CLE_STACK} » : une entrée sans « nom » — la clé porte le nom "
+                f"« {CLE_STACK} » : une entrée sans « nom », la clé porte le nom "
                 "canonique, celui qui sera écrit dans la phrase du digest."
             )
         alias = entree.get("alias") or []
@@ -144,7 +144,7 @@ def _composant(entree: object) -> Composant:
         composant = Composant(nom, alias)
     else:
         raise StackError(
-            f"« {CLE_STACK} » : une entrée est une chaîne — « Traefik » — ou un objet "
+            f"« {CLE_STACK} » : une entrée est une chaîne, « Traefik », ou un objet "
             '{"nom": "Keycloak", "alias": ["RH-SSO"]}.'
         )
 

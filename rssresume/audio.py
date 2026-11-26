@@ -14,7 +14,7 @@ ESPEAK_EXTENSION = ".wav"
 
 
 class AudioGenerator:
-    """Dit un texte. Sans fournisseur, `espeak` — sous réserve qu'il soit installé."""
+    """Dit un texte. Sans fournisseur, `espeak`, sous réserve qu'il soit installé."""
 
     def __init__(self, provider: LLMProvider | None = None):
         self._provider = provider
@@ -39,7 +39,7 @@ class AudioGenerator:
         # ce qu'on veut lire dans le suivi, une journée en trois morceaux se paie trois fois.
         morceaux = decouper(text, voice.input_limit or 0) or [text or ""]
         console.detail(
-            f"synthèse vocale via {self._provider.name} — {voice.model} (voix {voice.voice}"
+            f"synthèse vocale via {self._provider.name}, {voice.model} (voix {voice.voice}"
             + (", consignes de diction" if voice.instructions else "")
             + (f", {len(morceaux)} segments" if len(morceaux) > 1 else "")
             + ")"
@@ -53,7 +53,7 @@ class AudioGenerator:
         Chaque appel rend un fichier complet, donc précédé de son propre tag. Collés tels
         quels, ces tags se retrouvent au milieu du son : le parcours des trames de
         `duration.py` s'y arrête, et l'email annoncerait la durée du premier morceau pour
-        celle de la journée. Les lecteurs, eux, savent les enjamber — c'est la mesure qui
+        celle de la journée. Les lecteurs, eux, savent les enjamber, c'est la mesure qui
         ne le sait pas, et c'est elle qui décide si on lance l'écoute.
         """
         segments = [self._provider.speak(morceau) for morceau in morceaux]

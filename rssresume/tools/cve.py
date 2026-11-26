@@ -2,7 +2,7 @@
 
 Les flux d'alertes ne publient souvent qu'un titre et deux lignes :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne
-dit ni ce qui est touché, ni s'il faut agir aujourd'hui — le résumé ne peut que
+dit ni ce qui est touché, ni s'il faut agir aujourd'hui, le résumé ne peut que
 paraphraser le titre. Le détail est sur la page de l'avis : on va donc la lire,
 mais seulement pour les articles qui parlent d'une CVE et dont le flux n'a rien
 fourni de substantiel.

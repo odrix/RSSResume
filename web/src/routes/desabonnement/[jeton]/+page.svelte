@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Se désabonner — RSSResume</title>
+	<title>Se désabonner, RSSResume</title>
 </svelte:head>
 
 <h1>Se désabonner</h1>

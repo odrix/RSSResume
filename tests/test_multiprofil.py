@@ -397,7 +397,7 @@ class EtiquettesTests(unittest.TestCase):
         self.assertEqual("adrien-digested", tags.digest)
 
     def test_only_the_own_tags_are_read_back(self):
-        """Ni les anciens tags sans préfixe — d'où un re-scoring unique — ni ceux d'un autre."""
+        """Ni les anciens tags sans préfixe, d'où un re-scoring unique, ni ceux d'un autre."""
         tags = Etiquettes("adrien")
         portes = ("score-09", "scoring-abc", "theme-cyber", "bea-score-03", "bea-scoring-def")
 

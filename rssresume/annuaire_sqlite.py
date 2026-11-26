@@ -6,8 +6,8 @@ donne pas : une écriture qui se voit entière ou pas du tout, un nom qui ne peu
 pris deux fois, et une date de modification qu'on n'a pas à déduire du disque.
 
 SQLite et non un serveur de base : le projet tourne sur la bibliothèque standard, et la
-base vit dans le même volume que la sortie. Deux processus y accèdent — le travailleur
-quotidien qui lit, l'API qui écrit — d'où le mode WAL : un lecteur n'y bloque jamais un
+base vit dans le même volume que la sortie. Deux processus y accèdent, le travailleur
+quotidien qui lit, l'API qui écrit, d'où le mode WAL : un lecteur n'y bloque jamais un
 écrivain, ni l'inverse.
 
 Le document stocké est celui que `profil_depuis_dict` accepte, `id` compris : il est validé
@@ -125,8 +125,8 @@ class CatalogueIllisible(ValueError):
 class Fiche:
     """Un profil de la base : le document, et ce que la base sait de lui.
 
-    Le document est gardé sous sa forme normalisée — les cinq clés du format, rien
-    d'autre — pour que ce que l'API rend soit exactement ce que la tournée lit.
+    Le document est gardé sous sa forme normalisée, les cinq clés du format, rien
+    d'autre, pour que ce que l'API rend soit exactement ce que la tournée lit.
     """
 
     def __init__(
@@ -190,8 +190,8 @@ def fusionner(stocke: dict | None, saisie: dict) -> dict:
 
     Fusion et non remplacement : le site n'envoie dans son `PUT` que les clés qu'il édite,
     remplacer le document entier effacerait donc en silence un réglage déclaré par l'API ou
-    par un gabarit — `flux_exclus`, et toute clé à venir. Le `null` — présent dans le corps
-    — remet la clé à son défaut, c'est-à-dire à l'absence dans le document : c'est ce que le
+    par un gabarit, `flux_exclus`, et toute clé à venir. Le `null`, présent dans le corps
+,    remet la clé à son défaut, c'est-à-dire à l'absence dans le document : c'est ce que le
     site envoie pour « tout le catalogue ». Seules les clés du format voyagent : une clé
     étrangère du corps reste ignorée, comme avant la fusion.
     """
@@ -229,11 +229,11 @@ def document_normalise(
 
     Seules les clés du format sont gardées : une clé de plus ne serait lue par personne,
     et un document qui ne se relit pas tel qu'on l'a écrit trompe celui qui l'édite. Une
-    valeur `null` pour une clé du format est traitée comme une remise au défaut — les
+    valeur `null` pour une clé du format est traitée comme une remise au défaut, les
     lecteurs servent absence et `null` pareil, la retirer avant la validation le dit à
     la validation aussi, et un texte exigé (le profil) reste refusé au même message
-    qu'une clé absente. Les adresses sont rangées en liste et le texte rogné — ce que
-    la lecture ferait de toute façon —, pour que le site relise ce que la tournée servira.
+    qu'une clé absente. Les adresses sont rangées en liste et le texte rogné, ce que
+    la lecture ferait de toute façon, pour que le site relise ce que la tournée servira.
     `acquises` : les catégories que le document stocké suit déjà, que le catalogue ne
     revérifie pas (voir `modifier`).
     """
@@ -395,7 +395,7 @@ class AnnuaireSqlite(Annuaire):
         Absent : `ProfilInconnu`.
 
         Fusion, pas remplacement : le site n'envoie que les clés qu'il édite, remplacer
-        le document entier effacerait donc en silence un réglage déclaré ailleurs — un
+        le document entier effacerait donc en silence un réglage déclaré ailleurs, un
         `flux_exclus` posé par l'API ou par un gabarit. `fusionner` donne le document de
         base (clés absentes du corps prises du stocké, un `null` remis au défaut), que la
         normalisation valide et écrit ensuite comme toujours. La fusion se fait dans la
@@ -406,8 +406,8 @@ class AnnuaireSqlite(Annuaire):
         suivre une catégorie inconnue ou la catégorie privée d'un autre, ce que `creer`
         refuse. Celles que le document stocké suit déjà passent sans revérification : une
         catégorie retirée du catalogue, ou devenue privée d'autrui, bloquerait sinon tout
-        enregistrement qui la renvoie — la confirmation d'une adresse, la page qui n'a pas pu
-        montrer les catégories —, alors que la tournée la refiltre de toute façon
+        enregistrement qui la renvoie, la confirmation d'une adresse, la page qui n'a pas pu
+        montrer les catégories, alors que la tournée la refiltre de toute façon
         (`AppConfig.categories_servies`) et qu'elle ne sert donc plus rien à personne.
 
         Le catalogue est lu avant la transaction, pour ne pas ouvrir une lecture sous le
@@ -436,7 +436,7 @@ class AnnuaireSqlite(Annuaire):
         """Retire les destinataires du profil que vise `demande`, si l'un d'eux a reçu la lettre.
 
         `None` quand le profil n'existe plus ou qu'aucune des adresses de la lettre n'en est
-        encore destinataire — en particulier quand elles viennent d'être retirées : c'est ce
+        encore destinataire, en particulier quand elles viennent d'être retirées : c'est ce
         qui fait qu'un lien ne sert qu'une fois.
 
         La vérification et l'écriture tiennent dans la même transaction, verrou pris
@@ -472,7 +472,7 @@ class AnnuaireSqlite(Annuaire):
         return Fiche(fiche.id, fiche.username, document, fiche.cree_le, horodatage)
 
     def supprimer(self, username: str) -> None:
-        """Retire le profil de la base — et de la tournée. Ses sorties restent sur le disque."""
+        """Retire le profil de la base, et de la tournée. Ses sorties restent sur le disque."""
         with self._ecriture() as connexion:
             supprimees = connexion.execute(
                 "DELETE FROM profils WHERE username = ?", (username,)
@@ -561,7 +561,7 @@ class AnnuaireSqlite(Annuaire):
         """Remplace tout le catalogue, dans une transaction.
 
         Remplacer et non fusionner : le fichier importé est la source de vérité, et une
-        catégorie qu'on en retire doit cesser d'être servie — fusionnée, une catégorie
+        catégorie qu'on en retire doit cesser d'être servie, fusionnée, une catégorie
         privée retirée resterait en base sans que personne ne s'en souvienne.
         """
         with self._ecriture() as connexion:

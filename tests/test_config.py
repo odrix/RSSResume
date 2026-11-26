@@ -355,7 +355,7 @@ class MailTransportTests(unittest.TestCase):
 class AudioModeTests(unittest.TestCase):
     """Ce que ces tests protègent : le mode décide combien de fichiers audio la journée
     produit. Une valeur fautive qu'on laisserait passer retomberait sur le mode par
-    catégorie — celui qu'on voulait précisément quitter — sans que rien ne le dise."""
+    catégorie, celui qu'on voulait précisément quitter, sans que rien ne le dise."""
 
     @mock.patch.dict(os.environ, BASE_ENV, clear=True)
     def test_the_mode_defaults_to_one_audio_per_category(self):

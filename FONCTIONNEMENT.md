@@ -44,17 +44,17 @@ flowchart TD
 
 Les blocs ambrés sont les seuls qui appellent l'API payante.
 
-Tout ce qui précède l'email se répète **par catégorie**, tags compris, et le tout **par profil** —
+Tout ce qui précède l'email se répète **par catégorie**, tags compris, et le tout **par profil** -
 voir [Plusieurs profils : la tournée](#plusieurs-profils--la-tournée). Le marquage comme lu attend
 la livraison de tous les profils ; le montage de la journée, lui, a lieu une fois toutes les
-catégories traitées, et seulement en mode `global` — voir [Les deux modes audio](#les-deux-modes-audio).
+catégories traitées, et seulement en mode `global` : voir [Les deux modes audio](#les-deux-modes-audio).
 
 ## Les étapes
 
 ### 1. Sélection des catégories
 
 `RSSRESUME_CATEGORIES` si elle est définie, sinon toutes les catégories découvertes dans FreshRSS,
-moins `RSSRESUME_EXCLUDED_CATEGORIES` (comparaison sans casse ni accents, `casefold_ascii`) — c'est
+moins `RSSRESUME_EXCLUDED_CATEGORIES` (comparaison sans casse ni accents, `casefold_ascii`), c'est
 `AppConfig.categories_installation`. Le [catalogue des catégories](#le-catalogue-des-catégories)
 filtre ensuite pour la personne servie (`AppConfig.categories_servies`) : ce qui n'en sort pas
 n'est ni noté, ni résumé, ni montré. Les flux FreshRSS sans catégorie ne sont jamais traités.
@@ -64,7 +64,7 @@ après la dernière catégorie.
 
 **Une catégorie peut quitter ce pipeline entièrement.** `RSSRESUME_CERTFR_CATEGORIES` liste celles
 qui sont routées vers le traitement déterministe des avis CERT-FR : elles passent de l'étape 2 à
-l'étape 6 sans toucher aux étapes 3, 4 ni 5 — ni scoring, ni résumé, ni synthèse vocale. Voir
+l'étape 6 sans toucher aux étapes 3, 4 ni 5, ni scoring, ni résumé, ni synthèse vocale. Voir
 [Le traitement déterministe des avis CERT-FR](#le-traitement-déterministe-des-avis-cert-fr).
 
 Le choix est fait dans `DigestService._build_digest`, **à l'intérieur** du `runlog.category_scope` :
@@ -73,20 +73,20 @@ la catégorie change. C'est ce qui garantit que `--send-only` relit les deux san
 
 ### 2. Récupération des articles
 
-**Le tri se fait côté API, pas en Python.** `stream/contents` est appelé avec `ot` — borne basse
-de la journée, en secondes — et `xt=user/-/state/com.google/read`, qui écarte les articles déjà
+**Le tri se fait côté API, pas en Python.** `stream/contents` est appelé avec `ot`, borne basse
+de la journée, en secondes, et `xt=user/-/state/com.google/read`, qui écarte les articles déjà
 lus. La pagination par 100 reprend ces deux paramètres à chaque page : la continuation dit où
 reprendre, pas ce qu'on demandait. Auparavant le flux entier était paginé jusqu'à épuisement avant
 d'être découpé en Python : des dizaines d'appels HTTP par catégorie pour en garder vingt.
 
 Le découpage Python subsiste **en filet** : il tient la borne haute de la journée, qui n'a pas de
-paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot` — un paramètre inconnu
+paramètre équivalent, et il couvre le cas d'un serveur qui ignorerait `ot`, un paramètre inconnu
 est ignoré sans erreur, donc le pire cas est de repayer la pagination d'avant, jamais un article
 manquant.
 
 **La journée est celle du fuseau configuré**, `RSSRESUME_TIMEZONE`, par défaut `Europe/Paris`.
 Les bornes se calculaient en UTC : en heure d'été, un article publié à 1 h du matin à Paris
-tombait dans la veille — une journée déjà livrée, dont les articles sont marqués lus. Il
+tombait dans la veille, une journée déjà livrée, dont les articles sont marqués lus. Il
 n'apparaissait donc dans aucun digest, et rien ne le signalait. La borne haute est prise au
 jour civil suivant et non à vingt-quatre heures, pour que la nuit du changement d'heure fasse
 ses vingt-trois ou vingt-cinq heures. La date par défaut de la ligne de commande suit le même
@@ -97,7 +97,7 @@ Conséquence sur le rejeu : une journée déjà livrée a ses articles marqués 
 rend plus. La rejouer demande `--include-read`. La mise au point d'un prompt, elle, passe par
 `--no-mark-read` et n'est pas concernée.
 
-Chaque article remonte avec ses **tags utilisateur déjà posés** (`Article.tags`) — c'est ce qui
+Chaque article remonte avec ses **tags utilisateur déjà posés** (`Article.tags`), c'est ce qui
 rend le cache de scoring possible à l'étape suivante.
 
 Une catégorie sans article s'arrête ici : un fichier marqueur vide `<categorie>.no-article` est
@@ -114,18 +114,18 @@ Chaque article reçoit une **note** selon un profil de pertinence unique
 
 Les articles des flux listés à la clé `flux_exclus` du profil n'y arrivent pas : un podcast sans
 transcription ou un journal des versions ne donnerait au modèle qu'un titre, et la note coûterait
-des tokens pour rien. L'appariement porte sur `Article.feed_title` — le titre du flux, jamais la
-catégorie —, par égalité une fois la casse et les accents retirés (`casefold_ascii`) : « Go »
+des tokens pour rien. L'appariement porte sur `Article.feed_title`, le titre du flux, jamais la
+catégorie, par égalité une fois la casse et les accents retirés (`casefold_ascii`) : « Go »
 n'exclut pas « Google Cloud Blog ». L'exclusion passe avant `--limit`, et ne touche pas au
 marquage lu : `CategoryDigest.articles` garde toute la journée, seuls les articles à traiter
 sont notés et résumés. Une catégorie faite uniquement de flux exclus s'arrête comme une
-catégorie vide — marqueur `.no-article`, aucun appel —, mais ne se dit pas vide : l'email
+catégorie vide, marqueur `.no-article`, aucun appel, mais ne se dit pas vide : l'email
 annonce « N article(s) aujourd'hui dans la catégorie X, tous de flux exclus du résumé. »
 (`all_excluded_message`), phrase que le journal garde pour `--send-only`. Les catégories CERT-FR, qui n'appellent
 aucun modèle, ne sont pas filtrées. Le journal de la catégorie liste les flux exclus dans
 `parametres.flux_exclus` ; l'empreinte de scoring n'en dépend pas.
 
-Une note, c'est trois champs — et les trois servent :
+Une note, c'est trois champs, et les trois servent :
 
 | Champ | Ce que c'est | Où il sert |
 | --- | --- | --- |
@@ -134,8 +134,8 @@ Une note, c'est trois champs — et les trois servent :
 | `angle` | une phrase : en quoi l'article compte pour ce profil | passé au résumeur avec l'article |
 
 Les trois arrivent dans le même appel. Le score seul pilotait tout et les deux autres étaient
-jetés : payés puis perdus. L'angle est précisément le contexte qui manquait au résumé — il dit
-*pourquoi* l'article est là — et la thématique donne gratuitement le regroupement à l'écoute.
+jetés : payés puis perdus. L'angle est précisément le contexte qui manquait au résumé, il dit
+*pourquoi* l'article est là, et la thématique donne gratuitement le regroupement à l'écoute.
 
 Trois cas par article :
 
@@ -146,7 +146,7 @@ article sans tag de scoring                                  →  noté
 ```
 
 Le cache exige le score **et** la thématique : une note partielle rangerait l'article dans le
-mauvais groupe, elle est donc traitée comme absente. L'angle, lui, n'est pas mis en tag — une
+mauvais groupe, elle est donc traitée comme absente. L'angle, lui, n'est pas mis en tag, une
 phrase entière n'a rien à faire dans un label FreshRSS. Un article relu du cache part donc au
 résumé sans son angle, et le prompt le prévoit.
 
@@ -155,7 +155,7 @@ Les articles à noter partent par lots de 40 en un appel chacun.
 **Un lot incomplet ne fait plus tomber la journée.** Trente-neuf notes sur quarante levaient une
 erreur qui tuait la catégorie en cours et toutes les suivantes, alors que le réalignement sait
 déjà où sont les trous. L'article oublié ressort donc marqué comme non noté, et il est écarté :
-ni note en mémoire, ni tag dans FreshRSS. Ce dernier point est le seul qui compte vraiment —
+ni note en mémoire, ni tag dans FreshRSS. Ce dernier point est le seul qui compte vraiment -
 entrer avec un score de zéro le ferait taguer `score-00` sous l'empreinte courante, donc relire
 de ce cache à chaque exécution suivante : un accident de lot deviendrait définitif. Sans tag,
 un rejeu de la journée (`--include-read`) le note de nouveau, et le journal de la catégorie le
@@ -165,7 +165,7 @@ reste une erreur : ce n'est plus un trou dans un lot, c'est un lot qui n'a pas �
 **Une réponse coupée par le plafond de sortie redécoupe le lot** au lieu d'abandonner. Il n'y a
 rien à comprendre à cette panne : la même consigne sur deux fois moins d'articles rend deux fois
 moins de JSON. Le lot est donc rejoué en deux moitiés, récursivement, jusqu'à un plancher de 5
-articles — en dessous, ce n'est plus la taille qui est en cause, et insister repaierait le même
+articles, en dessous, ce n'est plus la taille qui est en cause, et insister repaierait le même
 appel pour la même coupure. Ce rattrapage est propre à la notation : sur le digest, qui n'a pas
 de lot à découper, une troncature reste immédiatement fatale.
 
@@ -173,7 +173,7 @@ de lot à découper, une troncature reste immédiatement fatale.
 de 1 à N, et les notes sont réalignées à l'arrivée. Un identifiant comme
 `tag:google.com,2005:reader/item/000659ce0338ac4f` revenait altéré assez souvent pour faire
 échouer tout le lot. Si un numéro est malgré tout illisible ou dupliqué, la note est rattachée à
-la première place libre — l'ordre de réponse est imposé par le prompt — et un avertissement est
+la première place libre, l'ordre de réponse est imposé par le prompt, et un avertissement est
 tracé dans les logs.
 
 Sans API configurée, cette étape est sautée : tous les articles passent à l'étape 4.
@@ -189,32 +189,32 @@ et le plafond.
 **Le seuil, par catégorie.** `RSSRESUME_SCORE_THRESHOLD` (défaut 7) vaut pour toutes les
 catégories, et `RSSRESUME_CATEGORY_THRESHOLDS` le surcharge pour certaines, sous la forme
 `Catégorie=score`. Toutes les catégories ne se jugent pas au même barème : dans une catégorie
-généraliste, presque tout tombe dans la tranche 5-6 du barème — « intéressant à connaître, non
-actionnable » — et à 7 elle se vidait tous les jours. Elle est donc réglée à 5, là où un flux
+généraliste, presque tout tombe dans la tranche 5-6 du barème, « intéressant à connaître, non
+actionnable », et à 7 elle se vidait tous les jours. Elle est donc réglée à 5, là où un flux
 d'avis de sécurité reste à 7. Le nom est comparé casse repliée ; une entrée mal formée fait
 échouer le lancement, elle n'est pas ignorée en silence.
 
 **Le repli, les jours creux.** Quand le seuil retient moins de `RSSRESUME_MIN_DIGEST_ITEMS`
 articles (défaut 5), il tombe à `RSSRESUME_FALLBACK_THRESHOLD` (défaut 5) pour la journée
 entière. Ce n'est pas un remplissage jusqu'au minimum : le seuil baisse pour tout le monde, donc
-une journée repliée peut rendre plus de cinq articles — seul le plafond la borne. Une catégorie
+une journée repliée peut rendre plus de cinq articles, seul le plafond la borne. Une catégorie
 déjà à 5 n'a rien à replier, et `RSSRESUME_MIN_DIGEST_ITEMS=0` désactive le mécanisme. Le seuil
 réellement appliqué repart avec la sélection, et non recalculé par l'appelant : c'est lui
 qu'affiche la console, qu'annonce le marqueur d'une catégorie vide, et qu'écrit le journal sous
 `resultat.seuil_applique`.
 
-**Puis regroupés par thématique.** Le plafond s'applique sur le score — c'est lui qui décide qui
-entre —, mais l'ordre de lecture, lui, est thématique : le tri par score seul faisait sauter du
+**Puis regroupés par thématique.** Le plafond s'applique sur le score, c'est lui qui décide qui
+entre, mais l'ordre de lecture, lui, est thématique : le tri par score seul faisait sauter du
 réglementaire au cyber, puis au marché, puis de nouveau au réglementaire, ce qui interdit toute
 transition à l'oral. L'urgence reste respectée : un groupe est classé sur son meilleur article,
 et à l'intérieur d'un groupe l'ordre reste le score décroissant. Le regroupement ne coûte aucun
 appel supplémentaire, la thématique étant déjà notée.
 
-C'est cette sélection — et elle seule — qui alimente le résumé **et** qui reçoit le tag `digested`.
+C'est cette sélection, et elle seule, qui alimente le résumé **et** qui reçoit le tag `digested`.
 Les deux ne peuvent pas diverger : un test le verrouille.
 
-**Sélection vide.** Si aucun article n'atteint le seuil — repli compris —, la catégorie s'arrête ici, comme une
-catégorie sans article : ni résumé ni synthèse vocale — l'audio n'aurait rien à dire. Le marqueur
+**Sélection vide.** Si aucun article n'atteint le seuil, repli compris, la catégorie s'arrête ici, comme une
+catégorie sans article : ni résumé ni synthèse vocale, l'audio n'aurait rien à dire. Le marqueur
 `<categorie>.no-article` est écrit, mais avec la liste des scores obtenus :
 
 ```
@@ -231,40 +231,40 @@ chaque passage.
 
 ### 5. Résumé et audio
 
-Le résumé reçoit le **texte** des articles retenus — plafonné à `RSSRESUME_ARTICLE_CHAR_LIMIT`
+Le résumé reçoit le **texte** des articles retenus, plafonné à `RSSRESUME_ARTICLE_CHAR_LIMIT`
 caractères par article, 8000 par défaut, et coupé à la dernière phrase entière plutôt qu'au
 caractère : une phrase laissée en l'air, un modèle la termine tout seul, c'est-à-dire l'invente.
 C'était le seul chemin du pipeline sans borne d'entrée, quand le scoring n'a jamais lu que 400
 caractères : douze articles de fond faisaient facilement cent mille caractères. Le plafond est
 posé au-dessus des 6000 caractères que `tools/cve.py` lit sur la page d'un avis, pour qu'un avis
-enrichi passe entier — c'est là que sont les versions touchées. Le volume réellement envoyé est
+enrichi passe entier, c'est là que sont les versions touchées. Le volume réellement envoyé est
 affiché par catégorie dans le suivi d'exécution. Chaque article est accompagné de
-sa thématique et de son `angle` — la phrase du scoring qui dit en quoi l'article compte pour ce
+sa thématique et de son `angle`, la phrase du scoring qui dit en quoi l'article compte pour ce
 profil. C'est l'angle à prendre, pas une phrase à recopier, et il ne coûte rien : il est produit par
 l'appel de scoring, qui a déjà eu lieu.
 
 Le texte est écrit pour être **écouté**, pas lu, ce qui dicte six contraintes :
 
 - **prose continue** : des phrases enchaînées avec des transitions, jamais de puces ni de
-  « premièrement, deuxièmement » — une énumération à l'oral ne s'écoute pas ;
+  « premièrement, deuxièmement », une énumération à l'oral ne s'écoute pas ;
 - **rythme** : alternance de phrases courtes et longues, phrases coupées au-delà d'une trentaine
   de mots, ni parenthèses ni incises ni relatives empilées, débuts de phrase variés, information
   qui compte en fin de phrase. C'est ici que se règle une voix plate, pas dans les consignes de
   diction : le TTS ne peut rythmer que ce que la phrase lui donne à rythmer ;
 - **ni lien ni média** : ni l'URL ni le nom du flux n'entrent dans le prompt. Ce qui n'est pas
-  dans le contexte ne peut pas ressortir dans le texte lu à voix haute — et une URL vue par le
+  dans le contexte ne peut pas ressortir dans le texte lu à voix haute, et une URL vue par le
   modèle est une URL qu'il peut recopier de travers. Qui a publié n'intéresse pas l'auditeur, et
   « … (CERT-FR, LeMagIT) » toutes les trois phrases hachait le texte à l'écoute. Une organisation
-  qui *agit* dans le fait — l'ANSSI qui publie un avis, la CNIL qui sanctionne — reste nommée :
+  qui *agit* dans le fait, l'ANSSI qui publie un avis, la CNIL qui sanctionne, reste nommée :
   c'est le sujet de la phrase, pas une attribution. Les liens et les sources partent dans
   l'email (étape 7), où ils se lisent au lieu de s'entendre ;
 - **une ouverture et une clôture jugées sur la journée** : une phrase courte en tête, qui dit
-  combien il y a à dire et ce qui en fait le poids — urgence, gravité, originalité, ou journée
-  creuse — et une phrase courte en fin, qui découle des sujets du jour : ce qu'il reste à faire,
+  combien il y a à dire et ce qui en fait le poids, urgence, gravité, originalité, ou journée
+  creuse, et une phrase courte en fin, qui découle des sujets du jour : ce qu'il reste à faire,
   ce qui est à suivre demain, ou qu'il n'y a rien à faire. Les deux s'adressent à **une seule
   personne**, celle du profil. Aucun gabarit ne convient : ces deux phrases sont un jugement sur
-  la sélection du jour, elles changent tous les jours. La conclusion passe-partout — « c'est un
-  enjeu majeur », l'appel à la vigilance — reste explicitement interdite, « bonne journée » seul aussi ;
+  la sélection du jour, elles changent tous les jours. La conclusion passe-partout, « c'est un
+  enjeu majeur », l'appel à la vigilance, reste explicitement interdite, « bonne journée » seul aussi ;
 - **longueur proportionnée au volume**, sans quoi le même texte servirait pour 3 comme pour 30
   articles :
 
@@ -276,26 +276,26 @@ Le texte est écrit pour être **écouté**, pas lu, ce qui dicte six contrainte
 
 Les articles arrivent dans l'ordre de lecture décidé à l'étape 4, regroupés par thématique. Le
 prompt demande de garder cet ordre et de marquer le passage d'une thématique à la suivante par une
-transition courte — sans annoncer de rubrique, ce qui reviendrait à réintroduire une liste.
+transition courte, sans annoncer de rubrique, ce qui reviendrait à réintroduire une liste.
 
 **Fusion des doublons.** Un même événement est souvent couvert par plusieurs flux : trois dépêches
 sur le même incident produisaient trois passages, dont deux redites que l'auditeur subit sans pouvoir
-sauter. Le prompt impose donc de traiter ces articles comme **un seul sujet** — le fait dit une seule
-fois et ce que chaque dépêche apporte de plus gardé au même endroit — et les paliers de longueur
+sauter. Le prompt impose donc de traiter ces articles comme **un seul sujet**, le fait dit une seule
+fois et ce que chaque dépêche apporte de plus gardé au même endroit, et les paliers de longueur
 ci-dessus se comptent en sujets après fusion, pas en articles reçus.
 
 **Le cas des CVE.** Les vulnérabilités sortent du régime commun : **une CVE est un sujet à elle
-seule**, jamais fondue avec une autre — même jour, même source et même produit n'y changent rien —
+seule**, jamais fondue avec une autre, même jour, même source et même produit n'y changent rien -
 et les paliers de longueur ne s'y appliquent pas. Chacune se dit en une à deux phrases factuelles,
 dans un ordre fixe : identifiant, produit et versions, ce que la faille permet, exploitée ou non,
-ce qu'il y a à faire. Le **nom commercial exact** de l'éditeur et du produit — « FortiOS », pas
-« le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur » — passe avant tout le reste.
+ce qu'il y a à faire. Le **nom commercial exact** de l'éditeur et du produit, « FortiOS », pas
+« le pare-feu » ; « VMware vCenter Server », pas « l'hyperviseur », passe avant tout le reste.
 C'est le seul endroit du digest où la précision passe avant le style : les règles de prose, de
 fusion et de longueur diluaient exactement ce qui rend un avis utile.
 
 **Le détail des versions est gradué sur la stack déclarée.** Un numéro de version ne sert qu'à
 répondre à une question : *est-ce que ma machine est dans la plage*. Sur un produit qu'on
-n'exploite pas, la question ne se pose pas — et six versions récitées à voix haute enterrent la
+n'exploite pas, la question ne se pose pas, et six versions récitées à voix haute enterrent la
 seule CVE de la matinée qui demandait une action. Chaque article est donc apparié sur la liste
 `stack` du document de profil, avec la **même mécanique déterministe** que les avis CERT-FR
 (`certfr/stack.py`, suite de mots contiguë, casse et accents retirés), et le résultat voyage dans
@@ -303,12 +303,12 @@ le payload :
 
 | | Ce qui est dit |
 | --- | --- |
-| l'article cite un composant exploité — champ `stack` présent | tout le détail : plage touchée **et** version corrigée, tous les produits et toutes les branches que l'avis nomme. Quand l'avis ne les donne pas, le prompt demande de le dire en trois mots plutôt que de les deviner |
-| l'article n'en cite aucun — champ `stack` absent | **une** phrase : l'identifiant, le produit, ce que la faille permet, exploitée ou non. Aucun numéro de version, aucune plage, aucune branche, rien à faire à annoncer. La faille se situe, elle ne s'applique pas |
+| l'article cite un composant exploité, champ `stack` présent | tout le détail : plage touchée **et** version corrigée, tous les produits et toutes les branches que l'avis nomme. Quand l'avis ne les donne pas, le prompt demande de le dire en trois mots plutôt que de les deviner |
+| l'article n'en cite aucun, champ `stack` absent | **une** phrase : l'identifiant, le produit, ce que la faille permet, exploitée ou non. Aucun numéro de version, aucune plage, aucune branche, rien à faire à annoncer. La faille se situe, elle ne s'applique pas |
 
 **Stack vide, rien n'est gradué.** Faute de savoir ce qui tourne chez la personne, écarter une CVE
 reviendrait à décider à sa place qu'elle n'est pas concernée : le prompt retombe alors sur le
-régime d'origine — tout le détail, pour toutes. Et la graduation ne se déduit **pas** de la
+régime d'origine, tout le détail, pour toutes. Et la graduation ne se déduit **pas** de la
 présence du champ dans les articles du jour : une stack déclarée qu'aucun avis ne touche doit
 quand même alléger toute la matinée, sans quoi le détail complet reviendrait précisément les jours
 où rien ne concerne l'auditeur.
@@ -321,38 +321,38 @@ choisit la consigne (`RegimeCve` et ses trois sous-classes dans
 
 | `securite` | Sans stack déclarée | Avec stack déclarée |
 | --- | --- | --- |
-| `exploitant` (défaut) | tout le détail, pour toutes — le régime d'origine | gradué sur le champ `stack`, comme ci-dessus |
-| `decideur` | **une** phrase par CVE : identifiant, produit, ce que la faille permet, exploitée ou non ; aucune version, aucune plage, et rien à faire à annoncer — ni correctif, ni version corrigée | gradué sur le champ `stack` : le détail complet sur un composant exploité, une phrase sans version ailleurs |
+| `exploitant` (défaut) | tout le détail, pour toutes, le régime d'origine | gradué sur le champ `stack`, comme ci-dessus |
+| `decideur` | **une** phrase par CVE : identifiant, produit, ce que la faille permet, exploitée ou non ; aucune version, aucune plage, et rien à faire à annoncer, ni correctif, ni version corrigée | gradué sur le champ `stack` : le détail complet sur un composant exploité, une phrase sans version ailleurs |
 | `curieux` | seulement les failles déjà exploitées ou d'une ampleur qui fait l'actualité, une phrase chacune, sans version ; les autres au plus comptées dans une incise | pareil, et une faille dont l'article porte le champ `stack` se dit toujours, en une phrase, même sans exploitation connue |
 
 Le choix est fait **par le code**, comme `stack_declaree` : le modèle reçoit une consigne déjà
 tranchée, jamais le soin de deviner ce qu'un profil en prose sous-entend. `exploitant` reproduit
 à l'octet près la consigne d'avant la clé. Le régime n'entre que dans le digest de catégorie et
-le montage — **pas dans l'empreinte de scoring** : en changer ne fait rien renoter.
+le montage, **pas dans l'empreinte de scoring** : en changer ne fait rien renoter.
 
 Un avis de vulnérabilité arrive souvent réduit à son titre :
 « CVE-2026-1234 : élévation de privilèges dans le composant X ». Résumer cela ne dit ni ce qui est
-touché, ni s'il faut agir — le modèle ne peut que paraphraser le titre. La page de l'avis est donc
+touché, ni s'il faut agir, le modèle ne peut que paraphraser le titre. La page de l'avis est donc
 lue (`tools/cve.py`) et son texte ajouté au contenu de l'article, ce qui permet de dire en deux
 phrases le produit et les versions concernés, ce que la faille permet, si elle est exploitée et
 ce qu'il y a à faire. La lecture a lieu **dans `digest.py`**, juste après la sélection, et le texte
-reste sur l'article retenu : il a trois lecteurs — le résumé de la catégorie, l'appariement sur la
-stack ci-dessus, et l'audio de journée du mode `global` —, et lue au moment du résumé elle était
+reste sur l'article retenu : il a trois lecteurs, le résumé de la catégorie, l'appariement sur la
+stack ci-dessus, et l'audio de journée du mode `global`, et lue au moment du résumé elle était
 rechargée pour chacun, quand elle ne laissait pas les deux autres travailler sur le seul titre.
 
 La lecture est ciblée pour ne pas coûter cher : uniquement les articles qui mentionnent une CVE
-**et** dont le flux fournit moins de 1200 caractères — au-delà, le détail est déjà là. Le texte
+**et** dont le flux fournit moins de 1200 caractères, au-delà, le détail est déjà là. Le texte
 extrait est plafonné à 6000 caractères (au-delà, on paierait des tokens pour des menus et des pieds
 de page) et les blocs `<script>`/`<style>` sont retirés avant les balises. Une page injoignable
 n'est pas bloquante : l'article repart tel quel, le digest du jour se fait quand même.
 
-Le texte produit part ensuite en synthèse vocale — **sauf en mode `global`**, où la catégorie
+Le texte produit part ensuite en synthèse vocale, **sauf en mode `global`**, où la catégorie
 n'a pas de fichier à elle et où son texte attend le montage de la journée (étape 5 bis). Le
 résumé, lui, est produit dans les deux modes : c'est ce que l'email montre.
 
-La synthèse va au fournisseur configuré — OpenAI ou Mistral —, sinon à `espeak` en local. Chez
+La synthèse va au fournisseur configuré, OpenAI ou Mistral, sinon à `espeak` en local. Chez
 OpenAI, les `instructions` du bloc `tts` de `providers.json`
-dirigent la diction — ton, débit, émotion, prononciation ; chez Mistral, tout se joue dans
+dirigent la diction, ton, débit, émotion, prononciation ; chez Mistral, tout se joue dans
 le choix de la voix.
 Ces consignes ne sont **pas** envoyées quand la variable est vide : les modèles de synthèse plus
 anciens, `tts-1` en tête, rejettent les paramètres qu'ils ne connaissent pas.
@@ -361,11 +361,11 @@ Ce qu'on y écrit compte plus qu'il n'y paraît. Une consigne du genre « ton ne
 donne exactement ce qu'elle demande : une voix plate, sans relief d'une phrase à l'autre. Ce qui
 fonctionne, dans l'ordre d'importance :
 
-1. **nommer la situation d'écoute** — une personne, en tête à tête, pas un journal télévisé : c'est
+1. **nommer la situation d'écoute**, une personne, en tête à tête, pas un journal télévisé : c'est
    ce qui change le registre en entier ;
 2. **demander explicitement la variation d'intonation**, et interdire de réciter ;
 3. **dicter la prononciation** des sigles (A.N.S.S.I. lettre à lettre), des identifiants de CVE et
-   des numéros de version — sinon `CVE-2026-1234` est lu « tiret » compris et `7.4.5` avalé ;
+   des numéros de version, sinon `CVE-2026-1234` est lu « tiret » compris et `7.4.5` avalé ;
 4. **placer les pauses** : au changement de sujet, autour d'un numéro de version, et de part et
    d'autre des phrases d'ouverture et de fin.
 
@@ -401,7 +401,7 @@ Dès que le résumé de la catégorie est produit, ses tags sont écrits : netto
 
 **Pourquoi ici et pas à la fin.** Ce sont des données de cache et de navigation, pas un accusé de
 livraison. Les écrire au fil de l'eau garantit qu'une panne à la 5ᵉ catégorie ne fait pas perdre le
-scoring des quatre premières — sans quoi il serait intégralement repayé au passage suivant. Deux
+scoring des quatre premières, sans quoi il serait intégralement repayé au passage suivant. Deux
 tests couvrent ce cas : un échec SMTP et une panne d'API en cours de route laissent les tags déjà
 écrits en place.
 
@@ -410,12 +410,12 @@ survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre 
 
 ### 7. Email
 
-Un seul email pour toutes les catégories, les fichiers audio en pièces jointes — un par catégorie,
+Un seul email pour toutes les catégories, les fichiers audio en pièces jointes, un par catégorie,
 ou l'unique `journee.mp3` en mode `global` ([ce que l'email en fait](#ce-que-lemail-en-fait)).
 Sans `SMTP_HOST`, ou sans destinataire à la clé `email` du document de profil, l'étape est sautée
 sans erreur.
 
-La composition vit dans `newsletter.py` — `Lettre.compose(jour, digests, éphéméride)` — et non
+La composition vit dans `newsletter.py`, `Lettre.compose(jour, digests, éphéméride)`, et non
 dans `digest.py`. Elle sert deux chemins : la journée qu'on vient de produire, et celle qu'on
 renvoie de ses journaux (`--send-only`). Deux façons d'écrire le même email finissaient par ne
 plus dire pareil.
@@ -433,15 +433,15 @@ Vendredi 28 août 2026, saint Augustin. 1988…  <- introduction : le jour de l'
 ┌ Cybersécurité technique          [5 min] ┐
 │ Une faille touche Traefik, corrigée…     │  <- « Traefik » est cliquable (HTML)
 │ À LIRE                                   │  <- les articles retenus
-│ • Avis du CERT-FR sur une RCE — CERT-FR  │
+│ • Avis du CERT-FR sur une RCE, CERT-FR  │
 │ À SURVEILLER                             │  <- les notés 4 à 6, non retenus
-│ • Rapport de tendances — Le Monde Info.  │
+│ • Rapport de tendances, Le Monde Info.  │
 │ Pièce jointe : 2-cybersecurite.mp3       │  <- quel mp3 va avec cette section
 └──────────────────────────────────────────┘
 
 2 catégories · 12 articles retenus · 17 à surveiller
 1 résumé audio en pièce jointe. Composée le 30/08/2026 à 07:30.
-Envoyée par La Veille — https://veille.example.com.      <- avec RSSRESUME_SITE_URL
+Envoyée par La Veille, https://veille.example.com.      <- avec RSSRESUME_SITE_URL
 Vous la recevez parce que cette adresse est destinataire du profil « bea ».
 Cette journée vous a-t-elle été utile ? Utile · Pas utile
 Mes résumés · Modifier mon profil · Se désabonner
@@ -449,7 +449,7 @@ Mes résumés · Modifier mon profil · Se désabonner
 
 **Le pied parle à un inconnu.** Un destinataire ajouté par quelqu'un d'autre n'a jamais vu le
 site : le pied dit qui envoie (le nom d'affichage de `SMTP_FROM`, « RSSResume » à défaut),
-pourquoi cette adresse reçoit la lettre, et donne trois liens — les résumés, le profil, le
+pourquoi cette adresse reçoit la lettre, et donne trois liens, les résumés, le profil, le
 désabonnement ; des ancres en HTML, une URL par ligne en texte. Ils viennent de
 `RSSRESUME_SITE_URL`, et `newsletter.Abonnement.depuis_config` les construit, seul
 constructeur, appelé par le passage du jour comme par `--send-only` : les deux rendent le même
@@ -459,13 +459,13 @@ date en toutes lettres.
 
 **Le lien de désabonnement est signé, pas stocké** (`desabonnement.py`). Le jeton,
 `v1.<id du profil>.<empreintes>.<signature>`, porte l'identifiant du profil et une empreinte à
-clé **par adresse** à qui la lettre est partie — huit caractères base64url (6 octets d'HMAC de
-l'adresse en minuscules), triées et mises bout à bout —, signés en HMAC-SHA256 avec une clé
+clé **par adresse** à qui la lettre est partie, huit caractères base64url (6 octets d'HMAC de
+l'adresse en minuscules), triées et mises bout à bout, signés en HMAC-SHA256 avec une clé
 dérivée de `RSSRESUME_API_TOKEN`, le secret que le travailleur et l'API ont déjà en commun ; le
 site relaie le jeton sans connaître la clé. Il se recalcule à l'identique, ce qui garde
 `--send-only` fidèle sans rien écrire. Il vaut tant qu'**au moins une** des adresses de la
-lettre reçoit encore le résumé : la liste vit après l'envoi — une invitation confirmée, une
-adresse retirée —, et une empreinte de la liste entière rendait caducs les liens de toutes les
+lettre reçoit encore le résumé : la liste vit après l'envoi, une invitation confirmée, une
+adresse retirée, et une empreinte de la liste entière rendait caducs les liens de toutes les
 lettres déjà parties, au risque qu'un destinataire lisant « déjà utilisé » signale la lettre
 comme indésirable. Il ne sert qu'une fois sans table de jetons : désabonner vide les
 destinataires, aucune empreinte ne correspond plus, et un second clic est refusé. Les
@@ -478,7 +478,7 @@ travailleur, la lettre garde ses deux autres liens et part sans désabonnement.
 **Les en-têtes `List-Unsubscribe` et `List-Unsubscribe-Post`** (RFC 8058) accompagnent ce lien :
 Gmail et Yahoo les exigent des expéditeurs en volume, et le client mail en fait un bouton qui
 poste sur l'URL sans rien afficher. `Lettre.envoyer` passe l'URL à l'expéditeur, chaque
-transport l'écrit à sa manière — dans le message pour le SMTP, dans le JSON pour Resend.
+transport l'écrit à sa manière, dans le message pour le SMTP, dans le JSON pour Resend.
 Désabonner porte sur le profil entier et non sur une adresse : la lettre part en un seul envoi,
 `To:` commun, et rien ne dit lequel des destinataires a cliqué.
 
@@ -486,7 +486,7 @@ Désabonner porte sur le profil entier et non sur une adresse : la lettre part e
 pose la question « Cette journée vous a-t-elle été utile ? » et deux liens,
 `/retour/<jeton>?avis=utile` et `?avis=pas_utile`, avec le même jeton :
 `v1.<id du profil>.<AAAA-MM-JJ>.<signature>`, signé comme le désabonnement mais sous une clé
-propre au vote — un jeton de l'un n'est jamais valable pour l'autre. La date est celle de la
+propre au vote, un jeton de l'un n'est jamais valable pour l'autre. La date est celle de la
 journée **racontée**, `Lettre.day`, celle du titre, et non le jour de l'envoi : c'est elle
 qu'on juge, et c'est sous elle que `/resumes` la range. L'avis n'est pas signé : il ne fait que
 pré-cocher le formulaire. Le jeton ne porte pas les adresses, n'exige donc pas de
@@ -494,61 +494,61 @@ destinataires, et se recalcule à l'identique : `--send-only` rend les mêmes li
 pas ; l'API le refuse seulement quand le profil n'existe plus. Seul `List-Unsubscribe` part en
 en-tête : les liens de vote ne vivent que dans le corps.
 
-Ouvrir le lien n'enregistre **rien** — un antivirus de messagerie ouvre les liens. La page
+Ouvrir le lien n'enregistre **rien**, un antivirus de messagerie ouvre les liens. La page
 `/retour/<jeton>` montre l'avis pré-coché et un commentaire facultatif (2 000 caractères au
 plus, refusé au-delà plutôt que tronqué), et le vote n'est compté qu'une fois ce formulaire
 envoyé ; la page le dit. Un second envoi, depuis la lettre ou depuis la page des résumés, remplace
-le premier. Les co-destinataires d'un profil partagent donc **un** vote par journée — la lettre
-part en un seul envoi, rien ne dit qui a cliqué —, et chacun voit pré-rempli le commentaire du
+le premier. Les co-destinataires d'un profil partagent donc **un** vote par journée, la lettre
+part en un seul envoi, rien ne dit qui a cliqué, et chacun voit pré-rempli le commentaire du
 précédent. Comme pour le désabonnement, une lettre transférée laisse un tiers voter : le lien
 est l'autorisation. La page des résumés porte le même formulaire pour le propriétaire connecté,
 pas pour un administrateur qui consulte la journée d'un autre ; `/admin` liste les 200 retours
 les plus récents, commentaire échappé.
 
 **Les liens sont posés dans le texte, en HTML** (`ancres.py`). Pour chaque article retenu, on
-cherche dans le résumé le groupe de mots le plus distinctif de son titre — un nom propre, un
-identifiant de vulnérabilité — et on le rend cliquable là où le résumé en parle. « Une faille
+cherche dans le résumé le groupe de mots le plus distinctif de son titre, un nom propre, un
+identifiant de vulnérabilité, et on le rend cliquable là où le résumé en parle. « Une faille
 critique touche **Traefik** » mène à l'avis du CERT-FR sans qu'on ait à descendre jusqu'à la liste.
 
 Rien n'est demandé au modèle et **le texte du résumé n'est pas modifié d'un caractère** : c'est un
 appariement fait après coup, sur ce qui est déjà écrit. La synthèse vocale lit donc exactement le
-même texte, et l'URL vient de la sélection — un lien mal placé reste un lien juste.
+même texte, et l'URL vient de la sélection, un lien mal placé reste un lien juste.
 
 Trois garde-fous, parce qu'un lien qui mène au mauvais article est pire que pas de lien :
 
 - les mots banals sont écartés (début de phrase en français, casse de titre en anglais) ;
-- les sigles du domaine aussi — `RCE`, `CVE`, `DDoS` nomment une classe de problème, jamais un
+- les sigles du domaine aussi, `RCE`, `CVE`, `DDoS` nomment une classe de problème, jamais un
   article. Un identifiant complet comme `CVE-2021-44228`, lui, est la meilleure ancre qui soit ;
 - l'ancre la plus longue l'emporte, et le placement se fait sur le résumé **entier** : un article
   dont le premier paragraphe ne dit qu'un mot vague et le troisième le nom propre s'ancre sur le
   nom propre.
 
-L'appariement est au mieux, jamais garanti — un article dont le résumé ne reprend aucun nom propre
+L'appariement est au mieux, jamais garanti, un article dont le résumé ne reprend aucun nom propre
 ne s'ancre nulle part. C'est pourquoi les listes restent sous le texte : elles, ne ratent personne.
 Seuls les articles **retenus** sont ancrés ; ceux de la liste de veille n'ont pas été racontés,
 donc n'ont aucun mot à quoi s'accrocher.
 
-**Les liens sont dans l'email, et seulement là.** L'audio n'a pas de liens — une URL lue à voix haute est
-inutilisable —, l'email en a, parce que c'est le seul endroit où retrouver l'article derrière un
+**Les liens sont dans l'email, et seulement là.** L'audio n'a pas de liens, une URL lue à voix haute est
+inutilisable, l'email en a, parce que c'est le seul endroit où retrouver l'article derrière un
 sujet entendu. Les deux listes viennent de `CategoryDigest.links` et `.watchlist_links`,
 **dérivées de la sélection et des scores**, et non d'un texte produit par le modèle : elles ne
 peuvent donc pas être hallucinées. Une liste vide n'ajoute aucun en-tête.
 
 **La liste « à surveiller »** est la bande des scores 4 à 6 non retenus (`WATCHLIST_MIN` et
-`WATCHLIST_MAX`, dans `models.py`). Ces articles sont déjà payés — lus, notés, écartés — et les
+`WATCHLIST_MAX`, dans `models.py`). Ces articles sont déjà payés, lus, notés, écartés, et les
 taire revenait à jeter la moitié de ce qu'une journée coûte. Ils n'entrent pas dans l'audio pour
 autant : un titre et un lien, rien de plus. C'est dans une catégorie sans aucun retenu qu'ils
 servent le plus.
 
 **Chaque section nomme son fichier audio.** Le message porte un mp3 par catégorie, tous dans le
-même bandeau de pièces jointes, et rien ne disait lequel allait avec quoi — il fallait rapprocher
+même bandeau de pièces jointes, et rien ne disait lequel allait avec quoi, il fallait rapprocher
 un slug d'un titre de catégorie soi-même. Le nom seul, jamais un lien : aucun client mail n'ouvre
 une pièce jointe depuis le corps du message (`cid:` sert à incorporer une image, pas à déclencher
 une ouverture), et un lien inerte se lit comme un lien cassé.
 
 **Le temps d'écoute** est mesuré sur le fichier audio, pas estimé depuis le texte
 (`tools/duration.py` : en-tête `wave` pour le `.wav`, parcours des trames pour le `.mp3`). Une
-durée qu'on n'a pas su lire ne s'affiche pas — `None` et non « 0 min ».
+durée qu'on n'a pas su lire ne s'affiche pas, `None` et non « 0 min ».
 
 **Deux dates, et elles ne sont pas interchangeables.** Le titre et l'objet nomment la journée que
 la lettre RACONTE ; l'introduction ouvre sur le jour de l'ENVOI. Les deux diffèrent tous les
@@ -557,10 +557,10 @@ date du digest faisait arriver dans la boîte une lettre datée de l'avant-veill
 
 **L'éphéméride** porte donc sur le jour de l'envoi. Elle est faite de deux morceaux :
 
-- **la fête**, tirée de `ephemeride/fetes.py` — une table fixe de 366 entrées, le calendrier des postes. Une
+- **la fête**, tirée de `ephemeride/fetes.py`, une table fixe de 366 entrées, le calendrier des postes. Une
   donnée qui ne bouge pas d'une année sur l'autre n'a rien à faire dans un prompt : elle ne coûte
   rien, ne peut pas être inventée, et rend la même chose au renvoi qu'à l'envoi. Elle est écrite en
-  apposition — « Vendredi 28 août 2026, saint Augustin. » —, tournure qui marche aussi bien pour un
+  apposition, « Vendredi 28 août 2026, saint Augustin. », tournure qui marche aussi bien pour un
   saint que pour la Toussaint ou Noël. Corriger une date se fait dans `FETES`, et nulle part ailleurs. Le paquet `ephemeride/` sépare
   d'ailleurs les données du procédé pour cette raison : `fetes` et `histoire` sont des tables qu'on
   corrige souvent, `service` est le procédé qu'on relit rarement ;
@@ -569,7 +569,7 @@ date du digest faisait arriver dans la boîte une lettre datée de l'avant-veill
   pas échouer. Le modèle répond `AUCUN` plutôt que de combler quand il ne sait rien de cette date.
 
 Celle qui a servi est écrite dans `output/<id>/<jour>/journee.json`, **avec le jour qu'elle décrit**.
-`--send-only` la réutilise si elle parle bien du jour du renvoi — le cas courant, quand l'envoi a
+`--send-only` la réutilise si elle parle bien du jour du renvoi, le cas courant, quand l'envoi a
 échoué le matin et qu'on relance une heure plus tard. Renvoyée trois jours plus tard, elle daterait
 la lettre du mauvais jour et annoncerait la fête d'un autre : elle est alors recalculée sur la
 table et le calendrier, sans aucun appel, comme le promet `--send-only`.
@@ -586,13 +586,13 @@ ne repaie rien.
 RSSRESUME_AUDIO_MODE=global      # défaut : category
 ```
 
-`category` — le défaut, et le comportement d'origine — donne un mp3 par catégorie. Six catégories
+`category`, le défaut, et le comportement d'origine, donne un mp3 par catégorie. Six catégories
 font six fichiers, six ouvertures, six clôtures, et une manipulation de lecteur entre chaque. C'est
 ce qui a motivé l'autre mode.
 
 `global` n'en donne qu'un. Aucune catégorie ne synthétise plus rien : une fois toutes les
-catégories traitées, les **sujets** de la journée — les articles retenus, toutes catégories
-confondues — sont remis dans un seul ordre et racontés d'une traite.
+catégories traitées, les **sujets** de la journée, les articles retenus, toutes catégories
+confondues, sont remis dans un seul ordre et racontés d'une traite.
 
 **L'ordre est refait à l'échelle de la journée, et c'est tout l'enjeu.** Le montage enchaînait
 d'abord les résumés de catégorie déjà écrits, dans l'ordre des catégories : un seul fichier, une
@@ -600,16 +600,16 @@ seule voix, mais l'ordre restait celui des dossiers FreshRSS. Le sujet le plus g
 pouvait tomber en huitième position parce que sa catégorie était la dernière, et deux articles qui
 parlaient de la même chose depuis deux catégories différentes restaient séparés par tout le reste
 de la journée. L'ordre est donc calculé par `models.groupees_par_thematique`, sur la journée
-entière : **score décroissant**, puis regroupement par thématique — le groupe classé sur son
+entière : **score décroissant**, puis regroupement par thématique, le groupe classé sur son
 meilleur article, l'ordre interne restant le score. Le même code range les articles d'une
 catégorie pour son résumé ; ce qui change ici, c'est le périmètre.
 
 Le montage travaille donc sur la **source**, plus sur du texte déjà résumé. Trois conséquences :
 les numéros de version ne traversent plus deux réécritures, la fusion des doublons se fait là où
-elle a du sens — sur des articles, pas sur de la prose —, et deux dépêches de deux catégories qui
+elle a du sens, sur des articles, pas sur de la prose, et deux dépêches de deux catégories qui
 couvrent le même fait arrivent enfin côte à côte. La consigne de fidélité reste malgré tout : ce
 texte est le seul endroit du pipeline où une CVE se dit à voix haute, et une version approchée y a
-exactement le même coût qu'une version inventée. Le garde-fou n'est pas que dans le prompt —
+exactement le même coût qu'une version inventée. Le garde-fou n'est pas que dans le prompt -
 l'email continue de montrer les résumés de catégorie, et `journee.json` garde le texte lu, ce qui
 permet de confronter les deux sans réécouter.
 
@@ -618,15 +618,15 @@ Ce que le montage produit, dans l'ordre :
 | | |
 | --- | --- |
 | une salutation | nomme la personne si la clé `prenom` du document de profil est remplie. La formule est libre et change d'un jour à l'autre : c'est la première chose entendue tous les matins |
-| l'éphéméride | la même que celle qui ouvre l'email, dite à voix haute plutôt que récitée. Le prompt interdit d'y ajouter ou d'y corriger quoi que ce soit — la ligne est fabriquée hors du modèle |
+| l'éphéméride | la même que celle qui ouvre l'email, dite à voix haute plutôt que récitée. Le prompt interdit d'y ajouter ou d'y corriger quoi que ce soit, la ligne est fabriquée hors du modèle |
 | une phrase de sommaire | ce qui vient, de quoi décider d'écouter jusqu'au bout |
-| les sujets | dans l'ordre reçu, **sans qu'aucune catégorie soit nommée ni annoncée comme une rubrique** — ce serait remettre une liste au milieu d'un texte qui doit se couler —, séparés par une transition de quelques mots. Quand deux sujets voisins se répondent, le passage de l'un à l'autre le dit |
+| les sujets | dans l'ordre reçu, **sans qu'aucune catégorie soit nommée ni annoncée comme une rubrique**, ce serait remettre une liste au milieu d'un texte qui doit se couler, séparés par une transition de quelques mots. Quand deux sujets voisins se répondent, le passage de l'un à l'autre le dit |
 | les constats | les phrases des catégories déterministes, relayées telles quelles (voir ci-dessous) |
 | une conclusion | deux à quatre points actionnables, et ce qu'il y a à faire. Les mêmes interdits qu'ailleurs : ni « restez vigilant », ni résumé du résumé |
 
 Le prompt du digest de catégorie, lui, **n'est pas touché** : l'email garde ses sections
 identiques dans les deux modes. Ce que l'œil lit et ce que l'oreille entend sont deux textes,
-écrits pour deux usages — et le palier de profondeur du montage se compte sur les sujets de la
+écrits pour deux usages, et le palier de profondeur du montage se compte sur les sujets de la
 journée, pas sur ceux d'une catégorie.
 
 ### Les catégories déterministes ne sont pas refaites
@@ -635,7 +635,7 @@ Une catégorie routée vers `certfr/` rend une phrase produite **sans modèle**,
 la liste des composants exploités. Ses avis n'ont ni score ni thématique : ils n'ont rien à faire
 valoir dans l'ordre du jour, et la refaire dire au modèle réintroduirait l'invention exactement là
 où ce module l'a écartée. Elle part donc à part, dans un bloc `constats`, avec la consigne de la
-reprendre telle quelle — on peut l'amener d'un mot et la poser où elle s'entend le mieux, jamais
+reprendre telle quelle, on peut l'amener d'un mot et la poser où elle s'entend le mieux, jamais
 la reformuler, jamais en retirer un composant, un impact ou un nombre. Elle ne compte pas non plus
 dans le palier de longueur.
 
@@ -643,9 +643,9 @@ dans le palier de longueur.
 
 Le tri se fait sur `marker_path`, et non sur `selected`. Une catégorie sans article, ou dont rien
 n'a passé le seuil, porte son marqueur `.no-article` et un `summary_text` qui est une phrase de
-plomberie — « Aucun article retenu sur 3 (seuil 7) » : la donner au montage la ferait lire à voix
+plomberie, « Aucun article retenu sur 3 (seuil 7) » : la donner au montage la ferait lire à voix
 haute. Une catégorie CERT-FR dont aucun avis ne touche la stack, elle, n'a pas de marqueur, et sa
-phrase est un vrai résultat — « sept avis, aucun ne vous concerne » est exactement ce qu'on veut
+phrase est un vrai résultat, « sept avis, aucun ne vous concerne » est exactement ce qu'on veut
 entendre sans ouvrir l'email. `selected` aurait écarté les deux ensemble.
 
 Les catégories muettes partent quand même, **leur nom seul**, dans un champ à part : le prompt
@@ -659,30 +659,30 @@ trouvé.
 
 Sans clé pour le fournisseur de l'action `montage`, ou si l'appel échoue, les **résumés de
 catégorie** partent bout à bout : la salutation, l'éphéméride, les textes à la suite, et rien
-d'autre. Ni transitions ni conclusion — les fabriquer sans modèle rendrait exactement la formule
+d'autre. Ni transitions ni conclusion, les fabriquer sans modèle rendrait exactement la formule
 passe-partout que le prompt interdit, et une conclusion fausse est pire qu'une conclusion absente.
 C'est le seul chemin où ces résumés servent encore à l'oreille : sans fournisseur, il n'y a
 personne pour rédiger quoi que ce soit, et ces textes-là existent déjà.
 
 La journée est déjà payée en scoring, en résumés et en tags : la perdre sur le dernier appel
-serait le plus cher des abandons. `Montage.origine` garde la trace — `montage` ou `assemblage` —,
+serait le plus cher des abandons. `Montage.origine` garde la trace, `montage` ou `assemblage`,
 la console le dit, et `journee.json` l'écrit. Même arbitrage que `Ephemeride.origine` : un audio
 dégradé ne doit pas passer pour un audio réussi.
 
 ### Ce que l'email en fait
 
-Une pièce jointe au lieu de N, et une seule mention : `Pièce jointe : journee.mp3 — 12 min`, sous
-l'introduction et non sous chaque section — six fois le même nom n'apprendrait rien, et le fichier
+Une pièce jointe au lieu de N, et une seule mention : `Pièce jointe : journee.mp3, 12 min`, sous
+l'introduction et non sous chaque section, six fois le même nom n'apprendrait rien, et le fichier
 ne relève d'aucune catégorie. Les badges de durée, les pastilles d'en-tête et les lignes de pied
 de section **disparaissent d'eux-mêmes**, `Section.secondes` et `Section.audio_path` étant `None` :
-aucune condition n'a eu à être ajoutée pour cela. Tout le reste est identique — le texte des
+aucune condition n'a eu à être ajoutée pour cela. Tout le reste est identique, le texte des
 sections, les ancres, les deux listes de liens.
 
 ### Le journal et le renvoi
 
 Le journal de chaque catégorie reste écrit comme d'habitude, à deux détails près : ses
 `parametres` portent `"audio": "global"`, et son statut est **`monte`** au lieu de `audio`.
-`sans-audio` aurait été un contresens — il dit qu'on attendait un fichier et qu'il manque, donc
+`sans-audio` aurait été un contresens, il dit qu'on attendait un fichier et qu'il manque, donc
 qu'il y a eu une panne, alors qu'ici il ne manque rien : il est ailleurs, et `journee.json` dit où.
 
 `journee.json` porte justement un bloc `montage` à côté de l'éphéméride :
@@ -697,7 +697,7 @@ qu'il y a eu une panne, alors qu'ici il ne manque rien : il est ailleurs, et `jo
 
 Le texte y est gardé pour la même raison que celui des catégories : juger une transition sans
 relancer le fichier, et voir ce que le montage a fait des résumés qu'on lui a donnés.
-`--send-only` le relit tel quel — **le mode dans lequel une journée a été produite est écrit là**,
+`--send-only` le relit tel quel, **le mode dans lequel une journée a été produite est écrit là**,
 il ne se redemande pas à la configuration du jour, qui a pu changer depuis. Un audio effacé fait
 partir la lettre sans lui, exactement comme le fait déjà `_digest_relu` pour une catégorie.
 
@@ -718,7 +718,7 @@ empêcherait précisément de voir ce que ce mode coûte en plus.
 
 Le flux « CERT-FR - Avis de securite » publie cinq à dix articles par jour, tous bâtis sur le même
 moule : un titre « Multiples vulnérabilités dans *X* (JJ mois AAAA) » et une description d'une
-phrase, qui nomme ce que la faille permet. Rien d'autre — l'enrichissement de `tools/cve.py` ne s'y
+phrase, qui nomme ce que la faille permet. Rien d'autre, l'enrichissement de `tools/cve.py` ne s'y
 déclenche même pas, la description ne mentionnant aucun identifiant de CVE.
 
 Ce format-là ne demande pas un résumé, il demande une **réponse** : est-ce que ça touche ma stack.
@@ -733,15 +733,15 @@ La catégorie ainsi routée saute les étapes 3, 4 et 5 et rend une phrase, une 
 
 ```
 7 avis CERT-FR aujourd'hui, 2 touchent la stack :
-  Keycloak — exécution de code arbitraire à distance ; OpenSSL — déni de service à distance.
+  Keycloak, exécution de code arbitraire à distance ; OpenSSL, déni de service à distance.
 ```
 
 **Le routage est explicite.** Aucune catégorie n'y tombe parce qu'elle s'appelle CERT-FR : rien ne
 doit changer de pipeline parce que quelqu'un a renommé un dossier FreshRSS. Le libellé est comparé
 casse repliée **et accents retirés** (`tools/text.casefold_ascii`), comme `RSSRESUME_EXCLUDED_CATEGORIES`
 et le catalogue des catégories. Ce n'est pas une préférence : le libellé réel porte des accents, un
-copier-coller vers un panneau d'hébergeur les perd régulièrement — `RSSRESUME_CATEGORY_THRESHOLDS`
-en est déjà un exemple dans cette installation —, et une catégorie qu'on croit routée et qui ne
+copier-coller vers un panneau d'hébergeur les perd régulièrement, `RSSRESUME_CATEGORY_THRESHOLDS`
+en est déjà un exemple dans cette installation, et une catégorie qu'on croit routée et qui ne
 l'est pas ne fait pas d'erreur : elle repasse par le LLM, tous les matins, en silence. Une entrée
 écrite comme un seuil (« Catégorie=7 ») fait échouer le lancement, pour la même raison qu'un seuil
 mal formé.
@@ -753,7 +753,7 @@ mal formé.
 | `articles` | **tous** les avis du jour | `_mark_read` les aplatit : les avis qui ne nous touchent pas sont marqués lus sans être résumés, sans une ligne de code de plus |
 | `selected` | les avis qui touchent la stack, les plus graves en tête | la liste « À lire » de l'email, dérivée par `CategoryDigest.links` |
 | `summary_text` | la phrase | le corps de la section, et le `resume` du journal |
-| `audio_path` | `None` | aucun appel TTS, aucune pièce jointe, aucun badge de durée — `newsletter.py` traitait déjà ce cas |
+| `audio_path` | `None` | aucun appel TTS, aucune pièce jointe, aucun badge de durée, `newsletter.py` traitait déjà ce cas |
 
 Aucun tag FreshRSS n'est écrit : il n'y a ni note à mettre en cache, ni empreinte de prompt à
 retenir.
@@ -779,22 +779,22 @@ publié que ce qu'on veut lire. Tant que la clé `stack` est absente ou vide, la
 ```
 
 La liste n'a donc pas de variable d'environnement à elle : elle est lue **avec le profil**, dans le
-même document et au même moment. Une entrée fautive — ni chaîne ni objet, sans `nom`, `alias` qui
-n'est pas une liste de chaînes, ou nom que rien ne pourrait apparier — **fait échouer le
+même document et au même moment. Une entrée fautive, ni chaîne ni objet, sans `nom`, `alias` qui
+n'est pas une liste de chaînes, ou nom que rien ne pourrait apparier, **fait échouer le
 lancement** : un composant sauté en silence ferait apparier une journée entière contre une stack
 qui n'est pas celle qu'on croit, et le digest conclurait tranquillement que rien ne nous touche.
 Même arbitrage que le texte du profil.
 
 ### La criticité, et d'où elle sort
 
-Un avis CERT-FR ne porte **ni score CVSS ni cotation de gravité** — sa page liste les CVE, pas leurs
+Un avis CERT-FR ne porte **ni score CVSS ni cotation de gravité**, sa page liste les CVE, pas leurs
 scores. Ce qu'il porte, c'est la liste de ce que la faille permet, dans un vocabulaire fixe :
 « De multiples vulnérabilités ont été découvertes dans SPIP. Certaines d'entre elles permettent à un
 attaquant de provoquer une exécution de code arbitraire à distance, une injection SQL (SQLi) et une
 falsification de requêtes côté serveur (SSRF). »
 
 C'est ce vocabulaire, et lui seul, que `certfr/service.py` reconnaît, dans un ordre de gravité qui
-est un classement **local** — celui de l'exploitant, prendre la main devant la couper :
+est un classement **local**, celui de l'exploitant, prendre la main devant la couper :
 
 ```
 exécution de code arbitraire à distance
@@ -810,11 +810,11 @@ déni de service
 
 L'ordre fait tout le travail : la reconnaissance s'arrête au premier libellé qui répond, et
 « exécution de code arbitraire à distance » est cherché avant « exécution de code arbitraire », dont
-il contient les mots. Le libellé cherché est aussi celui qui s'écrit dans la phrase — un seul texte
+il contient les mots. Le libellé cherché est aussi celui qui s'écrit dans la phrase, un seul texte
 pour les deux, sans quoi elle finirait par nommer autre chose que ce qui a été reconnu.
 
-Quand rien n'est reconnu — un bulletin d'actualité, un avis « à l'impact non spécifié par
-l'éditeur » —, la phrase le dit : *impact non précisé par l'avis*. Un champ vide se lirait comme une
+Quand rien n'est reconnu, un bulletin d'actualité, un avis « à l'impact non spécifié par
+l'éditeur », la phrase le dit : *impact non précisé par l'avis*. Un champ vide se lirait comme une
 faille bénigne. Rien n'est déduit et rien n'est complété : sur un avis de sécurité, une information
 fabriquée est pire que pas d'information.
 
@@ -842,18 +842,18 @@ partielle, c'est le signal recherché.
 
 `"statut": "deterministe"` est une valeur à part, et testée avant les autres : une catégorie
 déterministe n'a jamais d'audio et n'a pas toujours d'apparié, ce qui la ferait passer pour une
-catégorie que le seuil a vidée. Ce n'est pas la même journée — ici rien n'a été jugé, tout a été
-comparé — et `retenus`, juste à côté, dit combien d'avis touchaient la stack.
+catégorie que le seuil a vidée. Ce n'est pas la même journée, ici rien n'a été jugé, tout a été
+comparé, et `retenus`, juste à côté, dit combien d'avis touchaient la stack.
 
 **`--send-only` relit ce journal sans traitement particulier**, et c'est cette contrainte qui a
 dicté sa forme : même suffixe de fichier, un `resume`, et `retenu` + `rang_digest` sur les avis
-appariés — sans eux, le renvoi arriverait avec une section vide de tout lien. Le `score` reste à
+appariés, sans eux, le renvoi arriverait avec une section vide de tout lien. Le `score` reste à
 `null` : `_a_surveiller` exige un entier dans la fourchette 4-6, donc aucun avis ne peut entrer par
 accident dans la liste « à surveiller ».
 
 ### Ce que l'appariement ne saura pas faire
 
-- un composant que l'avis désigne autrement que par une écriture déclarée est manqué — c'est le prix
+- un composant que l'avis désigne autrement que par une écriture déclarée est manqué, c'est le prix
   du déterminisme, et la raison d'être des `alias` ;
 - un avis ne nomme parfois que l'éditeur (« les produits IBM ») quand le composant touché n'est
   détaillé que sur la page de l'avis, que ce chemin ne lit pas ;
@@ -873,7 +873,7 @@ Il fixe ce qu'une exécution finie ne conservait nulle part :
 | Bloc | Contenu | Ce qu'il permet |
 | --- | --- | --- |
 | `articles` | tous les articles lus, les mieux notés en tête : score, thématique, `angle`, `retenu`, `rang_digest`, et `origine_note` (`calculee`, `tags`, `aucune`) | juger un seuil, voir ce qui est passé juste à côté, retrouver l'angle qu'a vu le résumeur |
-| `couts` | le coût par typologie d'appel — `scoring`, `resume`, `tts` — puis appel par appel | savoir où part l'argent, avant de changer de modèle |
+| `couts` | le coût par typologie d'appel, `scoring`, `resume`, `tts`, puis appel par appel | savoir où part l'argent, avant de changer de modèle |
 | `parametres`, `resultat` | seuil de la catégorie, seuil de repli, minimum, plafond, modèles, empreinte de scoring ; statut, compteurs, `seuil_applique` (le seuil qui a réellement trié la journée), fichier produit | savoir contre quels réglages ce journal a été produit, et si le repli a joué |
 
 **Quand il est écrit.** Toute catégorie qui a lu au moins un article a le sien : avec audio, sans
@@ -885,25 +885,25 @@ lu, rien noté, rien dépensé, et le journal ne dirait que des zéros là où s
 Une catégorie routée hors du pipeline LLM écrit le même fichier avec un `parametres` et un `statut`
 qui lui sont propres : voir [Ce que le journal en garde](#ce-que-le-journal-en-garde).
 
-### Le relire sans l'extraire — `--journal`
+### Le relire sans l'extraire - `--journal`
 
 Ces fichiers vivent dans un volume, sur un serveur où l'on n'entre que par SSH. La question
-qu'on se pose devant une journée qui s'est mal passée tient en une ligne — quel statut, quel
-seuil a réellement trié, combien ça a coûté, qu'est-ce qui est passé juste à côté — et y
+qu'on se pose devant une journée qui s'est mal passée tient en une ligne, quel statut, quel
+seuil a réellement trié, combien ça a coûté, qu'est-ce qui est passé juste à côté, et y
 répondre demandait d'en extraire un JSON de plusieurs centaines de lignes.
 
 `runlog.Bilan` la met en tableau, une ligne par catégorie, et `--journal` l'imprime. Aucun
 appel, aucun envoi, rien d'écrit : la commande ne fait que lire. Elle court-circuite
-l'assemblage des fournisseurs au même endroit que `--send-only`, et pour la même raison —
+l'assemblage des fournisseurs au même endroit que `--send-only`, et pour la même raison -
 celle qui sert quand quelque chose ne va pas ne doit pas tomber pour ce qu'on diagnostique.
 
 **Le bilan ne passe pas par `read_day`.** Celui-ci relit déjà les journaux, mais pour écrire
-un email : il rend `articles=[]` et jette le statut, le seuil appliqué et les coûts —
+un email : il rend `articles=[]` et jette le statut, le seuil appliqué et les coûts -
 c'est-à-dire exactement ce qu'on cherche ici. Deux relectures, deux besoins, et aucune des
 deux n'a à porter ce dont l'autre a envie.
 
 Rien n'est recalculé pour autant. `Call.relu` est l'inverse de `Call.as_json`, ce qui fait
-repasser les coûts par `Comptes` — l'objet qui a écrit ces blocs. Le récapitulatif est donc
+repasser les coûts par `Comptes`, l'objet qui a écrit ces blocs. Le récapitulatif est donc
 celui de la fin d'exécution au caractère près, et le total d'une journée dont un modèle n'est
 pas tarifé reste `null` sans qu'on ait à y repenser. Refaire la somme ailleurs, c'était deux
 additions qui finissent par ne plus donner le même chiffre.
@@ -914,21 +914,21 @@ Trois choix de présentation, et chacun répond à une façon de se tromper :
   c'est lui, et lui seul, qui dit si le repli des jours creux a joué. Un tiret pour une
   catégorie déterministe, où l'écrire ferait croire à un tri qui n'a pas eu lieu ;
 - **un coût inconnu s'écrit `?`**. Un `0.000000` se lirait « rien dépensé » là où la réponse
-  est « on ne sait pas » — c'est déjà l'arbitrage du journal, il ne doit pas s'inverser à
+  est « on ne sait pas », c'est déjà l'arbitrage du journal, il ne doit pas s'inverser à
   l'affichage ;
 - **les catégories sans le moindre journal sont listées quand même**, sous leur marqueur.
   Elles n'ont rien lu ni rien dépensé, mais elles font partie de la journée, et leur absence
   du tableau se lirait comme un oubli.
 
 `--debug` ajoute sous chaque catégorie ses articles, dans la forme du marqueur `.no-article`
-— un seul format à apprendre. `origine_note` y figure parce que c'est elle qui explique une
+,un seul format à apprendre. `origine_note` y figure parce que c'est elle qui explique une
 journée qui n'a presque rien coûté : tout relu des tags, aucun appel de scoring.
 
 **Et `RSSRESUME_DEBUG=true` imprime ce même bilan à la fin de chaque passage.** C'est le point
 de tout l'exercice : le conteneur n'expose rien, sa sortie standard est le seul endroit où
 l'on regarde, et le bilan y atterrit pour se chercher et s'archiver. Il est appelé depuis
-`cli.main` et non depuis `DigestService` — c'est une relecture du répertoire de sortie, pas
-une décision sur ce que la journée contient —, ce qui garantit que les logs du matin montrent
+`cli.main` et non depuis `DigestService`, c'est une relecture du répertoire de sortie, pas
+une décision sur ce que la journée contient, ce qui garantit que les logs du matin montrent
 exactement ce que `--journal` rejouera le soir.
 
 Le drapeau ne commande que cela. Ce n'est pas un interrupteur fourre-tout qui promettrait des
@@ -937,15 +937,15 @@ traces ailleurs : il n'en pose aucune.
 ### Comment le coût est rattaché à une catégorie
 
 Les appels partent du fond d'un `LLMProvider`, qui n'a aucune raison de savoir quelle catégorie est en
-cours — et lui faire passer la catégorie polluerait la signature de toute la chaîne. `digest.py`
+cours, et lui faire passer la catégorie polluerait la signature de toute la chaîne. `digest.py`
 ouvre donc un `runlog.category_scope` autour de la construction de chaque catégorie, et `LLMProvider`
 y dépose ce qu'il apprend : le bloc `usage` d'une complétion, le texte envoyé pour une synthèse.
-Le pipeline est séquentiel — une catégorie à la fois —, ce qui rend cet état de module suffisant.
+Le pipeline est séquentiel, une catégorie à la fois, ce qui rend cet état de module suffisant.
 Hors de tout scope (par exemple `python -m rssresume.llm.processing`), l'enregistrement est un no-op.
 
 ### Les postes de dépense
 
-Les six actions d'un `LLMProvider` se rangent sous cinq postes — `digest` et `article` sont
+Les six actions d'un `LLMProvider` se rangent sous cinq postes, `digest` et `article` sont
 deux façons de résumer et partagent le leur :
 
 | Poste | Actions | Facturé sur | Nombre d'appels |
@@ -954,11 +954,11 @@ deux façons de résumer et partagent le leur :
 | `resume` | `digest`, `article` | tokens d'entrée + de sortie | un seul pour toute la catégorie |
 | `ephemeride` | `ephemeride` | tokens d'entrée + de sortie | un seul pour toute la journée |
 | `montage` | `montage` | tokens d'entrée + de sortie | un seul pour toute la journée, en mode `global` uniquement |
-| `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un par catégorie, ou un pour la journée — plus un par morceau si le texte a dû être découpé |
+| `tts` | `tts` | caractères ou tokens d'entrée, selon le modèle | un par catégorie, ou un pour la journée, plus un par morceau si le texte a dû être découpé |
 
 **Un appel par poste n'est donc pas une remontée partielle** : c'est le fonctionnement nominal.
 Le scoring envoie ses articles par lots de 40 (`llm.prompts.SCORING_BATCH_SIZE`), et n'y met que
-ceux dont la note n'a pas été relue des tags — une catégorie de 19 articles tient en un appel, une
+ceux dont la note n'a pas été relue des tags, une catégorie de 19 articles tient en un appel, une
 catégorie de 19 articles tous déjà notés n'en fait aucun. Le digest et la synthèse vocale, eux,
 voient toute la sélection d'un coup : un appel chacun, quel que soit le nombre d'articles retenus.
 `article` n'apparaît que pour un appel direct à `summarize_article`, hors pipeline quotidien.
@@ -970,7 +970,7 @@ c'est lui, et non la longueur du texte rendu, qui explique la facture du digest.
 
 La conversion tokens → dollars vient d'une grille statique dans
 [llm/providers.json](rssresume/llm/providers.json), bloc `prices` de chaque fournisseur, lue par
-[pricing.py](rssresume/pricing.py) — donc datée, donc à revérifier : un tarif périmé s'y lit comme
+[pricing.py](rssresume/pricing.py), donc datée, donc à revérifier : un tarif périmé s'y lit comme
 un coût réel. Deux formes de tarif cohabitent, jamais mélangées : `{"input", "output"}` en dollars
 par million de tokens, `{"characters"}` en dollars par million de caractères.
 
@@ -986,7 +986,7 @@ Deux garde-fous :
   `modeles_sans_tarif`, et `tarification_complete` passe à `false`. Le total de son poste et le
   total général passent à `null` avec lui : pas de somme partielle, parce qu'un total amputé se
   lit exactement comme un total complet, et que c'est un chiffre que quelqu'un reportera un jour
-  dans un tableur. Un poste sans le moindre appel, lui, vaut bien `0.0` — rien dépensé et coût
+  dans un tableur. Un poste sans le moindre appel, lui, vaut bien `0.0`, rien dépensé et coût
   inconnu ne se lisent pas pareil. `RSSRESUME_PRICES`, un objet JSON du même format, complète la
   grille sans toucher au code ; un JSON cassé y est ignoré plutôt que de faire échouer la veille.
 - **Le coût de la synthèse vocale est parfois estimé.** L'API ne renvoie aucun compteur : le texte
@@ -1008,18 +1008,18 @@ Un seul fichier porte tout ce qui est personnel, et [profil.py](rssresume/profil
 | `categories` | les catégories publiques suivies, ou privées dont la personne est propriétaire | filtre avant le scoring dans `AppConfig.categories_servies` |
 | `flux_exclus` | les flux qui ne se résument pas, par leur titre FreshRSS exact, casse et accents ignorés | `DigestService._hors_flux_exclus`, avant le scoring et `--limit` ; marqués lus quand même |
 
-Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne — c'est une
+Seule `profil` est exigée. `prenom` absente, le montage ouvre sans nommer personne, c'est une
 salutation en moins, pas une erreur ; remplie avec autre chose qu'un texte, elle fait échouer le
 lancement, une salutation fautive ne se découvrant qu'à l'écoute. `securite` absente vaut
-`exploitant`, le régime d'avant la clé ; une valeur inconnue — casse comprise, `Decideur` n'est
-pas `decideur` — fait échouer le lancement plutôt que de retomber sur le défaut, qui rendrait les
+`exploitant`, le régime d'avant la clé ; une valeur inconnue, casse comprise, `Decideur` n'est
+pas `decideur`, fait échouer le lancement plutôt que de retomber sur le défaut, qui rendrait les
 plages de versions à qui avait demandé de ne plus les entendre (voir « Le cas des CVE »).
 `categories` s'édite depuis la page « Mon profil » du site, qui ne propose que ce que
-`Catalogue.proposables` autorise et omet la clé quand tout est coché — la personne suit alors
+`Catalogue.proposables` autorise et omet la clé quand tout est coché, la personne suit alors
 aussi les catégories ajoutées plus tard. Un `PUT` ne vérifie contre le catalogue que les
-catégories **ajoutées** : celles déjà suivies passent, même retirées du catalogue depuis — la
+catégories **ajoutées** : celles déjà suivies passent, même retirées du catalogue depuis, la
 tournée les refiltre, et les refuser bloquerait tout enregistrement qui les renvoie. Le texte de pertinence est ce qui définit ce qu'est une information
-pour cet auditeur — le reste du système n'est que de la plomberie autour ; les deux autres clés
+pour cet auditeur, le reste du système n'est que de la plomberie autour ; les deux autres clés
 sont personnelles au même titre, et c'est tout ce qui les réunit ici.
 
 Le défaut du dépôt est **générique** : quelqu'un dans la tech, sans produit ni marché ni équipe
@@ -1044,19 +1044,19 @@ Trois conséquences de conception :
   `summaries.system_prompt()` sont des fonctions, non des constantes : un profil injecté doit
   pouvoir arriver après le chargement des modules.
 - **L'assemblage est une concaténation, jamais un `format`.** Le prompt de scoring contient des
-  accolades — le format JSON attendu — et un profil venu de l'extérieur peut en contenir aussi.
+  accolades, le format JSON attendu, et un profil venu de l'extérieur peut en contenir aussi.
 - **Un fichier de profil illisible lève une erreur.** Retomber en silence sur le profil par défaut
   ferait noter toute une journée contre le mauvais critère sans que personne ne le voie. Le
   fichier est lu comme un objet JSON `{"profil": "…"}` s'il commence par une accolade, comme du
   texte brut sinon : c'est le contenu qui décide, pas l'extension, qui n'est qu'une promesse que
-  rien ne vérifie. Un JSON reconnu puis fautif — cassé, ou sans texte à la clé `profil` — lève
+  rien ne vérifie. Un JSON reconnu puis fautif, cassé, ou sans texte à la clé `profil`, lève
   donc lui aussi, au lieu d'être servi comme du texte : le prompt de scoring recevrait la
   ponctuation du fichier en guise de critère de pertinence.
 
 Le document est résolu **une fois par personne et par passage**, avant sa première catégorie
 (`AppConfig.pour`, voir la tournée ci-dessous) : un document fautif fait échouer la journée de sa
-personne, pas sa troisième catégorie. Les clés en sortent ensemble — `config.profil`,
-`config.stack`, `config.securite`, `config.smtp_to`, `config.prenom` — et `cli.build_service()` les distribue aux
+personne, pas sa troisième catégorie. Les clés en sortent ensemble, `config.profil`,
+`config.stack`, `config.securite`, `config.smtp_to`, `config.prenom`, et `cli.build_service()` les distribue aux
 collaborateurs qui les attendent, comme le reste.
 
 `SMTP_TO` portait le destinataire jusqu'ici. La variable est désormais **refusée** et non ignorée :
@@ -1078,7 +1078,7 @@ d'eux et charger une personne, et des sous-classes qui ne disent que la source.
 
 Le dossier **et** une variable à profil unique posées ensemble lèvent au lancement : servir l'un
 en ignorant l'autre ferait disparaître ou apparaître une personne sans que rien ne le dise. Le
-`username` — le nom du fichier — suit `^[a-z0-9][a-z0-9_-]{1,31}$`, parce qu'il nomme un
+`username`, le nom du fichier, suit `^[a-z0-9][a-z0-9_-]{1,31}$`, parce qu'il nomme un
 répertoire et préfixe des labels ; un `.json` mal nommé est signalé (`console.error`, une fois)
 et sauté, sans coûter la journée des autres. Les documents, eux, sont lus au moment de servir
 leur personne : un document fautif ne coûte que sa journée.
@@ -1091,7 +1091,7 @@ Une personne a deux noms, qui ne servent pas à la même chose :
 | `id` | un UUID, clé `id` du document | le répertoire de sortie `output/<id>/` |
 
 La sortie suit l'`id` pour que renommer quelqu'un ne le sépare pas de ses journées, et pour que
-l'API — qui rangera les profils en base sous la même clé — désigne les mêmes répertoires.
+l'API, qui rangera les profils en base sous la même clé, désigne les mêmes répertoires.
 `profil_depuis_dict` valide l'`id` quand il est présent (UUID canonique en minuscules) ;
 `nouvel_id()` en produit un. Un document du dossier qui n'en a pas en reçoit un, **écrit dans le
 fichier** (JSON indenté, clés conservées, une ligne de log) : généré à chaque passage, il
@@ -1103,7 +1103,7 @@ changerait chaque matin. D'où deux règles, appliquées profil par profil :
   écrirait dans le répertoire de l'autre.
 
 `AppConfig.from_env()` reste la configuration de l'installation ; `AppConfig.pour(lecteur)` y
-applique une personne — profil, stack, prénom, destinataires — et fait descendre la sortie à
+applique une personne, profil, stack, prénom, destinataires, et fait descendre la sortie à
 `output/<id>/`. Tout ce qui lit `output_dir` suit sans rien savoir des profils.
 
 La tournée (`tournee.Tournee`) sert la journée à chaque profil dans l'ordre alphabétique :
@@ -1112,29 +1112,29 @@ La tournée (`tournee.Tournee`) sert la journée à chaque profil dans l'ordre a
 pour chaque username :  config.pour(lecteur) → build_service → DigestService.run(mark_read=False)
                         un échec est journalisé, le suivant est servi
 puis, une seule fois :  marquage comme lu de l'union des articles lus
-                        — seulement si tous les profils de l'annuaire viennent d'être servis
+,                        seulement si tous les profils de l'annuaire viennent d'être servis
 ```
 
 Le marquage est le piège : l'état « lu » est unique dans FreshRSS et l'API écarte les articles
 lus, donc le premier profil qui marquerait viderait la journée de tous les suivants. Si un profil
 a échoué, rien n'est marqué : il rejoue sa journée avec `--profil` sans `--include-read`. Un
 passage `--profil` ne marque rien non plus tant que d'autres profils existent. Un article resté
-non lu ne revient dans aucune autre journée — la lecture est bornée au jour —, il ne coûte
+non lu ne revient dans aucune autre journée, la lecture est bornée au jour, il ne coûte
 qu'un compteur dans FreshRSS.
 
 **L'alerte à l'exploitant.** Un profil en échec n'était dit que dans les logs du conteneur :
 celui qui s'en apercevait le premier est l'inscrit, en ne recevant rien. En fin de tournée,
 donc, s'il y a eu des échecs, un seul email part à `RSSRESUME_ADMIN_EMAIL`
 (`alerte.AlerteEchecs`, construit dans `cli.main` comme les autres fournisseurs et reçu par
-la tournée via `protocols.py`) : un sujet qui compte les échecs, puis une ligne par profil —
-nom, cause résumée — et la commande `--journal --date … --profil …` à lancer pour chacun.
+la tournée via `protocols.py`) : un sujet qui compte les échecs, puis une ligne par profil -
+nom, cause résumée, et la commande `--journal --date … --profil …` à lancer pour chacun.
 L'email emprunte le transport déjà configuré (`RSSRESUME_MAIL_TRANSPORT`), avec le même
 `SMTP_FROM` : seul le destinataire change. L'adresse est un **réglage de l'installation**,
-comme `SMTP_FROM` — la règle de `profil.py` protège la personne servie, pas qui l'exploite —,
+comme `SMTP_FROM`, la règle de `profil.py` protège la personne servie, pas qui l'exploite,
 et ne se déclare donc pas dans son document. Ce qui n'envoie pas l'email du jour n'envoie pas
 l'alerte : sans l'adresse réglée, en `--dry-run` ou `--no-email`, la tournée tourne sans
-collaborateur d'alerte, les logs seulement. Un transport non configuré ne lève pas — message
-dans les logs, tournée finie normalement — et l'échec de l'alerte elle-même n'arrête ni la
+collaborateur d'alerte, les logs seulement. Un transport non configuré ne lève pas, message
+dans les logs, tournée finie normalement, et l'échec de l'alerte elle-même n'arrête ni la
 tournée ni le marquage : elle est enveloppée et journalisée, les échecs restant dans le rendu
 de la tournée.
 
@@ -1163,16 +1163,16 @@ de recopie dans un libellé la prive de lecteurs au lieu de la donner à tous.
 
 **Où il vit.** Dans une table `categories` de la base des profils (voir [Le schéma](#le-schéma)),
 jamais dans le dépôt : son vrai contenu nomme une veille d'entreprise et ses propriétaires. Le
-format d'échange est un JSON dans la forme de `llm/providers.json` — un objet dont les clés sont
+format d'échange est un JSON dans la forme de `llm/providers.json`, un objet dont les clés sont
 les libellés ; une clé `_…` dont la valeur est un texte ou une liste est un commentaire, avec un
-objet pour valeur c'est une catégorie (`_Archive`) —, dont le dépôt ne versionne qu'un exemple
+objet pour valeur c'est une catégorie (`_Archive`), dont le dépôt ne versionne qu'un exemple
 générique, [docs/categories.exemple.json](docs/categories.exemple.json), qu'un test importe.
 
 **La validation** (`Catalogue.depuis_document`) est la même pour l'import et pour la relecture de
 la base, et elle est tout ou rien : clé inconnue, `visibilite` absente ou hors `publique` /
 `privee`, catégorie privée sans propriétaire ou publique avec, propriétaire qui ne passe pas
 `valider_username`, `description` vide, `metiers` qui n'est pas une liste de textes non vides,
-deux libellés égaux une fois repliés, JSON invalide, document sans aucune catégorie — tout lève
+deux libellés égaux une fois repliés, JSON invalide, document sans aucune catégorie, tout lève
 `ValueError` en nommant le libellé. Un propriétaire inconnu de l'annuaire n'est **pas** une faute :
 la personne peut s'inscrire après que sa catégorie a été décrite.
 
@@ -1181,8 +1181,8 @@ puis **remplace** la table dans une transaction (`AnnuaireSqlite.remplacer_catal
 est la source de vérité, une catégorie qu'on en retire cesse d'être servie. Refusé, il n'écrit
 rien et sort en code 2.
 
-**Dans la tournée.** `Tournee.run` lit `Annuaire.catalogue()` au lancement — seule la base en
-porte un, les autres annuaires rendent `CatalogueOuvert` — et le pose sur la configuration de
+**Dans la tournée.** `Tournee.run` lit `Annuaire.catalogue()` au lancement, seule la base en
+porte un, les autres annuaires rendent `CatalogueOuvert`, et le pose sur la configuration de
 l'installation (`AppConfig.catalogue`), que `pour` conserve pour chaque personne. Puis :
 
 | Situation | Comportement |
@@ -1193,15 +1193,15 @@ l'installation (`AppConfig.catalogue`), que `pour` conserve pour chaque personne
 
 Le message dit quoi faire selon la source des profils (`Annuaire.remede_sans_catalogue`, que
 `AnnuaireSqlite` redéfinit) : en base, `importer-catalogue` ; avec un dossier ou un document
-unique, il n'y a nulle part où ranger un catalogue — c'est une décision, pas un oubli —, donc
+unique, il n'y a nulle part où ranger un catalogue, c'est une décision, pas un oubli, donc
 passer d'abord à la base (`RSSRESUME_PROFILES_DB`, `python -m rssresume.api importer <dossier>`,
 retirer `RSSRESUME_PROFILES_DIR`), puis importer le catalogue. Une installation en mode dossier à
 plusieurs profils ne tourne plus tant que cette migration n'est pas faite.
 
 Une ligne de la table corrompue à la main lève aussi au lancement.
 
-**Le marquage ne change pas.** Les catégories de l'installation servies à personne — hors
-catalogue, ou privées dont aucun propriétaire n'est dans l'annuaire — sont calculées **au moment
+**Le marquage ne change pas.** Les catégories de l'installation servies à personne, hors
+catalogue, ou privées dont aucun propriétaire n'est dans l'annuaire, sont calculées **au moment
 de marquer**, et seulement si le marquage a lieu : un `--dry-run`, un `--no-mark-read` ou un
 `--profil` qui ne marque pas n'interroge pas FreshRSS pour elles, et une panne de
 `list_categories` reste un échec par profil, comme avant le catalogue. Elles sont alors
@@ -1211,7 +1211,7 @@ l'installation lisait est marqué lu, une fois, à la fin, et seulement quand to
 servi. Sans cela, une catégorie hors catalogue garderait ses non-lus pour toujours.
 
 Une erreur pendant cette lecture est journalisée et n'empêche pas de marquer ce qui a été servi :
-les emails sont déjà partis, et lever laisserait toute la journée non lue — un rejeu les
+les emails sont déjà partis, et lever laisserait toute la journée non lue, un rejeu les
 renverrait tous. Les orphelines restent alors non lues, ce qui ne coûte qu'un compteur.
 
 **Avec les variables d'environnement.** Le catalogue dit *à qui* ; le reste ne bouge pas :
@@ -1229,8 +1229,8 @@ produite avant l'import du catalogue peut contenir une catégorie devenue privé
 ## La base de profils et l'API
 
 Le site édite les profils pendant que la tournée les lit, depuis un autre processus. Un dossier de
-fichiers ne donne pas ce qu'il faut pour cela — une écriture entière ou pas du tout, un nom pris
-une seule fois —, d'où une base SQLite (`annuaire_sqlite.AnnuaireSqlite`), dans le même volume que
+fichiers ne donne pas ce qu'il faut pour cela, une écriture entière ou pas du tout, un nom pris
+une seule fois, d'où une base SQLite (`annuaire_sqlite.AnnuaireSqlite`), dans le même volume que
 la sortie, et un serveur HTTP (`rssresume/api/`), service à part dans le même compose.
 
 ### Le schéma
@@ -1251,8 +1251,8 @@ Et une seconde, `categories`, le [catalogue des catégories](#le-catalogue-des-c
 | `libelle` | clé primaire, le libellé FreshRSS tel qu'il a été importé |
 | `document` | l'entrée JSON : `description`, `metiers`, `visibilite`, `proprietaires` si privée |
 
-Le document est validé par `profil_depuis_dict` **à l'écriture** — l'API refuse ce que la tournée
-refuserait, avec le même message — **et à la lecture**, parce qu'une base se modifie aussi à la
+Le document est validé par `profil_depuis_dict` **à l'écriture**, l'API refuse ce que la tournée
+refuserait, avec le même message, **et à la lecture**, parce qu'une base se modifie aussi à la
 main. Il est normalisé à l'écriture (texte rogné, adresses en liste, clés inconnues retirées) :
 ce que le site relit est ce que la tournée servira. L'`id` et le `username` ne changent jamais
 après la création ; un `PUT` qui les envoie différents est refusé plutôt que d'être ignoré.
@@ -1260,7 +1260,7 @@ après la création ; un `PUT` qui les envoie différents est refusé plutôt qu
 ### Deux processus sur une base
 
 Le travailleur lit, l'API écrit, en même temps. La base est en **mode WAL** : un lecteur n'y
-bloque jamais l'écrivain, ni l'inverse. Chaque opération ouvre sa connexion et la referme — une
+bloque jamais l'écrivain, ni l'inverse. Chaque opération ouvre sa connexion et la referme, une
 connexion SQLite ne se partage pas entre les fils du serveur, et rien ne reste verrouillé entre
 deux requêtes. Une écriture prend le verrou d'emblée (`BEGIN IMMEDIATE`, attente de 5 s au plus) :
 deux écrivains attendent leur tour au lieu de se découvrir en conflit au commit. L'unicité du nom
@@ -1275,7 +1275,7 @@ sur le disque, et un import du document d'origine la recrée sous le même `id`.
 
 `python -m rssresume.api importer <dossier ou fichier>` verse des documents dans la base :
 
-- l'`id` du document est **conservé** — c'est lui qui nomme les journées passées — ; absent, un
+- l'`id` du document est **conservé**, c'est lui qui nomme les journées passées, ; absent, un
   `id` neuf est généré et affiché ;
 - les fichiers source ne sont **jamais modifiés** ;
 - un profil déjà en base n'est **jamais réécrit**, reconnu par son `id` ou, sans `id`, par son
@@ -1289,7 +1289,7 @@ eu lieu, la base est vide et la tournée ne sert personne.
 
 ### Le serveur
 
-`http.server.ThreadingHTTPServer`, un fil par requête — un audio long à télécharger ne bloque pas
+`http.server.ThreadingHTTPServer`, un fil par requête, un audio long à télécharger ne bloque pas
 la liste des profils. Les routes sont des classes (`api/routes.py`), une par forme d'URL, qui ne
 redéfinissent que les méthodes HTTP qu'elles servent ; la base répond 405 au reste. Le contrat
 est décrit dans le [README](README.md#api-http).
@@ -1297,12 +1297,12 @@ est décrit dans le [README](README.md#api-http).
 - **Authentification** : `Authorization: Bearer <RSSRESUME_API_TOKEN>`, comparé à temps constant
   (`hmac.compare_digest`), sur toutes les routes, avant même le routage. Un jeton absent ou de
   moins de 32 caractères empêche le serveur de **démarrer**. Les logs d'accès ne portent que
-  l'adresse, la méthode, le chemin sans chaîne de requête et le statut — jamais un en-tête.
-- **Corps** : `Content-Length` exigé, 64 Kio au plus — refusé (413) avant d'être lu —,
+  l'adresse, la méthode, le chemin sans chaîne de requête et le statut, jamais un en-tête.
+- **Corps** : `Content-Length` exigé, 64 Kio au plus, refusé (413) avant d'être lu,
   `Content-Type: application/json` exigé.
 - **Erreurs** : `{"erreur": "…"}`, et `"champ"` en plus quand le refus tient à une clé du
   document. La validation lève alors `profil.ChampInvalide`, une `ValueError` au message
-  inchangé — la tournée et la CLI n'y voient rien — dont le champ permet au site d'afficher le
+  inchangé, la tournée et la CLI n'y voient rien, dont le champ permet au site d'afficher le
   refus sous la case fautive au lieu de le deviner d'après le texte. Un catalogue illisible en
   base (`annuaire_sqlite.CatalogueIllisible`) donne 500, journalisé : c'est une base à réparer,
   pas une saisie à corriger.
@@ -1311,24 +1311,24 @@ est décrit dans le [README](README.md#api-http).
   fichier donne 416 ; un en-tête illisible ou multiple, le fichier entier (ce que la RFC permet).
 - **Désabonnement** : `POST /api/v1/desabonnements/lecture` dit ce qu'un lien de la lettre
   désabonnerait sans rien changer, `POST /api/v1/desabonnements` l'applique. Le jeton voyage
-  dans le corps JSON et non dans l'URL — les logs d'accès portent les chemins —, et le Bearer
+  dans le corps JSON et non dans l'URL, les logs d'accès portent les chemins, et le Bearer
   reste exigé : le site relaie le lien, il ne le vérifie pas. L'API le vérifie avec la clé
   dérivée de son propre jeton, puis `AnnuaireSqlite.desabonner` relit le profil par son `id`,
   lit ses destinataires par le même parseur que le travailleur (une adresse écrite en chaîne
   reste une adresse), cherche parmi eux une adresse de la lettre et retire la clé `email`, le tout dans une seule
   transaction `BEGIN IMMEDIATE` : deux clics simultanés ne passent pas tous les deux. Tout
-  refus — jeton faux, profil supprimé, lien déjà servi — est le même 404. Côté site, la page
+  refus, jeton faux, profil supprimé, lien déjà servi, est le même 404. Côté site, la page
   `/desabonnement/{jeton}` n'applique rien à l'affichage (un antivirus ouvre les liens) ; son
   action reçoit le bouton comme le POST en un clic des clients mail. Ce dernier arrive sans
   `Origin` : la protection CSRF de SvelteKit est donc levée (`csrf.trustedOrigins: ['*']`) et
   réécrite à l'identique dans `hooks.server.ts` (`csrf.ts`), cette seule route exceptée.
 - **Retours** : `POST /api/v1/retours/lecture` dit quelle journée un lien de vote désigne et
   rend le vote déjà donné, sans rien écrire ; `POST /api/v1/retours` vote. Le jeton voyage dans
-  le corps, comme celui du désabonnement, et le profil et la journée ne viennent que de lui — un
+  le corps, comme celui du désabonnement, et le profil et la journée ne viennent que de lui, un
   `profil_id` ou un `jour` glissés dans le corps sont ignorés. Jeton faux, d'un autre usage, ou
   d'un profil supprimé : le même 404. Pour qui est connecté, le site passe par
   `GET` / `PUT /api/v1/profils/{username}/journees/{date}/retour` après son propre contrôle
-  d'accès — propriétaire seulement. `AnnuaireSqlite.enregistrer_retour` écrit dans la table
+  d'accès, propriétaire seulement. `AnnuaireSqlite.enregistrer_retour` écrit dans la table
   `retours`, clé primaire `(profil_id, jour)`, par un `INSERT … ON CONFLICT DO UPDATE` sous
   `BEGIN IMMEDIATE` : un second vote remplace le premier, d'où qu'il vienne. La table est créée
   à l'ouverture de la base (`CREATE TABLE IF NOT EXISTS`), sans clé étrangère : le retour d'un
@@ -1363,10 +1363,10 @@ sur l'article en même temps que sa note.
 ```
 
 Conséquence pratique : tant que tu ne touches ni au profil, ni au barème, ni au modèle, relancer la
-même journée ne coûte **rien** en scoring — à condition de la redemander avec `--include-read` si
+même journée ne coûte **rien** en scoring, à condition de la redemander avec `--include-read` si
 elle a déjà été marquée lue. Le profil entrant dans l'empreinte, en injecter un autre
 renote automatiquement : aucun score calculé contre l'ancien profil ne peut survivre. Dès que tu modifies l'un des trois, l'empreinte change et
-les articles concernés sont renotés automatiquement — sans que tu aies à purger quoi que ce soit.
+les articles concernés sont renotés automatiquement, sans que tu aies à purger quoi que ce soit.
 
 Le nettoyage ne balaie pas les onze valeurs possibles : seuls les tags réellement portés par les
 articles concernés sont retirés, ce qui donne un appel par tag distinct. Le tag `digested` n'est
@@ -1380,7 +1380,7 @@ Modifier les axes change l'empreinte du prompt et fait renoter une fois les arti
 
 ## Les tags posés dans FreshRSS
 
-Chaque tag est **préfixé par le nom du profil** — `adrien-score-07`, `adrien-digested` : une note
+Chaque tag est **préfixé par le nom du profil**, `adrien-score-07`, `adrien-digested` : une note
 dépend du profil qui l'a produite, et le cache doit être à chacun. Les motifs relus sont ancrés sur
 ce préfixe : ni les tags d'un autre profil ni les anciens tags sans préfixe ne sont relus ou
 nettoyés. Passer aux profils coûte donc un re-scoring unique des articles relus ; les anciens tags
@@ -1416,7 +1416,7 @@ provider.speak(text)                           # -> bytes
 
 C'est tout ce que le reste du projet appelle : jamais un endpoint, jamais un payload.
 `DigestService` reçoit ces objets en collaborateurs, comme il reçoit déjà son client
-FreshRSS et son expéditeur d'email — et `None` là où la clé manque, ce qui fait
+FreshRSS et son expéditeur d'email, et `None` là où la clé manque, ce qui fait
 retomber le résumé sur l'extractif local et la voix sur `espeak`.
 
 ### Où vit quoi
@@ -1426,7 +1426,7 @@ retomber le résumé sur l'extractif local et la voix sur `espeak`.
 | [llm/providers.json](rssresume/llm/providers.json) | les **valeurs** : endpoint, modèle et réglages par action, voix, format, tarifs. Aucun code, aucun secret. |
 | [llm/providers.py](rssresume/llm/providers.py) | la **lecture** de ces valeurs, et le choix du fournisseur par action. Rend un `Settings`, un objet de valeurs sans comportement. |
 | [llm/prompts.py](rssresume/llm/prompts.py) | les **prompts**. Le même texte part chez tous les fournisseurs. |
-| [llm/base.py](rssresume/llm/base.py) | `LLMProvider` : les opérations, le transport, la comptabilité — tout ce qui ne dépend pas du fournisseur. Et la fabrique. |
+| [llm/base.py](rssresume/llm/base.py) | `LLMProvider` : les opérations, le transport, la comptabilité, tout ce qui ne dépend pas du fournisseur. Et la fabrique. |
 | [llm/openai.py](rssresume/llm/openai.py) · [llm/mistral.py](rssresume/llm/mistral.py) | ce qui diffère **vraiment** : quatre méthodes courtes chacune. |
 
 Une sous-classe ne redéfinit que `chat_payload`, `read_chat`, `speech_payload` et
@@ -1437,7 +1437,7 @@ fournisseur, c'est un fichier de plus et un bloc dans `providers.json`.
 Dans l'environnement il ne reste que les secrets et l'aiguillage :
 `OPENAI_API_KEY`, `MISTRAL_API_KEY`, `RSSRESUME_PROVIDER`, `RSSRESUME_<ACTION>_PROVIDER`.
 Chaque action résout **sa** clé : sans `MISTRAL_API_KEY`, une action confiée à Mistral
-retombe sur le local plutôt que d'emprunter celle d'OpenAI — un 401 au mieux, une clé
+retombe sur le local plutôt que d'emprunter celle d'OpenAI, un 401 au mieux, une clé
 promenée au pire.
 
 ### Les réglages livrés
@@ -1454,7 +1454,7 @@ Une note doit être reproductible, sinon le seuil devient un tirage au sort : d'
 température basse et un modèle classique côté notation. Le digest, lui, empile beaucoup
 de contraintes à tenir ensemble, ce qui justifie l'effort `medium` là où il existe. Le
 montage en empile autant, plus l'interdiction de déformer un numéro de version : même
-effort, et un plafond de sortie doublé — il rend le texte de **toutes** les catégories
+effort, et un plafond de sortie doublé, il rend le texte de **toutes** les catégories
 d'un coup, là où le digest n'en rend qu'une, et une troncature y perdrait la fin de la
 journée.
 
@@ -1485,21 +1485,21 @@ l'adaptateur qui déballe. C'est cet écart-là, plus que les complétions, qui 
 d'avoir séparé les dialectes.
 
 La voix étant le seul réglage de diction chez Mistral, tout ce qui relevait des
-`instructions` d'OpenAI — rythme, pauses, prononciation des sigles — repose alors sur le
+`instructions` d'OpenAI, rythme, pauses, prononciation des sigles, repose alors sur le
 texte du résumé, donc sur les prompts de `llm/prompts.py`, qui écrivent déjà pour l'oreille.
 
 Le modèle de notation entre dans l'empreinte du prompt de scoring : en changer renote
 tout l'historique. Changer de fournisseur pour la notation en change donc aussi le
-modèle, et déclenche la même renotation — c'est voulu, deux modèles ne notent pas pareil.
+modèle, et déclenche la même renotation, c'est voulu, deux modèles ne notent pas pareil.
 
 ## Ce qui tient quand le réseau lâche
 
 Le digest tourne la nuit, sans personne devant : un seul 429 du fournisseur ou un 502 devant
-FreshRSS suffisait à ce que la journée n'existe pas. Les deux clients réseau —
-[llm/base.py](rssresume/llm/base.py) et [external/freshrss.py](rssresume/external/freshrss.py) —
+FreshRSS suffisait à ce que la journée n'existe pas. Les deux clients réseau -
+[llm/base.py](rssresume/llm/base.py) et [external/freshrss.py](rssresume/external/freshrss.py) -
 passent donc par le même réessai, [tools/http.py](rssresume/tools/http.py) :
 
-- **trois tentatives**, un délai qui double (1 s, 2 s), à moitié tiré au sort — deux clients
+- **trois tentatives**, un délai qui double (1 s, 2 s), à moitié tiré au sort, deux clients
   tombés ensemble ne doivent pas revenir ensemble ;
 - **sur 429, 500, 502, 503, 504** et sur les erreurs de connexion et les délais dépassés. Tout
   autre 4xx vient de nous : même requête, même réponse, et sur un `edit-tag` la rejouer
@@ -1507,7 +1507,7 @@ passent donc par le même réessai, [tools/http.py](rssresume/tools/http.py) :
 - **`Retry-After` l'emporte** sur le backoff quand le serveur le donne, en secondes comme en
   date HTTP, plafonné à 30 secondes : au-delà, la catégorie suivante attend pour rien ;
 - **l'exception d'origine ressort intacte** une fois les tentatives épuisées. C'est l'appelant
-  qui la traduit — `LLMError` chez un fournisseur, `RuntimeError` côté FreshRSS — et il n'a pas
+  qui la traduit, `LLMError` chez un fournisseur, `RuntimeError` côté FreshRSS, et il n'a pas
   à démêler une erreur de transport d'une erreur de réessai.
 
 Chaque reprise est tracée dans le suivi d'exécution, avec sa cause et son délai :
@@ -1518,14 +1518,14 @@ Chaque reprise est tracée dans le suivi d'exécution, avec sa cause et son dél
 ```
  Le module ne
 connaît ni FreshRSS ni les fournisseurs : il reçoit un appel à tenter et le rejoue, ce qui le
-rend jugeable sans réseau — une doublure qui échoue N fois avant de réussir suffit.
+rend jugeable sans réseau, une doublure qui échoue N fois avant de réussir suffit.
 
 C'est aussi l'arbitrage assumé face à une passerelle type Portkey : à une exécution par jour,
 vingt lignes de réessai coûtent moins cher à exploiter qu'un composant de plus.
 
 Les autres failles du même ordre sont traitées là où elles tombent : lot de notation incomplet
 ou tronqué à l'étape 3, page d'avis injoignable à l'étape 5 (`tools/cve.py` laisse alors
-l'article tel quel), échec d'envoi de l'email à l'étape 7 — qui, lui, empêche le marquage comme
+l'article tel quel), échec d'envoi de l'email à l'étape 7, qui, lui, empêche le marquage comme
 lu, pour que la journée reste rejouable.
 
 ## Contraintes de sécurité
@@ -1538,7 +1538,7 @@ une quatrième est à tenir le jour où le digest sera rendu ailleurs qu'en audi
 
 Deux entrées ne sont pas sous notre contrôle :
 
-- le **contenu des articles** remonté par FreshRSS — titre, résumé, corps HTML, écrits par
+- le **contenu des articles** remonté par FreshRSS, titre, résumé, corps HTML, écrits par
   l'éditeur du flux ;
 - le **texte des pages d'avis** lu par `cve.enrich()`, à une URL que le flux a lui-même fournie.
 
@@ -1549,25 +1549,25 @@ l'effort : le lecteur du digest est celui qui décide d'appliquer un correctif o
 
 `tools/text.strip_html()` passe par `html.parser` et non par une expression régulière. La
 différence n'est pas cosmétique : `<[^>]+>` retirait les balises mais **gardait leur corps**, donc
-le JavaScript d'un `<script>` et les règles d'un `<style>` partaient dans le prompt — payés en
+le JavaScript d'un `<script>` et les règles d'un `<style>` partaient dans le prompt, payés en
 tokens, et lus par le modèle comme du contenu. Un chevron dans un attribut lui faisait en prime
 couper la balise au mauvais endroit et recracher du balisage.
 
 Sont retirés **avec leur contenu** : `script`, `style`, `noscript`, `template`, `svg`. Les
-commentaires HTML le sont aussi — ce qui n'est pas affiché à un lecteur humain n'a pas à être
+commentaires HTML le sont aussi, ce qui n'est pas affiché à un lecteur humain n'a pas à être
 résumé. Sur du HTML cassé (un `<script>` jamais refermé), le parseur perd la fin du texte plutôt
 que de laisser passer le code : c'est le sens du compromis.
 
 ### 3. Un article est une donnée, jamais une instruction
 
-Les trois prompts système — notation, résumé d'article, digest — se terminent par le même bloc
+Les trois prompts système, notation, résumé d'article, digest, se terminent par le même bloc
 `INJECTION_GUARD` (`llm/prompts.py`) : ce qui arrive dans la zone de données est de la donnée,
 aucune consigne trouvée dans un article n'est suivie, et le format de sortie ne se négocie pas.
 
 La consigne serait décorative sans la frontière qu'elle désigne : `prompts.fenced()` encadre le
 contenu des articles par `<<<DONNEES ARTICLES>>>` et `<<<FIN DONNEES ARTICLES>>>` dans les trois
 messages utilisateur, et **neutralise ces marqueurs** s'ils apparaissent dans le texte d'un
-article — sans quoi il suffirait de recopier le marqueur de fin pour écrire hors de la zone.
+article, sans quoi il suffirait de recopier le marqueur de fin pour écrire hors de la zone.
 
 C'est une **mitigation, pas une garantie** : aucune consigne ne rend un modèle imperméable à ce
 qu'il lit. Elle est gratuite, elle élève le coût d'une tentative, et son absence se remarquerait
@@ -1588,8 +1588,8 @@ Un modèle nourri de contenu non fiable produit du contenu non fiable. Aujourd'h
 `text/plain` (`EmailSender._build_message` appelle `set_content`, jamais `add_alternative`). Rien
 n'est interprété nulle part.
 
-Cela cesse d'être vrai au premier rendu HTML. Si un jour le digest est rendu autrement — email en
-HTML, page web, entrée RSS republiée dans FreshRSS (piste étudiée) — alors :
+Cela cesse d'être vrai au premier rendu HTML. Si un jour le digest est rendu autrement, email en
+HTML, page web, entrée RSS republiée dans FreshRSS (piste étudiée), alors :
 
 - la sortie du LLM doit être **échappée** ou passée dans un assainisseur, jamais insérée telle
   quelle dans du HTML, et surtout jamais affectée à un `innerHTML` ;
@@ -1599,7 +1599,7 @@ HTML, page web, entrée RSS republiée dans FreshRSS (piste étudiée) — alors
   titres et ses URL viennent des flux.
 
 Le précédent existe et n'est pas théorique : l'extension FreshRSS `xExtension-NewsAssistant`
-injecte la réponse de son LLM dans `innerHTML` — un XSS déclenchable **à travers le modèle**, par
+injecte la réponse de son LLM dans `innerHTML`, un XSS déclenchable **à travers le modèle**, par
 un simple article de flux.
 
 ### Limites connues, non traitées à ce jour
@@ -1639,8 +1639,8 @@ FreshRSS : authentifié en tant que mon-utilisateur
 [Tech] 4 article(s)
   scoring : 2 score(s) relu(s) des tags, 2 à calculer, dont 1 à renoter (prompt modifié)
   sélection : 2 article(s) retenu(s) sur 4 (seuil 7)
-  résumé via openai — gpt-5.6-luna (2 article(s), 9140 caractère(s) envoyés)
-  synthèse vocale via openai — gpt-4o-mini-tts (voix alloy)
+  résumé via openai, gpt-5.6-luna (2 article(s), 9140 caractère(s) envoyés)
+  synthèse vocale via openai, gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
 FreshRSS : nettoyage de 2 tag(s) de scoring obsolète(s)
 FreshRSS : notation de 2 article(s) sur 2 valeur(s) de score et 1 thématique(s)
@@ -1654,5 +1654,5 @@ Deux des quatre articles n'ont coûté aucun appel de scoring. Le marquage comme
 quatre ; le tag `digested` seulement sur les deux retenus.
 
 En face, `output/2026-08-23/tech.log.json` garde ce que ces lignes ne disent pas : les scores des
-quatre articles, l'angle retenu pour chacun, et le coût des trois appels — un scoring, un digest,
+quatre articles, l'angle retenu pour chacun, et le coût des trois appels, un scoring, un digest,
 une synthèse.

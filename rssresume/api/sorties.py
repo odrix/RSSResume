@@ -1,7 +1,7 @@
 """Les journées produites pour un profil, et leurs audios, lus sur le disque.
 
 Le seul endroit où l'API touche au système de fichiers. Tout ce qui y entre vient d'une
-URL — un identifiant, une date, un nom de fichier — et une URL se fabrique : chaque
+URL, un identifiant, une date, un nom de fichier, et une URL se fabrique : chaque
 segment est donc validé contre un motif strict, puis le fichier doit figurer dans la
 liste de sa journée, puis son chemin résolu doit rester sous le dossier du profil. Trois
 barrières indépendantes, pour qu'une seule défaillance ne suffise pas à sortir du volume.
@@ -55,7 +55,7 @@ class Journee:
 class ContenuJournee:
     """Ce qu'une journée raconte : la lettre que l'email a portée, et les audios du disque.
 
-    La lettre et non les journaux bruts : c'est elle qui décide de ce qu'un lecteur voit —
+    La lettre et non les journaux bruts : c'est elle qui décide de ce qu'un lecteur voit -
     quels articles sont « à lire », lesquels « à surveiller », quelle durée s'annonce.
     Relire les journaux une seconde fois, ailleurs, finirait par ne plus dire comme l'email.
     """
@@ -158,8 +158,8 @@ class Sorties:
     def contenu(self, id: str, texte_date: str) -> ContenuJournee | None:
         """Le contenu d'une journée produite, relu de ses journaux ; sinon `None`.
 
-        La lecture est exactement celle de `--send-only` — `read_day`, `read_montage`,
-        `Lettre.compose` — pour que le site montre ce que l'email a montré, sans un appel
+        La lecture est exactement celle de `--send-only`, `read_day`, `read_montage`,
+        `Lettre.compose`, pour que le site montre ce que l'email a montré, sans un appel
         IA ni une seconde façon de relire un journal.
         """
         date = date_valide(texte_date)

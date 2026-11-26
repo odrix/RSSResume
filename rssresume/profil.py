@@ -1,7 +1,7 @@
 """Le document d'une personne : son profil de pertinence, sa stack, son destinataire.
 
 Le profil de pertinence est le seul élément vraiment personnel du système. Il est
-utilisé par les trois prompts — noter, résumer un article, dicter le digest audio — et
+utilisé par les trois prompts : noter, résumer un article, dicter le digest audio, et
 c'est lui qui décide de tout le reste : ce qui monte au-dessus du seuil, ce qui est
 raconté, et sous quel angle. Ses clés `axes` personnalisent aussi les rubriques du
 scoring et changent l'empreinte de cache : ouvrir l'outil à quelqu'un d'autre peut donc
@@ -10,7 +10,7 @@ changer ce texte, ses axes, ou les deux.
 Les deux autres sont personnelles pour la même raison, et se lisent au même endroit :
 ce qu'on exploite (la liste de composants sur laquelle les avis CERT-FR sont appariés)
 et à qui le digest est envoyé. Trois fichiers et trois variables d'environnement pour un
-seul lecteur n'avaient d'autre effet que de multiplier les chemins à tenir — un seul
+seul lecteur n'avaient d'autre effet que de multiplier les chemins à tenir, un seul
 document, hors du dépôt, en dit autant :
 
     {"profil": "CTO d'un SaaS…", "stack": ["Traefik"], "email": "moi@example.com"}
@@ -20,14 +20,14 @@ les vulnérabilités : `exploitant` (le défaut), `decideur` ou `curieux`. Qui n
 rien n'a que faire des plages de versions, et c'est son document, non le modèle, qui le
 dit.
 
-La clé `categories` y liste les catégories suivies — publiques, ou privées dont la
+La clé `categories` y liste les catégories suivies, publiques, ou privées dont la
 personne est propriétaire : `"categories": ["Tech", "Veille marché"]`. Absente, la
 personne reçoit tout ce que le catalogue lui autorise. Ce qu'elle ne suit pas n'est ni
 noté ni résumé pour elle : c'est le premier filtre, et le moins cher.
 
 La clé `flux_exclus` descend d'un cran, au flux : `"flux_exclus": ["NoLimitSecu"]`. Une
-catégorie suivie mêle des flux qui se résument et d'autres qui ne le peuvent pas — un
-podcast sans transcription, un journal des versions — et les noter coûte des tokens pour
+catégorie suivie mêle des flux qui se résument et d'autres qui ne le peuvent pas, un
+podcast sans transcription, un journal des versions, et les noter coûte des tokens pour
 un résultat vide. Leurs articles ne sont ni notés ni résumés, mais sont marqués lus avec
 le reste : ce qu'on a choisi de ne pas lire n'a pas à revenir le lendemain.
 
@@ -38,7 +38,7 @@ quelle équipe.
 
 Plusieurs personnes lisent maintenant le même FreshRSS : un dossier de documents, un par
 personne, nommé d'après elle (`RSSRESUME_PROFILES_DIR`, voir `Annuaire`). Le nom du
-fichier — le `username` — n'est pas une étiquette décorative : il nomme le répertoire de
+fichier, le `username`, n'est pas une étiquette décorative : il nomme le répertoire de
 sortie et préfixe les tags FreshRSS. C'est pourquoi il est contraint, et pourquoi un
 fichier mal nommé est une erreur et non un profil de plus.
 
@@ -88,8 +88,8 @@ EXTENSION_PROFIL = ".json"
 
 #: Les clés du document. `profil` est la seule exigée.
 CLE_PROFIL = "profil"
-#: L'identifiant stable de la personne, un UUID. Le `username` est le nom humain — il
-#: préfixe les tags et se tape dans `--profil` —, l'`id` nomme la sortie : renommer
+#: L'identifiant stable de la personne, un UUID. Le `username` est le nom humain, il
+#: préfixe les tags et se tape dans `--profil`, l'`id` nomme la sortie : renommer
 #: quelqu'un ne doit pas le séparer de ses journées. Absent d'un document du dossier, il
 #: est généré et écrit dans le fichier au premier passage.
 CLE_ID = "id"
@@ -113,7 +113,7 @@ class ChampInvalide(ValueError):
 
     Une `ValueError` au message inchangé : la tournée, la CLI et l'import n'attrapent
     toujours qu'une exception et lisent le même texte. Le champ ne sert qu'au site, qui
-    affiche le refus sous la case fautive — sans lui, il devait deviner la clé d'après le
+    affiche le refus sous la case fautive, sans lui, il devait deviner la clé d'après le
     message, et se tromper dès que le message changeait de tournure.
     """
 
@@ -146,7 +146,7 @@ class FluxExclus:
 
         La liste vide est acceptée, contrairement à `categories` : n'exclure aucun flux
         est l'état ordinaire, et une liste vidée dans le formulaire veut dire exactement
-        cela. Un doublon est refusé comme pour les catégories — il dirait deux fois la
+        cela. Un doublon est refusé comme pour les catégories, il dirait deux fois la
         même chose, et le second masquerait une faute de recopie.
         """
         if valeur is None:
@@ -208,7 +208,7 @@ class Securite(enum.Enum):
 
     Une énumération et non un texte libre : le régime choisit une consigne écrite à
     l'avance, et une valeur que personne n'a prévue n'en choisirait aucune. Le choix se
-    fait dans le code, comme pour la stack déclarée — le laisser au modèle, ce serait lui
+    fait dans le code, comme pour la stack déclarée, le laisser au modèle, ce serait lui
     demander de deviner ce qu'un profil en prose sous-entend.
     """
 
@@ -225,7 +225,7 @@ class Securite(enum.Enum):
         """Le régime déclaré, ou le défaut si la clé manque. Autre chose : `ValueError`.
 
         Pas de normalisation de casse : un document se corrige une fois, au lancement,
-        alors qu'une tolérance devrait se répéter dans chaque lecteur — le site compris.
+        alors qu'une tolérance devrait se répéter dans chaque lecteur, le site compris.
         """
         if valeur is None:
             return SECURITE_PAR_DEFAUT
@@ -242,7 +242,7 @@ class Securite(enum.Enum):
 #: ne la porte pas soit servi exactement comme la veille.
 SECURITE_PAR_DEFAUT = Securite.EXPLOITANT
 
-DEFAULT_PROFIL = """Professionnel de la tech — développement, produit, direction technique
+DEFAULT_PROFIL = """Professionnel de la tech, développement, produit, direction technique
 ou qualité. Veille quotidienne sur ce qui change la façon de concevoir, de livrer et
 d'exploiter un logiciel, et sur ce qui oblige à décider.
 
@@ -252,7 +252,7 @@ Axes de veille pertinents :
 - cyber : cybersécurité technique (failles exploitables sur des composants répandus,
   chiffrement, gestion de clés, chaîne d'approvisionnement logicielle, incidents
   majeurs et ce qu'ils apprennent).
-- marche : les acteurs et les outils du métier — rachats, fermetures de service,
+- marche : les acteurs et les outils du métier, rachats, fermetures de service,
   changements de modèle économique ou de licence qui obligent à migrer.
 - stack : veille technologique (langages, frameworks, bases de données, conteneurs,
   cloud, observabilité) : versions majeures, fins de support, ruptures de
@@ -268,7 +268,7 @@ Axes de veille pertinents :
 
 Ne sont PAS pertinents : le hardware grand public, les levées de fonds sans conséquence
 technique, les annonces produit sans impact sur ce qu'on exploite, et l'actualité IA
-grand public — usages consumer, démonstrations, classements de modèles. L'IA reste
+grand public, usages consumer, démonstrations, classements de modèles. L'IA reste
 pertinente sur deux terrains seulement : ce qu'elle change à la sécurité et à la
 conformité, et ce qu'elle change à la façon de développer et d'encadrer une équipe."""
 
@@ -278,7 +278,7 @@ class Profil:
 
     Objet et non trois valeurs rendues ensemble : les trois voyagent d'un seul tenant
     du fichier jusqu'à `AppConfig`, et c'est ici qu'on lit ce qu'est un lecteur du
-    digest — un critère de pertinence, une infrastructure, une boîte aux lettres.
+    digest, un critère de pertinence, une infrastructure, une boîte aux lettres.
     """
 
     def __init__(
@@ -299,12 +299,12 @@ class Profil:
         self.id = identifiant
         self.texte = texte
         #: Les axes personnalisent les rubriques du scoring. Absents du document, ils
-        #: restent les cinq thématiques d'origine — leur empreinte doit donc rester identique.
+        #: restent les cinq thématiques d'origine, leur empreinte doit donc rester identique.
         self.axes = axes if axes is not None else Axes.par_defaut()
         #: Vide quand le document ne déclare rien : aucun avis n'est alors apparié, et
         #: la phrase du digest le dit plutôt que d'annoncer que rien ne nous concerne.
         self.stack = stack if stack is not None else Stack()
-        #: Les destinataires du digest. Vides, aucun email ne part — c'est déjà ce que
+        #: Les destinataires du digest. Vides, aucun email ne part, c'est déjà ce que
         #: faisait `SMTP_TO` absente.
         self.emails = tuple(emails)
         #: Le prénom qui ouvre l'audio de journée. Vide, le montage n'appelle personne
@@ -313,7 +313,7 @@ class Profil:
         #: Le détail dû aux vulnérabilités. Il voyage avec la stack, parce que c'est elle
         #: qu'il module : une stack dit ce qui tourne, le régime dit qui l'écoute.
         self.securite = securite
-        #: Les catégories suivies, telles que déclarées. `None` — clé absente — et non un
+        #: Les catégories suivies, telles que déclarées. `None`, clé absente, et non un
         #: tuple vide : l'absence veut dire « tout ce que le catalogue autorise », et doit
         #: rester distincte d'une liste qui ne suivrait rien.
         self.categories = None if categories is None else tuple(categories)
@@ -327,7 +327,7 @@ def load_profil(override: str | None = None) -> Profil:
 
     Priorité : `override` > `RSSRESUME_PROFILE` > `RSSRESUME_PROFILE_FILE` > défaut.
     Les deux variables ensemble sont une erreur de configuration ; le texte l'emporte,
-    et ne porte alors que lui — ni stack, ni destinataire.
+    et ne porte alors que lui, ni stack, ni destinataire.
 
     Un fichier annoncé mais illisible lève une erreur au lieu de retomber sur le profil
     par défaut : noter toute une journée d'articles contre le mauvais critère de
@@ -375,7 +375,7 @@ def profil_depuis_dict(
     Public parce que le site qui édite les profils valide un formulaire avant d'écrire
     le fichier : il doit refuser exactement ce que le passage du matin refuserait, et
     le seul moyen de le garantir est d'appeler la même fonction. `origine` ne sert qu'à
-    situer l'erreur dans son message — un chemin, un nom de profil.
+    situer l'erreur dans son message, un chemin, un nom de profil.
 
     Une stack fautive lève aussi `ValueError`, et non l'erreur propre à la stack :
     l'appelant n'a qu'une exception à attraper pour dire « ce document est refusé ».
@@ -434,7 +434,7 @@ def id_valide(valeur: object) -> bool:
     """Vrai pour un UUID écrit sous sa forme canonique, en minuscules.
 
     La forme est exigée, pas seulement le sens : l'identifiant nomme un répertoire, et
-    deux écritures du même UUID — majuscules, accolades — en désigneraient deux.
+    deux écritures du même UUID, majuscules, accolades, en désigneraient deux.
     """
     if not isinstance(valeur, str):
         return False
@@ -468,7 +468,7 @@ def _prenom(valeur: object, origine: str) -> str:
 
     Facultatif, mais pas permissif : une clé remplie avec autre chose qu'un texte lève au
     lancement. Sans cela, la seule façon de s'en apercevoir serait d'entendre la
-    salutation se tromper un matin — et l'audio est justement ce qu'on ne relit pas.
+    salutation se tromper un matin, et l'audio est justement ce qu'on ne relit pas.
     """
     if valeur is None:
         return ""
@@ -486,7 +486,7 @@ def _categories(valeur: object, origine: str) -> tuple[str, ...] | None:
 
     La liste vide est refusée : un digest qui ne suit rien n'est pas un choix qu'on fait
     exprès, et l'accepter la confondrait avec l'absence, qui veut dire « tout ». Un doublon
-    — casse et accents retirés, comme le catalogue compare — l'est aussi : il dirait deux
+,    casse et accents retirés, comme le catalogue compare, l'est aussi : il dirait deux
     fois la même chose, et le second masquerait une faute de recopie.
     """
     if valeur is None:
@@ -521,7 +521,7 @@ def _emails(valeur: object, origine: str) -> tuple[str, ...]:
 
     Une adresse est vérifiée à l'arobase, et pas davantage : le reste ne se saurait qu'au
     refus du serveur, le soir venu. Ce peu-là suffit à attraper la faute qui arrive
-    vraiment — une clé remplie avec autre chose qu'une adresse — au lancement, quand on
+    vraiment, une clé remplie avec autre chose qu'une adresse, au lancement, quand on
     la lit encore.
     """
     if valeur is None:
@@ -578,7 +578,7 @@ class Lecteur:
 class Annuaire:
     """Les personnes que le passage quotidien sert, et comment lire chacune.
 
-    La base porte ce qui ne dépend pas de l'endroit où vivent les documents — lister,
+    La base porte ce qui ne dépend pas de l'endroit où vivent les documents, lister,
     cibler un nom, charger tout le monde ; les sous-classes ne disent que la source.
     Les noms et les profils sont lus séparément, et à la demande : un document fautif
     ne doit coûter que la journée de sa personne, pas celle des autres, et se signaler
@@ -596,7 +596,7 @@ class Annuaire:
     def catalogue(self) -> Catalogue:
         """Le catalogue des catégories (`categories.Catalogue`) : ouvert, sauf en base.
 
-        Seule la base sait le porter — un dossier de profils n'a pas d'endroit commun où
+        Seule la base sait le porter, un dossier de profils n'a pas d'endroit commun où
         le ranger. Ouvert, il sert tout à tout le monde, et la tournée ne l'accepte que
         pour une seule personne. Import différé : `categories` dépend de ce module.
         """
@@ -639,7 +639,7 @@ class Annuaire:
         return Lecteur(username, profil)
 
     def _id_de(self, username: str) -> str | None:
-        """L'identifiant d'un autre profil, `None` s'il est illisible — signalé à son tour."""
+        """L'identifiant d'un autre profil, `None` s'il est illisible, signalé à son tour."""
         try:
             return self.profil(username).id
         except ValueError:
@@ -647,7 +647,7 @@ class Annuaire:
 
     @staticmethod
     def _lire_document(fichier: pathlib.Path) -> Profil:
-        """Le profil d'un document, avec son identifiant — généré et écrit s'il manque.
+        """Le profil d'un document, avec son identifiant, généré et écrit s'il manque.
 
         Le document doit être un objet JSON : un texte brut n'a pas de place où ranger
         l'identifiant, et sans lui la personne n'a pas de répertoire de sortie.
@@ -662,7 +662,7 @@ class Annuaire:
             raise ValueError(f"Profil illisible : {fichier} ({exc})") from exc
         if not contenu.startswith("{"):
             raise ValueError(
-                f"{fichier} : un profil est un objet JSON, pas du texte brut — il doit pouvoir "
+                f"{fichier} : un profil est un objet JSON, pas du texte brut, il doit pouvoir "
                 f'porter son « {CLE_ID} ». Le convertir en {{"{CLE_PROFIL}": "…"}}.'
             )
         try:
@@ -678,7 +678,7 @@ class Annuaire:
         return profil
 
     def cibles(self, username: str | None = None) -> list[str]:
-        """Les noms à servir : tous, ou celui demandé — qui doit exister.
+        """Les noms à servir : tous, ou celui demandé, qui doit exister.
 
         Un nom inconnu lève avant tout traitement : une faute de frappe dans `--profil`
         ne doit ni tourner à vide ni servir tout le monde à la place.
@@ -708,12 +708,12 @@ class Annuaire:
         - sinon personne : la tournée ne lit rien et ne résume rien.
 
         Le dossier **et** une des variables à profil unique sont refusés ensemble :
-        servir l'un en ignorant l'autre ferait disparaître une personne — ou en ferait
-        apparaître une — sans que rien ne le dise. C'est l'état transitoire d'une
+        servir l'un en ignorant l'autre ferait disparaître une personne, ou en ferait
+        apparaître une, sans que rien ne le dise. C'est l'état transitoire d'une
         migration, et il doit se voir au déploiement.
 
         `RSSRESUME_PROFILE` n'est plus servie par la tournée : un profil sans nom n'a ni
-        répertoire ni préfixe de tags. Posée, elle lève plutôt que d'être ignorée — sans
+        répertoire ni préfixe de tags. Posée, elle lève plutôt que d'être ignorée, sans
         quoi une installation qui en dépendait cesserait d'envoyer son digest sans un mot.
         """
         base = (os.getenv(ENV_PROFILES_DB) or "").strip()
@@ -780,7 +780,7 @@ class AnnuaireDossier(Annuaire):
         self._signales: set[str] = set()
 
     def chemin(self, username: str) -> pathlib.Path:
-        """Où vit — ou vivra — le document de `username`. Le nom est validé d'abord."""
+        """Où vit, ou vivra, le document de `username`. Le nom est validé d'abord."""
         return self.dossier / f"{valider_username(username)}{EXTENSION_PROFIL}"
 
     def usernames(self) -> list[str]:
@@ -819,8 +819,8 @@ class AnnuaireFichier(Annuaire):
     """L'installation à une seule personne : le document de `RSSRESUME_PROFILE_FILE`.
 
     Son nom est celui du fichier, pour que passer ensuite au dossier de profils ne soit
-    qu'un déplacement : `input/adrien.json` tague déjà `adrien-…`, et son `id` — écrit
-    dans le fichier — le suit dans le dossier avec ses journées.
+    qu'un déplacement : `input/adrien.json` tague déjà `adrien-…`, et son `id`, écrit
+    dans le fichier, le suit dans le dossier avec ses journées.
     """
 
     def __init__(self, fichier: pathlib.Path):

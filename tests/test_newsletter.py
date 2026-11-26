@@ -30,12 +30,12 @@ from tests.support import FakeEmailSender, make_config
 
 #: La journée que la lettre raconte, et celle où elle part : le passage de 7 h résume
 #: la veille, donc les deux diffèrent tous les matins. Les tests le reproduisent.
-JOUR = dt.date(2026, 8, 27)  # un jeudi — la journée racontée
-ENVOI = dt.date(2026, 8, 28)  # un vendredi — le jour où la lettre arrive
+JOUR = dt.date(2026, 8, 27)  # un jeudi, la journée racontée
+ENVOI = dt.date(2026, 8, 28)  # un vendredi, le jour où la lettre arrive
 COMPOSEE_LE = dt.datetime(2026, 8, 28, 7, 30)
 
 
-def ephem(texte="1991 — le Web est présenté publiquement.", jour=ENVOI, origine="table"):
+def ephem(texte="1991, le Web est présenté publiquement.", jour=ENVOI, origine="table"):
     """Une éphéméride du jour de l'envoi, fête comprise."""
     return Ephemeride(jour=jour, fete=fetes.du_jour(jour), texte=texte, origine=origine)
 
@@ -110,12 +110,12 @@ class EnteteTests(unittest.TestCase):
 
             # Pas de décompte de catégories : l'objet se fait couper par le client
             # avant d'être lu, et le décompte ne change pas la décision d'ouvrir.
-            self.assertEqual("Veille du 27 août 2026 — 2 min d'écoute", lettre.subject)
+            self.assertEqual("Veille du 27 août 2026, 2 min d'écoute", lettre.subject)
 
     def test_a_day_without_any_category_says_so(self):
         lettre = Lettre.compose(JOUR, [], generated_at=COMPOSEE_LE)
 
-        self.assertEqual("Veille du 27 août 2026 — aucun article", lettre.subject)
+        self.assertEqual("Veille du 27 août 2026, aucun article", lettre.subject)
         self.assertIn("Aucun article trouvé", lettre.text)
         self.assertIn("Aucun article trouvé", lettre.html)
 
@@ -190,7 +190,7 @@ class IntroductionTests(unittest.TestCase):
         lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
 
         self.assertEqual(
-            ["Vendredi 28 août 2026, saint Augustin.", "1991 — le Web est présenté publiquement."],
+            ["Vendredi 28 août 2026, saint Augustin.", "1991, le Web est présenté publiquement."],
             lettre._introduction,
         )
         # Deux blocs distincts en HTML, et non un paragraphe coupé d'un `<br>` : c'est
@@ -220,7 +220,7 @@ class IntroductionTests(unittest.TestCase):
         lettre = Lettre.compose(JOUR, [digest()], ephem(), generated_at=COMPOSEE_LE)
 
         # Deux lignes, et la coupure est celle qu'on a choisie.
-        attendu = "Vendredi 28 août 2026, saint Augustin.\n1991 — le Web est présenté publiquement."
+        attendu = "Vendredi 28 août 2026, saint Augustin.\n1991, le Web est présenté publiquement."
         self.assertIn(attendu, lettre.text)
         self.assertIn("Vendredi&nbsp;28&nbsp;août&nbsp;2026, saint Augustin.", lettre.html)
 
@@ -597,7 +597,7 @@ class SectionMesureTests(unittest.TestCase):
 class MontageTests(unittest.TestCase):
     """La lettre du mode `global` : un seul fichier, annoncé une seule fois.
 
-    Ce que ces tests protègent : les sections gardent tout ce qui n'est pas l'audio —
+    Ce que ces tests protègent : les sections gardent tout ce qui n'est pas l'audio -
     leur texte, leurs ancres, leurs deux listes. L'email doit se lire pareil dans les
     deux modes, à la pièce jointe près."""
 
@@ -634,7 +634,7 @@ class MontageTests(unittest.TestCase):
             lettre = self._lettre(tmpdir)
 
             self.assertEqual(1, lettre.text.count("journee.wav"))
-            self.assertIn("Pièce jointe : journee.wav — 2 min", lettre.text)
+            self.assertIn("Pièce jointe : journee.wav, 2 min", lettre.text)
             self.assertEqual(1, lettre.html.count("journee.wav"))
             # Annoncé avant la première section, pas après.
             self.assertLess(lettre.text.index("journee.wav"), lettre.text.index("CYBER"))
@@ -652,7 +652,7 @@ class MontageTests(unittest.TestCase):
     def test_an_unreadable_file_promises_no_listening_time(self):
         """Comme pour une catégorie : la durée se tait plutôt que d'annoncer « 0 min ».
 
-        Le fichier reste nommé — c'est ce que font déjà les sections, et la lettre n'est
+        Le fichier reste nommé, c'est ce que font déjà les sections, et la lettre n'est
         pas l'endroit qui juge du disque. C'est `runlog.read_montage` qui écarte un audio
         disparu, au renvoi, là où le cas se produit vraiment.
         """
@@ -666,7 +666,7 @@ class MontageTests(unittest.TestCase):
             self.assertIsNone(lettre.montage_ecoute)
             self.assertIsNone(lettre.total_secondes)
             self.assertIn("Pièce jointe : journee.wav", lettre.text)
-            self.assertNotIn("journee.wav —", lettre.text)
+            self.assertNotIn("journee.wav -", lettre.text)
 
     def test_without_a_montage_nothing_changes(self):
         """Le mode par catégorie doit se composer exactement comme avant."""
@@ -704,7 +704,7 @@ class AbonnementPiedTests(unittest.TestCase):
         lettre = self._lettre()
 
         for rendu in (lettre.text, lettre.html):
-            self.assertIn(f"Envoyée par La Veille — {SITE}.", rendu)
+            self.assertIn(f"Envoyée par La Veille, {SITE}.", rendu)
             self.assertIn("destinataire du profil « bea »", rendu)
 
     def test_the_three_links_are_in_both_renderings(self):
@@ -827,7 +827,7 @@ class LiensAvisTests(unittest.TestCase):
     """« Utile » et « Pas utile » au pied : signés pour le profil et la journée racontée.
 
     Ce que ces tests protègent : les deux rendus portent la question et les deux liens tels
-    qu'ils partent — URL en clair en texte, ancres en HTML —, le jeton désigne la journée du
+    qu'ils partent, URL en clair en texte, ancres en HTML, le jeton désigne la journée du
     titre et non le jour de l'envoi, et une lettre sans clé ou sans abonnement n'en a pas."""
 
     PROFIL_ID = "0b6f7e0a-3c55-4a8e-9a43-1f2d0c9e8b71"

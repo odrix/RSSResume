@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Nouveau mot de passe — RSSResume</title>
+	<title>Nouveau mot de passe, RSSResume</title>
 </svelte:head>
 
 <h1>Choisir un nouveau mot de passe</h1>

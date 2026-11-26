@@ -101,7 +101,7 @@ class FactoryTests(unittest.TestCase):
         os.environ, {"OPENAI_API_KEY": "sk-openai", "RSSRESUME_TTS_PROVIDER": "mistral"}, clear=True
     )
     def test_an_action_without_key_yields_nothing_rather_than_borrowing_one(self):
-        """Sans clé Mistral, la synthèse retombe sur espeak — pas sur la clé d'OpenAI."""
+        """Sans clé Mistral, la synthèse retombe sur espeak, pas sur la clé d'OpenAI."""
         self.assertIsNone(llm.for_action(providers.TTS))
         self.assertIsNotNone(llm.for_action(providers.DIGEST))
 

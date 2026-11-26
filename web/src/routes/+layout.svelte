@@ -9,7 +9,7 @@
 	let { data, children }: LayoutProps = $props();
 
 	// Le layout survit aux navigations, pas les pages : l'écoute vit donc ici, et son marquage
-	// aussi — une écoute lancée depuis la liste peut s'achever sur une autre page.
+	// aussi, une écoute lancée depuis la liste peut s'achever sur une autre page.
 	const lecteur = fournirLecteur(new LecteurAudio());
 	$effect(() => {
 		if (!data.utilisateur) return;

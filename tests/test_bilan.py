@@ -2,7 +2,7 @@
 
 Ce que ces tests protègent : c'est ce qu'on lit quand une journée s'est mal passée, sur
 un serveur où l'on n'entre que par SSH. Trois choses doivent y être justes, parce qu'on
-prend des décisions dessus — le seuil RÉELLEMENT appliqué, le coût quand il est inconnu,
+prend des décisions dessus, le seuil RÉELLEMENT appliqué, le coût quand il est inconnu,
 et la présence des catégories qui n'ont pas de journal du tout.
 """
 
@@ -150,7 +150,7 @@ class TableauTests(unittest.TestCase):
             ).texte()
 
             ligne, = [l for l in texte.splitlines() if l.startswith("2 - Cyber")]
-            self.assertIn("—", ligne)
+            self.assertIn("-", ligne)
 
     def test_a_very_long_category_name_does_not_break_the_columns(self):
         """Un libellé qui déborde la fenêtre du terminal fait perdre le tableau entier :
@@ -169,7 +169,7 @@ class TableauTests(unittest.TestCase):
 
 class MarqueursTests(unittest.TestCase):
     def test_a_category_without_any_journal_still_appears(self):
-        """Elle n'a rien lu ni rien dépensé, donc pas de journal — mais elle fait partie
+        """Elle n'a rien lu ni rien dépensé, donc pas de journal, mais elle fait partie
         de la journée, et son absence du bilan se lirait comme un oubli."""
         with tempfile.TemporaryDirectory() as tmpdir:
             texte = ecrire(tmpdir, [journal()], marqueurs=["9-vide.no-article"]).texte()

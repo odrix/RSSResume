@@ -1,9 +1,9 @@
-"""La migration d'un dossier de profils JSON — ou d'un document unique — vers la base.
+"""La migration d'un dossier de profils JSON, ou d'un document unique, vers la base.
 
 Elle se rejoue sans danger : un profil déjà en base n'est jamais réécrit. Le site a pu le
 modifier depuis, et les fichiers ne sont plus, après la migration, qu'une sauvegarde
 figée ; les réimporter écraserait ce que la personne vient d'éditer. Les fichiers
-source, eux, ne sont jamais touchés — ni renommés, ni complétés de leur identifiant.
+source, eux, ne sont jamais touchés, ni renommés, ni complétés de leur identifiant.
 
 L'identifiant du document est conservé : c'est lui qui nomme le répertoire de sortie, et
 le changer couperait la personne de ses journées passées. Un document sans identifiant en

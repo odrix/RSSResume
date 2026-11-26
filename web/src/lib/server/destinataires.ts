@@ -26,7 +26,7 @@ import { erreurEmail, normaliserEmail } from './validation.js';
 export const MAX_EN_ATTENTE = 10;
 
 /** Une saisie refusée avant tout appel à l'API ; le message est affiché tel quel, sous le
- * champ des adresses — c'est toujours d'elles qu'il s'agit. */
+ * champ des adresses, c'est toujours d'elles qu'il s'agit. */
 export class ErreurDestinataire extends Error {
 	readonly champ = 'email';
 }

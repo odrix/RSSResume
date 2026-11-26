@@ -4,7 +4,7 @@
  *
  * Les deux exigent le mot de passe actuel : une session laissée ouverte sur un poste
  * partagé ne doit pas suffire à s'approprier le compte. La nouvelle adresse, elle, n'est
- * appliquée qu'au clic sur le lien qu'elle reçoit — même règle qu'à l'inscription : on ne
+ * appliquée qu'au clic sur le lien qu'elle reçoit, même règle qu'à l'inscription : on ne
  * se connecte qu'avec une adresse dont on a prouvé être le titulaire.
  *
  * Seul le compte du site change. Les adresses qui reçoivent le digest sont celles du
@@ -51,7 +51,7 @@ export class Identifiants {
 		if (refus) throw new ErreurIdentifiants('nouveauMotDePasse', refus);
 		await this.comptes.changerMotDePasse(utilisateur.id, nouveau);
 		this.sessions.fermerToutes(utilisateur.id, jetonSession);
-		// Un lien demandé avant — par la personne ou par qui tenait le compte — ne doit pas
+		// Un lien demandé avant, par la personne ou par qui tenait le compte : ne doit pas
 		// rouvrir ce que le nouveau mot de passe vient de fermer.
 		this.jetons.revoquerTous(utilisateur.id, 'reinitialisation', 'adresse');
 	}

@@ -36,8 +36,8 @@ export class Reinitialisation {
 	/** Envoie un lien si l'adresse a un compte confirmé ; ne rend rien dans tous les cas.
 	 *
 	 * Un compte en attente n'en reçoit pas : il n'a pas encore prouvé son adresse, et c'est
-	 * « Renvoyer le lien » qui le débloque. Tout le travail est différé — l'écriture du jeton
-	 * comprise, synchrone — : sinon une adresse connue répondrait plus lentement qu'une
+	 * « Renvoyer le lien » qui le débloque. Tout le travail est différé, l'écriture du jeton
+	 * comprise, synchrone, : sinon une adresse connue répondrait plus lentement qu'une
 	 * inconnue. Une erreur différée est journalisée, jamais laissée en rejet non géré, qui
 	 * arrêterait Node. */
 	demander(email: string, origine: string): void {
@@ -62,7 +62,7 @@ export class Reinitialisation {
 	}
 
 	/** Fixe le nouveau mot de passe et ferme toutes les sessions du compte : celui qui
-	 * réinitialise reprend la main, une session ouverte par un autre ne survit pas — ni un
+	 * réinitialise reprend la main, une session ouverte par un autre ne survit pas, ni un
 	 * lien de réinitialisation ou de changement d'adresse encore en circulation. */
 	async reinitialiser(jeton: string, motDePasse: string): Promise<Utilisateur> {
 		const compte = this.lire(jeton);

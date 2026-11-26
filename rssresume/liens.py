@@ -1,7 +1,7 @@
 """La règle qui décide si une URL venue d'un flux peut devenir un lien.
 
 Un module à part et non une fonction de `api/sorties.py` : l'email et le site doivent
-appliquer la même règle, et `sorties.py` importe déjà la `Lettre` — la `Lettre` ne peut
+appliquer la même règle, et `sorties.py` importe déjà la `Lettre`, la `Lettre` ne peut
 donc pas l'importer en retour sans boucle.
 """
 
@@ -18,12 +18,12 @@ def lien_sur(url: str) -> str | None:
 
     Les URL viennent des flux, que n'importe qui écrit : un `javascript:` posé dans un
     `href` s'exécuterait au clic, et ni Svelte ni l'échappement HTML n'assainissent un
-    schéma. Chaque sortie — l'API, l'email — refait le contrôle elle-même plutôt que de
+    schéma. Chaque sortie, l'API, l'email, refait le contrôle elle-même plutôt que de
     compter sur celle d'à côté : ce qu'elle rend, elle le rend sûr.
 
     Une espace ou un caractère de contrôle à l'intérieur suffit à refuser : `urlsplit`
     retire tabulations et sauts de ligne avant d'analyser, alors que c'est le texte brut
-    qui est rendu — `https://a.test/x\\n javascript:…` passerait l'analyse et poserait
+    qui est rendu, `https://a.test/x\\n javascript:…` passerait l'analyse et poserait
     une seconde ligne dans la version texte de l'email.
     """
     texte = (url or "").strip()

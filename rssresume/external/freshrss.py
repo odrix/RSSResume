@@ -48,14 +48,14 @@ class Etiquettes:
 
     Une note dépend du profil qui l'a produite : deux personnes notent le même article
     différemment, et le cache des tags doit donc être à chacune. Le nom de la personne
-    préfixe chaque tag (`adrien-score-07`) — un label FreshRSS accepte le tiret, et un
+    préfixe chaque tag (`adrien-score-07`), un label FreshRSS accepte le tiret, et un
     nom de profil ne porte ni espace ni majuscule.
 
     Les motifs sont ancrés sur le préfixe : un tag d'une autre personne, ou un ancien
     tag sans préfixe, n'est jamais relu ni nettoyé. Les anciens `score-07` sont donc
     ignorés, et les articles renotés une fois.
 
-    Sans nom — la configuration de l'installation, celle des tests —, aucun préfixe.
+    Sans nom, la configuration de l'installation, celle des tests, aucun préfixe.
     """
 
     def __init__(self, username: str = ""):
@@ -120,8 +120,8 @@ class _Session:
     """Ce que les clients d'une même tournée partagent : jetons et lectures déjà faites.
 
     Les personnes d'une tournée lisent les mêmes catégories du même jour. Les relire
-    pour chacune ne changerait rien au résultat — les tags d'une autre personne ne
-    les concernent pas — et multiplierait les appels par le nombre de profils.
+    pour chacune ne changerait rien au résultat, les tags d'une autre personne ne
+    les concernent pas, et multiplierait les appels par le nombre de profils.
     """
 
     def __init__(self):
@@ -257,7 +257,7 @@ class FreshRSSClient:
 
         La journée était découpée en Python *après* avoir paginé tout le flux : des dizaines
         d'appels par catégorie pour en garder vingt. L'API Google Reader sait le faire en
-        base — `ot` borne la journée par le bas, `xt` écarte un flux d'état, ici les articles
+        base, `ot` borne la journée par le bas, `xt` écarte un flux d'état, ici les articles
         déjà lus.
 
         Le filtre Python reste derrière, en filet : il tient la borne haute, qui n'a pas de
@@ -267,7 +267,7 @@ class FreshRSSClient:
 
         La journée est celle du fuseau configuré, pas celle d'UTC : en heure d'été, un
         article publié à 1 h du matin à Paris tombait dans la veille et n'apparaissait
-        donc dans aucun digest — la veille étant déjà livrée et ses articles marqués lus.
+        donc dans aucun digest, la veille étant déjà livrée et ses articles marqués lus.
         Les horodatages restent comparés en absolu, seules les bornes changent d'origine.
         """
         start = dt.datetime.combine(day, dt.time.min, tzinfo=self._config.timezone)

@@ -1,7 +1,7 @@
 """Le dialecte OpenAI.
 
-Quatre méthodes : deux pour la complétion, deux pour la synthèse. Tout le reste —
-prompts, découpage des lots, comptabilité — vient de `LLMProvider`.
+Quatre méthodes : deux pour la complétion, deux pour la synthèse. Tout le reste -
+prompts, découpage des lots, comptabilité, vient de `LLMProvider`.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from rssresume.llm.providers import Call, Voice
 
 #: Familles de modèles raisonnants. Elles rejettent `temperature` et `max_tokens` en 400,
 #: et attendent `reasoning_effort` et `max_completion_tokens` à la place. Le test porte sur
-#: le modèle, pas sur l'action : les deux familles cohabitent dans une même exécution — la
+#: le modèle, pas sur l'action : les deux familles cohabitent dans une même exécution, la
 #: notation reste classique quand le digest est passé au raisonnement.
 REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 

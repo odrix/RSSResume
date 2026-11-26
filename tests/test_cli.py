@@ -4,7 +4,7 @@ Ce que ces tests protègent :
 
 - `--audio-mode` doit l'emporter sur l'environnement sans jamais devenir le défaut. Un
   défaut posé dans `argparse` écraserait `RSSRESUME_AUDIO_MODE` à chaque passage du
-  conteneur, en silence — et le mode décide combien de fichiers audio la journée produit ;
+  conteneur, en silence, et le mode décide combien de fichiers audio la journée produit ;
 - `--journal` doit court-circuiter l'assemblage. C'est la commande qui sert quand quelque
   chose ne va pas : exiger d'elle un fournisseur la ferait tomber pour la même raison que
   ce qu'on cherche à diagnostiquer.
@@ -117,8 +117,8 @@ def journee_produite(racine, username=PROFIL):
 def lance(argv, racine, debug_env=False, env=None):
     """Exécute `main` sur une configuration de test ; renvoie (code, sortie console).
 
-    L'environnement est remplacé — par `env`, sinon par un dossier qui ne déclare que
-    `PROFIL` — pour que les profils servis ne dépendent pas du poste qui lance la suite.
+    L'environnement est remplacé, par `env`, sinon par un dossier qui ne déclare que
+    `PROFIL`, pour que les profils servis ne dépendent pas du poste qui lance la suite.
     """
     config = dataclasses.replace(
         make_config(racine), output_dir=pathlib.Path(racine), debug=debug_env
@@ -281,7 +281,7 @@ class ProfilOptionTests(unittest.TestCase):
 
     def _catalogue(self):
         """Un catalogue pour le dossier : sans lui, la tournée de deux profils refuse de
-        démarrer — ce que ces tests ne jugent pas."""
+        démarrer, ce que ces tests ne jugent pas."""
         return mock.patch.object(
             AnnuaireDossier, "catalogue", return_value=catalogue_public("Tech", "News")
         )

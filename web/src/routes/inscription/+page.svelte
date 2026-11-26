@@ -34,7 +34,7 @@
 </script>
 
 <svelte:head>
-	<title>Créer un compte — RSSResume</title>
+	<title>Créer un compte, RSSResume</title>
 </svelte:head>
 
 <h1>Créer un compte</h1>
@@ -99,7 +99,7 @@
 	</label>
 
 	<label>
-		Prénom <span class="aide">(facultatif — la salutation de l'audio)</span>
+		Prénom <span class="aide">(facultatif, la salutation de l'audio)</span>
 		<input name="prenom" autocomplete="given-name" value={echec?.valeurs?.prenom ?? ''} />
 	</label>
 
