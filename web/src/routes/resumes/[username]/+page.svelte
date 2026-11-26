@@ -1,12 +1,23 @@
 <script lang="ts">
 	import { dateLisible } from '#lib/journee.js';
 	import { PisteAudio, lecteurAudio } from '#lib/lecteur.svelte.js';
+	import { signalerEcouteTerminee } from '#lib/ecoute.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const lecteur = lecteurAudio();
 	let durees = $state<Record<string, string>>({});
+	// Les écoutes finies sur cette page, ajoutées à ce que le serveur sait déjà : la carte passe
+	// en lue sans attendre un rechargement. Dérivé et non copié de `data.lues`, pour suivre
+	// une nouvelle navigation.
+	let ecouteesIci = $state<string[]>([]);
+	const lues = $derived(new Set([...(data.lues ?? []), ...ecouteesIci]));
+
+	async function ecouteTerminee(evenement: Event): Promise<void> {
+		const date = await signalerEcouteTerminee(evenement);
+		if (date && !ecouteesIci.includes(date)) ecouteesIci = [...ecouteesIci, date];
+	}
 
 	function datePieces(iso: string): { jourEtNumero: string; moisAnnee: string } {
 		const texte = dateLisible(iso);
@@ -109,7 +120,8 @@
 	{#each data.journees as journee (journee.date)}
 		{@const indicateurs = data.indicateursJournees?.[journee.date]}
 		{@const date = datePieces(journee.date)}
-		<li class="carte journee">
+		{@const lue = lues.has(journee.date)}
+		<li class="carte journee" class:lue>
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
 				{@const piste = pisteDeCarte(journee.date, audio.nom)}
@@ -123,6 +135,7 @@
 							<span class="date-secondaire">{date.moisAnnee}</span>
 						{/if}
 					</h2>
+					{#if lue}<span class="pastille-lue">Lue</span>{/if}
 					<span class="duree-principale">{(indicateurs?.ecoute ?? durees[cleAudio(journee.date, audio.nom)] ?? '...').toUpperCase()}</span>
 				</div>
 				<ul class="stats-journee">
@@ -134,7 +147,7 @@
 						<span class="icone-lecture" aria-hidden="true">{enLecture(piste) ? '❚❚' : '▶'}</span>
 						<span class="texte-lecture">{enLecture(piste) ? 'Pause' : 'Lecture'}</span>
 					</button>
-					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
+					<a class="resume-secondaire" href={urlJournee(journee.date)} data-sveltekit-preload-data="off">Lire le résumé</a>
 				</div>
 			{:else}
 				<div class="titre-carte">
@@ -147,18 +160,31 @@
 							<span class="date-secondaire">{date.moisAnnee}</span>
 						{/if}
 					</h2>
+					{#if lue}<span class="pastille-lue">Lue</span>{/if}
 				</div>
 				<ul class="stats-journee">
 					<li>{pluriel(indicateurs?.categories ?? 0, 'catégorie', 'catégories')}</li>
 					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
 				</ul>
 				<div class="actions">
-					<a class="resume-secondaire seul" href={urlJournee(journee.date)}>Lire le résumé</a>
+					<!-- Aucun préchargement : il exécute le load, qui marque lue. Même « tap » part au
+					     toucher, et faire défiler la liste du doigt suffirait à marquer la journée. -->
+					<a class="resume-secondaire seul" href={urlJournee(journee.date)} data-sveltekit-preload-data="off">Lire le résumé</a>
 				</div>
 			{/if}
 		</li>
 	{/each}
 </ul>
+
+{#if sourceLecture}
+	<div class="lecteur-large">
+		<div class="lecteur-entete">
+			<strong>{titreLecture}</strong>
+			<button type="button" class="fermer" aria-label="Fermer le lecteur" onclick={() => { sourceLecture = ''; titreLecture = ''; }}>×</button>
+		</div>
+		<audio bind:this={lecteur} controls autoplay src={sourceLecture} onended={ecouteTerminee}></audio>
+	</div>
+{/if}
 
 <style>
 	:global(main) {
@@ -186,6 +212,24 @@
 		display: flex;
 		justify-content: space-between;
 		margin-bottom: 0.95rem;
+	}
+
+	/* Une journée lue s'efface sans disparaître : on la retrouve, mais l'œil va aux autres.
+	 * Seuls la date et les chiffres s'estompent : les boutons gardent leur contraste. */
+	.journee.lue h2,
+	.journee.lue .stats-journee {
+		opacity: 0.6;
+	}
+
+	.pastille-lue {
+		align-self: flex-start;
+		padding: 0.2rem 0.5rem;
+		border: 2px solid var(--bord);
+		background: var(--surface);
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 0.85rem;
+		line-height: 1;
+		text-transform: uppercase;
 	}
 
 	.stats-journee {

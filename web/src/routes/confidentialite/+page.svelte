@@ -21,7 +21,8 @@
 	<li>
 		<strong>Votre compte</strong> : adresse email, nom d'utilisateur, mot de passe — dont seule une
 		empreinte Argon2id est gardée, jamais le mot de passe lui-même —, dates de création, de
-		confirmation et de dernière connexion, et les jours où vous avez consulté vos résumés.
+		confirmation et de dernière connexion, les jours où vous avez consulté vos résumés, et les
+		journées lues ou écoutées.
 	</li>
 	<li>
 		<strong>Votre profil</strong> : le texte qui décrit votre veille, votre prénom s'il est renseigné,

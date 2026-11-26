@@ -132,9 +132,9 @@ describe('Comptes', () => {
 		expect(comptes.conflit('abandon@example.com', 'abandon')).toBeNull();
 	});
 
-	it('monte le schéma jusqu’à la version des demandes de magic-link', () => {
+	it('monte le schéma jusqu’à la version des journées lues', () => {
 		const base = ouvrirBase(':memory:');
-		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 });
+		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
 	});
 
 	it('compte une consultation une fois par compte et par jour', () => {

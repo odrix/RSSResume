@@ -26,6 +26,7 @@ import { Destinataires } from './destinataires.js';
 import { Identifiants } from './identifiants.js';
 import { Inscription } from './inscription.js';
 import { JetonsEmail } from './jetons-email.js';
+import { JourneesLues } from './journees-lues.js';
 import { LimiteurTentatives } from './limiteur.js';
 import { MagicLink } from './magic-link.js';
 import { Reinitialisation } from './reinitialisation.js';
@@ -49,6 +50,7 @@ export class Contexte {
 	readonly reinitialisation: Reinitialisation;
 	readonly identifiants: Identifiants;
 	readonly magicLink: MagicLink;
+	readonly journeesLues: JourneesLues;
 	/** L'adresse publiée sur la page de confidentialité ; vide si aucune n'est configurée. */
 	readonly contact: string = CONTACT_EMAIL || ADMIN_EMAIL;
 	/** Par adresse visée : freine qui s'acharne sur un compte, d'où qu'il vienne. */
@@ -88,6 +90,7 @@ export class Contexte {
 		this.reinitialisation = new Reinitialisation(this.comptes, this.jetons, this.sessions, courrier);
 		this.identifiants = new Identifiants(this.comptes, this.jetons, this.sessions, courrier);
 		this.magicLink = new MagicLink(this.comptes, this.jetons, courrier, base);
+		this.journeesLues = new JourneesLues(base);
 
 		this.sessions.purgerExpirees();
 		this.jetons.purgerExpires();

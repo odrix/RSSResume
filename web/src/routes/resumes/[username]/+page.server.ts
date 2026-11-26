@@ -81,6 +81,8 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 		proprietaire: params.username === utilisateur.username,
 		journees,
 		indicateursJournees,
+		// Un tableau et non le Set : ce qui part vers la page doit se sérialiser.
+		lues: [...contexte().journeesLues.lues(utilisateur, params.username)],
 		passage,
 		erreur
 	};

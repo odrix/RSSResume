@@ -107,6 +107,18 @@ describe('/resumes/[username]/[date] — le vote', () => {
 		expect(env.fausseApi.retours.size).toBe(0);
 	});
 
+	it('marque la journée lue pour le propriétaire qui en ouvre les pages', async () => {
+		await load(evenement(bea));
+
+		expect(env.journeesLues.lues(bea, 'bea')).toEqual(new Set([JOUR]));
+	});
+
+	it("n'écrit aucun marquage quand un admin ouvre la journée d'un autre", async () => {
+		await load(evenement(admin));
+
+		expect(env.base.prepare('SELECT COUNT(*) AS n FROM journees_lues').get()).toEqual({ n: 0 });
+	});
+
 	it("refuse le vote sur une journée qui n'existe pas", async () => {
 		const autreJour = {
 			...(evenement(bea, { avis: 'utile' }) as Record<string, unknown>),
