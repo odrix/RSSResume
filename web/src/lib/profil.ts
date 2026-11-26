@@ -7,6 +7,8 @@
  * ou un nom suivi de ses alias.
  */
 
+import { triNaturel } from './journee.js';
+
 /** Un composant surveillé : `"Traefik"` ou `{"nom": "Keycloak", "alias": ["RH-SSO"]}`. */
 export type ComposantStack = string | { nom: string; alias?: string[] };
 
@@ -243,10 +245,13 @@ function couperSlug(slug: string, longueur: number): string {
 	return slug.slice(0, longueur).replace(/-+$/, '');
 }
 
-/** Les catégories que la page peut faire cocher : aucune quand le catalogue est ouvert ou
- * que la liste n'a pas pu être lue — la section est alors masquée. */
+/** Les catégories que la page peut faire cocher, dans l'ordre d'affichage : le tri naturel
+ * du libellé — « 2 … » avant « 11 … » —, le même que celui de la journée et de l'email.
+ * Aucune quand le catalogue est ouvert ou que la liste n'a pas pu être lue — la section
+ * est alors masquée. */
 export function categoriesACocher(proposees: CategoriesProposees | null): CategorieProposee[] {
-	return proposees && !proposees.ouvert ? proposees.categories : [];
+	if (!proposees || proposees.ouvert) return [];
+	return [...proposees.categories].sort((a, b) => triNaturel(a.libelle, b.libelle));
 }
 
 /** Le profil pré-rempli d'un gabarit : son texte, son régime et ses axes remplacent les

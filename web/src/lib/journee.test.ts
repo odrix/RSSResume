@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { paragraphes, urlSure } from './journee.js';
+import {
+	categoriesTriees,
+	paragraphes,
+	triNaturel,
+	urlSure,
+	type ContenuJournee
+} from './journee.js';
 
 describe('urlSure', () => {
 	it('urlSure ne garde que http(s)', () => {
@@ -36,5 +42,53 @@ describe('paragraphes', () => {
 		]);
 		expect(paragraphes('')).toEqual([]);
 		expect(paragraphes('  \n\n ')).toEqual([]);
+	});
+});
+
+describe('triNaturel', () => {
+	it('trie le préfixe numérique comme un nombre : « 2 » avant « 11 »', () => {
+		expect(['11 - Veille', '2 - Alertes', '1 - Annonces'].sort(triNaturel)).toEqual([
+			'1 - Annonces',
+			'2 - Alertes',
+			'11 - Veille'
+		]);
+	});
+
+	it('classe les libellés sans préfixe après, par ordre alphabétique', () => {
+		expect(['Cybersécurité', '2 - Alertes', 'veille', 'Marché'].sort(triNaturel)).toEqual([
+			'2 - Alertes',
+			'Cybersécurité',
+			'Marché',
+			'veille'
+		]);
+	});
+
+	it('départage au texte quand le numéro est le même', () => {
+		expect(triNaturel('2 - Alpha', '2 - bêta')).toBeLessThan(0);
+	});
+});
+
+describe('categoriesTriees', () => {
+	it('rend les catégories de la journée dans le même ordre que l’email', () => {
+		const categorie = (nom: string): ContenuJournee['categories'][number] => ({
+			categorie: nom,
+			racontee: true,
+			resume: '',
+			audio: null,
+			ecoute: null,
+			articles: [],
+			a_surveiller: []
+		});
+		const contenu = {
+			categories: [categorie('11 - Veille'), categorie('Cybersécurité'), categorie('2 - Alertes')]
+		} as ContenuJournee;
+
+		expect(categoriesTriees(contenu).map((c) => c.categorie)).toEqual([
+			'2 - Alertes',
+			'11 - Veille',
+			'Cybersécurité'
+		]);
+		// Le contenu d'origine n'est pas modifié.
+		expect(contenu.categories[0].categorie).toBe('11 - Veille');
 	});
 });

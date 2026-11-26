@@ -77,7 +77,8 @@ describe('page Mon profil', () => {
 
 	it('coche les catégories suivies, et toutes quand le profil n’en déclare pas', () => {
 		expect(cochees(rendre({ depart: { ...PROFIL, categories: ['Qualité'] } }))).toEqual(['Qualité']);
-		expect(cochees(rendre({}))).toEqual(['Tech', 'Qualité', 'Veille concurrentielle']);
+		// Tri naturel des libellés, le même que celui de la journée et de l'email.
+		expect(cochees(rendre({}))).toEqual(['Qualité', 'Tech', 'Veille concurrentielle']);
 		expect(rendre({})).toContain('vous suivrez aussi les catégories ajoutées plus tard');
 	});
 

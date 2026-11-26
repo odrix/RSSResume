@@ -8,7 +8,13 @@
 <script lang="ts">
 	import LecteurPlein from '#lib/LecteurPlein.svelte';
 	import { PisteAudio } from '#lib/lecteur.svelte.js';
-	import { paragraphes, urlSure, type ContenuJournee, type LienArticle } from '#lib/journee.js';
+	import {
+		categoriesTriees,
+		paragraphes,
+		urlSure,
+		type ContenuJournee,
+		type LienArticle
+	} from '#lib/journee.js';
 
 	let { contenu, username }: { contenu: ContenuJournee; username: string } = $props();
 
@@ -46,7 +52,7 @@
 	</div>
 {/if}
 
-{#each contenu.categories as categorie, rang (rang)}
+{#each categoriesTriees(contenu) as categorie, rang (rang)}
 	<section class="carte">
 		<h2>
 			{categorie.categorie}{#if categorie.ecoute}<span class="attenue duree"> · {categorie.ecoute}</span>{/if}

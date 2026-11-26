@@ -350,6 +350,48 @@ class SectionTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", lettre.html)
 
 
+class OrdreSectionsTests(unittest.TestCase):
+    """Les sections de la lettre suivent le tri naturel de leur catégorie.
+
+    Le site relit cette même lettre pour afficher la journée : si l'email classait
+    « 11 » avant « 2 », la page et la lettre montreraient deux ordres différents.
+    """
+
+    def test_sections_follow_the_natural_order_of_their_category(self):
+        lettre = Lettre.compose(
+            JOUR,
+            [
+                digest(categorie="Cybersécurité"),
+                digest(categorie="11 - Veille"),
+                digest(categorie="2 - Alertes"),
+                digest(categorie="1 - Annonces"),
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+        self.assertEqual(
+            ["1 - Annonces", "2 - Alertes", "11 - Veille", "Cybersécurité"],
+            [section.category for section in lettre.sections],
+        )
+
+    def test_the_rendered_letter_keeps_that_order(self):
+        """L'ordre des sections du rendu est celui du tri, en texte comme en HTML."""
+        lettre = Lettre.compose(
+            JOUR,
+            [
+                digest(categorie="11 - Veille", resume="Le veille."),
+                digest(categorie="2 - Alertes", resume="Les alertes."),
+            ],
+            generated_at=COMPOSEE_LE,
+        )
+
+        positions_texte = [lettre.text.index("2 - ALERTES"), lettre.text.index("11 - VEILLE")]
+        positions_html = [lettre.html.index("2 - Alertes"), lettre.html.index("11 - Veille")]
+
+        self.assertLess(*positions_texte)
+        self.assertLess(*positions_html)
+
+
 class LienSurTests(unittest.TestCase):
     """Un flux choisit l'URL de ses articles : seule une page web devient un lien."""
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GABARITS_DEMO } from '../../mock/faux-api.js';
 import {
+	categoriesACocher,
 	depuisGabarit,
 	depuisLignes,
 	depuisLignesAxes,
@@ -183,6 +184,21 @@ function proposees(...libelles: string[]): CategoriesProposees {
 		categories: libelles.map((libelle) => ({ libelle, description: `${libelle}.`, privee: false }))
 	};
 }
+
+describe('categoriesACocher', () => {
+	it('rend les catégories à cocher triées naturellement, comme la journée et l’email', () => {
+		expect(
+			categoriesACocher(proposees('Cybersécurité', '11 - Veille', '2 - Alertes')).map(
+				(c) => c.libelle
+			)
+		).toEqual(['2 - Alertes', '11 - Veille', 'Cybersécurité']);
+	});
+
+	it('rend rien quand le catalogue est ouvert ou absent', () => {
+		expect(categoriesACocher({ ouvert: true, categories: [] })).toEqual([]);
+		expect(categoriesACocher(null)).toEqual([]);
+	});
+});
 
 describe('formulaire de profil', () => {
 	it('relit texte, prénom, adresses et stack', () => {
