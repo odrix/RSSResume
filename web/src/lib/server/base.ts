@@ -116,7 +116,17 @@ const MIGRATIONS = [
 	DROP TABLE magic_link_demandes;
 	ALTER TABLE magic_link_demandes_v8 RENAME TO magic_link_demandes;
 	CREATE INDEX magic_link_demandes_email ON magic_link_demandes (email, demande_le);
-	CREATE INDEX magic_link_demandes_ip ON magic_link_demandes (ip, demande_le);`
+	CREATE INDEX magic_link_demandes_ip ON magic_link_demandes (ip, demande_le);`,
+	// Les journées lues ou écoutées. Distinct de `consultations`, dont la clé est le jour de la
+	// visite et non la journée lue. Une ligne par compte et par journée : lire puis écouter ne
+	// compte qu'une fois, et la première origine est celle qui reste.
+	`CREATE TABLE journees_lues (
+		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
+		date TEXT NOT NULL,
+		origine TEXT NOT NULL CHECK (origine IN ('pages', 'audio')),
+		lue_le TEXT NOT NULL,
+		PRIMARY KEY (compte_id, date)
+	);`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */

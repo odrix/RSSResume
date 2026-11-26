@@ -12,7 +12,7 @@ import type { Utilisateur } from './comptes.js';
 import { MOTIF_USERNAME } from './validation.js';
 import type { DatabaseSync } from 'node:sqlite';
 
-const MOTIF_DATE = /^\d{4}-\d{2}-\d{2}$/;
+export const MOTIF_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class ConsultationResumes {
 	constructor(

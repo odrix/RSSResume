@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { signalerEcouteTerminee } from '#lib/ecoute.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -107,7 +108,8 @@
 	{#each data.journees as journee (journee.date)}
 		{@const indicateurs = data.indicateursJournees?.[journee.date]}
 		{@const date = datePieces(journee.date)}
-		<li class="carte journee">
+		{@const lue = data.lues?.includes(journee.date) ?? false}
+		<li class="carte journee" class:lue>
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
 				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
@@ -120,6 +122,7 @@
 							<span class="date-secondaire">{date.moisAnnee}</span>
 						{/if}
 					</h2>
+					{#if lue}<span class="pastille-lue">Lue</span>{/if}
 					<span class="duree-principale">{(indicateurs?.ecoute ?? durees[cleAudio(journee.date, audio.nom)] ?? '...').toUpperCase()}</span>
 				</div>
 				<ul class="stats-journee">
@@ -131,7 +134,7 @@
 						<span class="icone-lecture" aria-hidden="true">▶</span>
 						<span class="texte-lecture">Lecture</span>
 					</button>
-					<a class="resume-secondaire" href={urlJournee(journee.date)}>Lire le résumé</a>
+					<a class="resume-secondaire" href={urlJournee(journee.date)} data-sveltekit-preload-data="tap">Lire le résumé</a>
 				</div>
 			{:else}
 				<div class="titre-carte">
@@ -144,13 +147,15 @@
 							<span class="date-secondaire">{date.moisAnnee}</span>
 						{/if}
 					</h2>
+					{#if lue}<span class="pastille-lue">Lue</span>{/if}
 				</div>
 				<ul class="stats-journee">
 					<li>{pluriel(indicateurs?.categories ?? 0, 'catégorie', 'catégories')}</li>
 					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
 				</ul>
 				<div class="actions">
-					<a class="resume-secondaire seul" href={urlJournee(journee.date)}>Lire le résumé</a>
+					<!-- « tap » et non le survol du site : le préchargement exécute le load, qui marque lue. -->
+					<a class="resume-secondaire seul" href={urlJournee(journee.date)} data-sveltekit-preload-data="tap">Lire le résumé</a>
 				</div>
 			{/if}
 		</li>
@@ -163,7 +168,7 @@
 			<strong>{titreLecture}</strong>
 			<button type="button" class="fermer" aria-label="Fermer le lecteur" onclick={() => { sourceLecture = ''; titreLecture = ''; }}>×</button>
 		</div>
-		<audio bind:this={lecteur} controls autoplay src={sourceLecture}></audio>
+		<audio bind:this={lecteur} controls autoplay src={sourceLecture} onended={signalerEcouteTerminee}></audio>
 	</div>
 {/if}
 
@@ -193,6 +198,22 @@
 		display: flex;
 		justify-content: space-between;
 		margin-bottom: 0.95rem;
+	}
+
+	/* Une journée lue s'efface sans disparaître : on la retrouve, mais l'œil va aux autres. */
+	.journee.lue {
+		opacity: 0.7;
+	}
+
+	.pastille-lue {
+		align-self: flex-start;
+		padding: 0.2rem 0.5rem;
+		border: 2px solid var(--bord);
+		background: var(--surface);
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 0.85rem;
+		line-height: 1;
+		text-transform: uppercase;
 	}
 
 	.stats-journee {
