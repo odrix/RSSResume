@@ -1,9 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { signalerEcoute, signalerEcouteTerminee } from './ecoute.js';
+import { marquerLesEcoutes, signalerEcoute } from './ecoute.js';
+import type { LecteurAudio, PisteAudio } from './lecteur.svelte.js';
 
-/** Un `ended` tel que le lecteur l'émet : seule sa source compte. */
-function finDeLecture(currentSrc: string): Event {
-	return { currentTarget: { currentSrc } } as unknown as Event;
+/** Un lecteur réduit à son annonce de fin : le test la déclenche à la main. */
+function faux(): { lecteur: Pick<LecteurAudio, 'surEcouteTerminee'>; finir: (piste: PisteAudio) => void } {
+	const abonnes = new Set<(piste: PisteAudio) => void>();
+	return {
+		lecteur: {
+			surEcouteTerminee(rappel) {
+				abonnes.add(rappel);
+				return () => abonnes.delete(rappel);
+			}
+		},
+		finir: (piste) => abonnes.forEach((rappel) => rappel(piste))
+	};
+}
+
+function piste(journeeEntiere: boolean): PisteAudio {
+	return { username: 'bea', date: '2026-11-22', journeeEntiere } as PisteAudio;
 }
 
 describe("signalement de l'écoute", () => {
@@ -18,22 +32,25 @@ describe("signalement de l'écoute", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('relit la journée dans la source du relais, la signale par un POST et rend sa date', async () => {
-		const date = await signalerEcouteTerminee(finDeLecture('/audio/bea/2026-11-22/jour.mp3'));
+	it('marque la journée quand le lecteur annonce la fin d’une piste de journée entière', () => {
+		const { lecteur, finir } = faux();
+		marquerLesEcoutes(lecteur);
+
+		finir(piste(true));
 
 		expect(fetch).toHaveBeenCalledExactlyOnceWith('/resumes/bea/2026-11-22/ecoute', {
 			method: 'POST',
 			keepalive: true
 		});
-		expect(date).toBe('2026-11-22');
 	});
 
-	it("ne signale rien pour une source qui n'est pas le relais du site", async () => {
-		expect(await signalerEcouteTerminee(finDeLecture('/autre/bea/2026-11-22/jour.mp3'))).toBeNull();
-		expect(
-			await signalerEcouteTerminee(finDeLecture('https://ailleurs.test/audio/bea/2026-11-22/jour.mp3'))
-		).toBeNull();
-		expect(await signalerEcouteTerminee(finDeLecture(''))).toBeNull();
+	it("ne marque rien pour une catégorie seule, ni après désabonnement", () => {
+		const { lecteur, finir } = faux();
+		const desabonner = marquerLesEcoutes(lecteur);
+
+		finir(piste(false));
+		desabonner();
+		finir(piste(true));
 
 		expect(fetch).not.toHaveBeenCalled();
 	});
@@ -49,7 +66,6 @@ describe("signalement de l'écoute", () => {
 	it('rend faux, sans lever, sur un refus du site ou un échec du réseau', async () => {
 		fetch.mockImplementation(() => Promise.resolve(new Response(null, { status: 404 })));
 		expect(await signalerEcoute('bea', '2026-11-22')).toBe(false);
-		expect(await signalerEcouteTerminee(finDeLecture('/audio/bea/2026-11-22/jour.mp3'))).toBeNull();
 
 		fetch.mockImplementation(() => Promise.reject(new TypeError('fetch failed')));
 		expect(await signalerEcoute('bea', '2026-11-22')).toBe(false);

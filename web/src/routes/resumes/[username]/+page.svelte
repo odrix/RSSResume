@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { dateLisible } from '#lib/journee.js';
 	import { PisteAudio, lecteurAudio } from '#lib/lecteur.svelte.js';
-	import { signalerEcouteTerminee } from '#lib/ecoute.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -14,10 +13,14 @@
 	let ecouteesIci = $state<string[]>([]);
 	const lues = $derived(new Set([...(data.lues ?? []), ...ecouteesIci]));
 
-	async function ecouteTerminee(evenement: Event): Promise<void> {
-		const date = await signalerEcouteTerminee(evenement);
-		if (date && !ecouteesIci.includes(date)) ecouteesIci = [...ecouteesIci, date];
-	}
+	// Le marquage lui-même part du layout ; la page ne fait que suivre à l'écran ce qu'il
+	// marquera, selon la même règle : une piste de journée entière, et ses propres résumés.
+	$effect(() =>
+		lecteur.surEcouteTerminee((piste) => {
+			if (!data.proprietaire || !piste.journeeEntiere || piste.username !== data.username) return;
+			if (!ecouteesIci.includes(piste.date)) ecouteesIci = [...ecouteesIci, piste.date];
+		})
+	);
 
 	function datePieces(iso: string): { jourEtNumero: string; moisAnnee: string } {
 		const texte = dateLisible(iso);
@@ -175,16 +178,6 @@
 		</li>
 	{/each}
 </ul>
-
-{#if sourceLecture}
-	<div class="lecteur-large">
-		<div class="lecteur-entete">
-			<strong>{titreLecture}</strong>
-			<button type="button" class="fermer" aria-label="Fermer le lecteur" onclick={() => { sourceLecture = ''; titreLecture = ''; }}>×</button>
-		</div>
-		<audio bind:this={lecteur} controls autoplay src={sourceLecture} onended={ecouteTerminee}></audio>
-	</div>
-{/if}
 
 <style>
 	:global(main) {

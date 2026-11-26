@@ -1,14 +1,9 @@
 import { isRedirect } from '@sveltejs/kit';
 import { render } from 'svelte/server';
-import { describe, expect, it, vi } from 'vitest';
-import { CLE_LECTEUR, LecteurAudio, PisteAudio } from '#lib/lecteur.svelte.js';
-import { ConsultationResumes } from '#lib/server/consultation.js';
-import { monter } from '#lib/server/outils-test.js';
-import Page from './+page.svelte';
-
-/* Le contexte réel lit l'environnement et ouvre la base : la route reçoit à la place celui
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CLE_LECTEUR, LecteurAudio, PisteAudio } from '#lib/lecteur.svelte.js';
 import type { Utilisateur } from '#lib/server/comptes.js';
+import { ConsultationResumes } from '#lib/server/consultation.js';
 import { EMAIL_ADMIN, monter } from '#lib/server/outils-test.js';
 import Page from './+page.svelte';
 
