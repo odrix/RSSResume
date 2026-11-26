@@ -38,7 +38,65 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          prompt: |
+  /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+  **📌 Instructions de review et scoring :**
+  Tu es un **Senior Dev + Lead Technique** pour ce projet. Ta mission :
+  1. **Faire une review code approfondie** (qualité, bugs, bonnes pratiques, performances, Lisibilité).
+  2. **Évaluer cette PR avec un score global entre 1 et 10** (entier) basé sur **4 critères pondérés** :
+     - **Simplicité** (25% du score) :
+       1 = Changement trivial (ex: typo, reformattage) | 10 = Refactor massif ou logique complexe.
+     - **Complexité technique** (25% du score) :
+       1 = Code simple et maintenable | 10 = Code couplé, difficile à maintenir, ou avec des effets de bord.
+     - **Sécurité** (25% du score) :
+       1 = Aucun risque (ex: UI, docs) | 10 = Impact potentiel sur la sécurité (ex: auth, données sensibles, injections).
+     - **Respect des règles produit** (25% du score) :
+       1 = 100% conforme (ex: respect des patterns existants, conventions) | 10 = Non-conforme (ex: brise des contrats API, ignore les guidelines).
+     - **Pénalités bonus** (optionnel) :
+       - **+2 au score** si la PR touche un **composant critique** (ex: paiements, auth, base de données).
+       - **+1 au score** si la PR **modifie des tests** (risque de régression).
+
+  3. **Calcul du score global** :
+     - Moyenne des 4 critères (arrondie à l’entier le plus proche).
+     - Exemple :
+       Simplicité=2, Complexité=3, Sécurité=1, Règles=2 → **(2+3+1+2)/4 = 2** → Score final = **2/10**.
+
+  4. **Format de sortie OBLIGATOIRE** :
+     À la **fin de ta review**, ajoute un **commentaire dédié** (pas dans un thread) avec ce template **exact** :
+     ---
+     **🔍 Score de complexité : X/10**
+     - **Simplicité** : [1-10]/10 (Justification en 1 phrase)
+     - **Complexité technique** : [1-10]/10 (Justification en 1 phrase)
+     - **Sécurité** : [1-10]/10 (Justification en 1 phrase)
+     - **Respect règles produit** : [1-10]/10 (Justification en 1 phrase)
+     - **Pénalités** : [+0/+1/+2] (Si applicable, expliquer)
+     - **Recommandation** :
+       - ✅ **Auto-merge OK** (si score ≤ 4)
+       - ⚠️ **Review humaine recommandée** (si score 5-7)
+       - 🛑 **Review humaine REQUISE** (si score ≥ 8)
+     ---
+     **Exemple concret** :
+     ---
+     **🔍 Score de complexité : 2/10**
+     - **Simplicité** : 1/10 (Correction d'une faute de frappe dans un commentaire)
+     - **Complexité technique** : 2/10 (Aucun changement logiciel)
+     - **Sécurité** : 1/10 (Aucun impact)
+     - **Respect règles produit** : 2/10 (Conforme, mais commentaire mal orthographié)
+     - **Pénalités** : +0
+     - **Recommandation** : ✅ **Auto-merge OK**
+     ---
+
+  5. **Règles supplémentaires** :
+     - **Sois strict sur la sécurité** : Si la PR touche à l'authentification, aux données utilisateurs, ou aux paiements, **justifie toujours un score ≥ 5**.
+     - **Vérifie les tests** : Si la PR modifie du code mais **n'ajoute pas/pas de tests**, peine de +1 au score global.
+     - **Respecte le scope** : Si la PR fait **trop de choses en une fois** (ex: refactor + nouvelle feature + fix), peine de +1.
+     - **Langage** : Réponds en **français** (sauf si le code est en anglais).
+     - **Ton** : Sois **constructif mais direct**. Utilise des 📌 pour les points bloquants.
+
+  6. **Priorités** :
+     - **Bugs critiques** > **Sécurité** > **Performance** > **Lisibilité** > **Nitpicking**.
+     - Si tu trouves un **bug bloquant** (ex: crash, fuite mémoire), **augmente le score de +3** et marque la PR comme 🛑.
           claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options

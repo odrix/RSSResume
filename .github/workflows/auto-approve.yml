@@ -1,0 +1,83 @@
+name: Auto-Approve & Merge PR
+
+on:
+  workflow_run:
+    workflows: ["Claude Code Review"]  # Déclenché après la review Claude
+    types: [completed]
+
+jobs:
+  auto-approve-merge:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+          gh --version
+
+      - name: Get PR number and details
+        id: pr-details
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Récupère le PR number depuis le workflow_run
+          PR_NUMBER=$(jq --raw-output '.workflow_run.pull_requests[0].number' "$GITHUB_EVENT_PATH")
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Récupère les commentaires de Claude sur la PR
+          COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments)
+          echo "comments=$COMMENTS" >> $GITHUB_OUTPUT
+
+          # Récupère les détails de la PR
+          PR_DATA=$(gh pr view $PR_NUMBER --json title,author,additions,deletions,body)
+          echo "pr_data=$PR_DATA" >> $GITHUB_OUTPUT
+
+      - name: Extract score from Claude's comments
+        id: score
+        env:
+          COMMENTS: ${{ steps.pr-details.outputs.comments }}
+        run: |
+          # Cherche un commentaire contenant un score au format "Score de complexité: X/10"
+          SCORE=$(echo "$COMMENTS" | jq -r '.[] | select(.body | test("Score de complexité:\\s*\\d+/10")) | .body' | head -1)
+          SCORE_VALUE=$(echo "$SCORE" | grep -oP 'Score de complexité:\s*\K\d+')
+
+          if [ -z "$SCORE_VALUE" ]; then
+            # Si aucun score trouvé, on met 10 par défaut (besoin de review humaine)
+            SCORE_VALUE=10
+          fi
+
+          echo "score=$SCORE_VALUE" >> $GITHUB_OUTPUT
+          echo "Score extrait : $SCORE_VALUE/10"
+
+      - name: Post score comment
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
+          SCORE: ${{ steps.score.outputs.score }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body "
+          🔍 **Score de complexité** : **$SCORE/10**
+          - **1-4** : Simple/Trivial → Auto-approve + merge
+          - **5-7** : Modéré → Review humaine recommandée
+          - **8-10** : Complexe/Critique → Review humaine **requise**
+          "
+
+      - name: Auto-approve, merge, and delete branch (if score < 5)
+        if: ${{ steps.score.outputs.score < 5 }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
+        run: |
+          gh pr review --approve "$PR_NUMBER" -b "✅ **Auto-approved** : Score = ${{ steps.score.outputs.score }}/10 (Simple/Trivial)"
+          sleep 5  # Attendre que l'approbation soit enregistrée
+          gh pr merge "$PR_NUMBER" --squash --delete-branch -b "🤖 **Auto-merged** : Score < 5/10"
