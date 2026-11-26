@@ -28,7 +28,7 @@ export class JourneesLues {
 	 * `INSERT OR IGNORE` : lire puis écouter la même journée ne fait qu'une ligne, et la
 	 * première manière de l'avoir lue est celle qui reste. */
 	marquer(utilisateur: Utilisateur, username: string, date: string, origine: OrigineLecture): boolean {
-		if (!this.estSienne(utilisateur, username) || !MOTIF_DATE.test(date)) return false;
+		if (!this.peutMarquer(utilisateur, username, date)) return false;
 		this.base
 			.prepare('INSERT OR IGNORE INTO journees_lues (compte_id, date, origine, lue_le) VALUES (?, ?, ?, ?)')
 			.run(utilisateur.id, date, origine, new Date(this.maintenant()).toISOString());
@@ -43,6 +43,12 @@ export class JourneesLues {
 			.prepare('SELECT date FROM journees_lues WHERE compte_id = ?')
 			.all(utilisateur.id) as { date: string }[];
 		return new Set(lignes.map((ligne) => ligne.date));
+	}
+
+	/** Le contrôle de `marquer`, sans écrire : la route d'écoute le passe avant d'interroger
+	 * l'API, pour ne marquer sans elle, quand elle est en panne, que ce qui est déjà vérifié. */
+	peutMarquer(utilisateur: Utilisateur, username: string, date: string): boolean {
+		return this.estSienne(utilisateur, username) && MOTIF_DATE.test(date);
 	}
 
 	private estSienne(utilisateur: Utilisateur, username: string): boolean {

@@ -1,8 +1,9 @@
 import { isHttpError } from '@sveltejs/kit';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ClientApiResume } from '#lib/server/api-resume.js';
 import type { Utilisateur } from '#lib/server/comptes.js';
 import { ConsultationResumes } from '#lib/server/consultation.js';
-import { EMAIL_ADMIN, monter } from '#lib/server/outils-test.js';
+import { EMAIL_ADMIN, JETON, monter } from '#lib/server/outils-test.js';
 
 /* Le contexte réel lit l'environnement et ouvre la base : la route reçoit à la place celui
  * des tests, monté sur la fausse API. */
@@ -73,6 +74,26 @@ describe('POST /resumes/[username]/[date]/ecoute', () => {
 
 	it('rend 401 sans session', async () => {
 		expect(isHttpError(await leve(POST(evenement(null))), 401)).toBe(true);
+		expect(lignes()).toEqual([]);
+	});
+
+	it("marque quand même si l'API est indisponible", async () => {
+		const enPanne = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: () => Promise.reject(new TypeError('fetch failed'))
+		});
+		etat.env = { ...env, consultation: new ConsultationResumes(enPanne) };
+
+		expect((await POST(evenement(bea))).status).toBe(204);
+		expect(lignes()).toEqual([{ compte_id: bea.id, date: JOUR, origine: 'audio' }]);
+	});
+
+	it("refuse une date mal formée sans interroger l'API", async () => {
+		const avant = env.fausseApi.requetes.length;
+
+		expect(isHttpError(await leve(POST(evenement(bea, 'bea', '../x'))), 404)).toBe(true);
+		expect(env.fausseApi.requetes.length).toBe(avant);
 		expect(lignes()).toEqual([]);
 	});
 

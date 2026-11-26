@@ -51,6 +51,13 @@ describe('JourneesLues', () => {
 		expect(lignes()).toEqual([]);
 	});
 
+	it('dit sans écrire si la journée peut être marquée', () => {
+		expect(env.journeesLues.peutMarquer(moi, 'moi', JOUR)).toBe(true);
+		expect(env.journeesLues.peutMarquer(admin, 'moi', JOUR)).toBe(false);
+		expect(env.journeesLues.peutMarquer(moi, 'moi', '../x')).toBe(false);
+		expect(lignes()).toEqual([]);
+	});
+
 	it('refuse un username ou une date mal formés', () => {
 		expect(env.journeesLues.marquer(moi, 'moi', '../x', 'pages')).toBe(false);
 		expect(env.journeesLues.marquer(moi, 'moi', '20261122', 'pages')).toBe(false);

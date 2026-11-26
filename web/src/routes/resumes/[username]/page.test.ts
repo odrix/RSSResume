@@ -74,7 +74,7 @@ describe('page des résumés, journées lues', () => {
 		expect(cartes[1]).toMatch(/<span class="pastille-lue[^"]*">Lue<\/span>/);
 	});
 
-	it('ne précharge la journée, et donc ne la marque, qu’au clic', () => {
+	it('ne précharge jamais la journée : toucher le lien en faisant défiler ne la marque pas', () => {
 		const html = rendre({
 			journees: [
 				{ date: '2026-11-22', audios: [] },
@@ -83,7 +83,7 @@ describe('page des résumés, journées lues', () => {
 		});
 		const liens = html.match(/<a [^>]*>Lire le résumé<\/a>/g) ?? [];
 		expect(liens).toHaveLength(2);
-		for (const lien of liens) expect(lien).toContain('data-sveltekit-preload-data="tap"');
+		for (const lien of liens) expect(lien).toContain('data-sveltekit-preload-data="off"');
 	});
 });
 
