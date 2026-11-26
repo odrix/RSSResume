@@ -1,13 +1,12 @@
 /**
  * Signaler au site qu'une journée a été écoutée jusqu'au bout, pour la marquer lue.
  *
- * Deux entrées : `signalerEcoute` pour qui connaît déjà la journée — un lecteur qui la garde
- * en mémoire —, et `signalerEcouteTerminee`, à brancher sur `onended` d'un `<audio>` qui ne
- * connaît que sa source : elle relit la journée dans l'URL du relais audio.
+ * Le lecteur du layout annonce la fin d'une écoute ; `marquerLesEcoutes` en fait un marquage.
+ * L'abonnement vit dans le layout et non dans une page : une écoute lancée depuis la liste se
+ * termine souvent ailleurs, et doit compter quand même.
  */
 
-/** `/audio/{username}/{date}/{nom}` : le chemin du relais, seul à porter une journée. */
-const CHEMIN_AUDIO = /^\/audio\/([^/]+)\/([^/]+)\/[^/]+$/;
+import type { LecteurAudio } from './lecteur.svelte.js';
 
 /** Vrai si le site a bien marqué la journée : la page peut alors l'afficher lue sans
  * attendre un rechargement.
@@ -24,31 +23,11 @@ export async function signalerEcoute(username: string, date: string): Promise<bo
 	}
 }
 
-/** La date marquée, ou `null` si la source n'est pas une journée du relais ou si le marquage
- * a échoué : la page n'a besoin que de savoir quelle carte passer en lue. */
-export async function signalerEcouteTerminee(evenement: Event): Promise<string | null> {
-	const element = evenement.currentTarget as HTMLMediaElement | null;
-	const source = element?.currentSrc;
-	if (!source) return null;
-	// Une source d'une autre origine n'est pas le relais du site, même si son chemin y ressemble.
-	const ici = new URL(globalThis.location?.href ?? 'http://local.invalid/');
-	let url: URL;
-	try {
-		url = new URL(source, ici);
-	} catch {
-		return null;
-	}
-	if (url.origin !== ici.origin) return null;
-	const trouve = CHEMIN_AUDIO.exec(url.pathname);
-	if (!trouve) return null;
-	let username: string;
-	let date: string;
-	try {
-		username = decodeURIComponent(trouve[1]);
-		date = decodeURIComponent(trouve[2]);
-	} catch {
-		// Un segment mal encodé ne vient pas du relais : rien à signaler.
-		return null;
-	}
-	return (await signalerEcoute(username, date)) ? date : null;
+/** Seule une piste qui couvre la journée entière la marque : finir une catégorie n'est pas
+ * avoir écouté la journée. Le site refuse de son côté tout profil qui n'est pas celui de la
+ * session ; rien à filtrer ici. Rend le désabonnement. */
+export function marquerLesEcoutes(lecteur: Pick<LecteurAudio, 'surEcouteTerminee'>): () => void {
+	return lecteur.surEcouteTerminee((piste) => {
+		if (piste.journeeEntiere) void signalerEcoute(piste.username, piste.date);
+	});
 }

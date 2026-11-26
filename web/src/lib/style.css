@@ -616,21 +616,88 @@ th {
 	text-align: right;
 }
 
-:root[data-style-page='minimaliste'] .lecteur-large {
-	left: 13.5rem;
+/* Le mini-lecteur du layout : fixé en bas, à droite de la navigation, il suit l'écoute
+   d'une page à l'autre. La réserve, sous le pied de page, lui laisse la place. */
+.mini-lecteur-reserve {
+	height: 5.5rem;
+}
+
+.mini-lecteur {
+	position: fixed;
+	left: 15.5rem;
 	right: 0;
 	bottom: 0;
+	z-index: 30;
+	display: flex;
+	align-items: center;
+	gap: 0.85rem;
+	background: var(--surface-jaune);
+	border-top: 4px solid var(--bord);
+	padding: 0.65rem 1rem 0.8rem;
+}
+
+.mini-lecteur .mini-infos {
+	flex: 1;
+	min-width: 0;
+}
+
+.mini-lecteur .lecteur-entete {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-bottom: 0.35rem;
+}
+
+.mini-lecteur .lecteur-entete strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mini-lecteur .temps {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.mini-lecteur progress {
+	display: block;
+	width: 100%;
+	height: 0.6rem;
+	accent-color: var(--texte);
+}
+
+.mini-lecteur .lecture-pause,
+.mini-lecteur .fermer {
+	padding: 0.45rem 0.7rem;
+	box-shadow: none;
+}
+
+.mini-lecteur .ouvrir {
+	white-space: nowrap;
+}
+
+:root[data-style-page='minimaliste'] .mini-lecteur {
+	left: 13.5rem;
 	background: #31445f;
 	border-top: 0;
 	color: #fff;
 	padding: 0.8rem 1.25rem;
 }
 
-:root[data-style-page='minimaliste'] .lecteur-entete strong {
+:root[data-style-page='minimaliste'] .mini-lecteur .lecteur-entete strong {
 	font-family: Arial, Helvetica, sans-serif;
 }
 
-:root[data-style-page='minimaliste'] .fermer {
+:root[data-style-page='minimaliste'] .mini-lecteur .ouvrir {
+	color: #fff;
+}
+
+:root[data-style-page='minimaliste'] .mini-lecteur progress {
+	accent-color: #ffbb18;
+}
+
+:root[data-style-page='minimaliste'] .mini-lecteur .fermer {
 	border: 1px solid #fff;
 	background: transparent;
 	color: #fff;
@@ -677,6 +744,11 @@ th {
 
 	.journees {
 		grid-template-columns: 1fr;
+	}
+
+	.mini-lecteur,
+	:root[data-style-page='minimaliste'] .mini-lecteur {
+		left: 0;
 	}
 }
 

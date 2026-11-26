@@ -1,9 +1,20 @@
 <script lang="ts">
 	import '#lib/style.css';
 	import { onMount } from 'svelte';
+	import LecteurGlobal from '#lib/LecteurGlobal.svelte';
+	import { LecteurAudio, fournirLecteur } from '#lib/lecteur.svelte.js';
+	import { marquerLesEcoutes } from '#lib/ecoute.js';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
+
+	// Le layout survit aux navigations, pas les pages : l'écoute vit donc ici, et son marquage
+	// aussi — une écoute lancée depuis la liste peut s'achever sur une autre page.
+	const lecteur = fournirLecteur(new LecteurAudio());
+	$effect(() => {
+		if (!data.utilisateur) return;
+		return marquerLesEcoutes(lecteur);
+	});
 	let stylePage = $state<'brutal' | 'minimaliste'>('brutal');
 
 	function appliquerStyle(style: 'brutal' | 'minimaliste'): void {
@@ -72,3 +83,5 @@
 <footer class="pied">
 	<a href="/confidentialite">Confidentialité</a>
 </footer>
+
+<LecteurGlobal />

@@ -1,20 +1,11 @@
 <script lang="ts">
-	import { signalerEcouteTerminee } from '#lib/ecoute.js';
+	import { dateLisible } from '#lib/journee.js';
+	import { PisteAudio, lecteurAudio } from '#lib/lecteur.svelte.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	const formatDate = new Intl.DateTimeFormat('fr-FR', {
-		weekday: 'long',
-		day: 'numeric',
-		month: 'long',
-		year: 'numeric',
-		timeZone: 'UTC'
-	});
-
-	let lecteur: HTMLAudioElement;
-	let sourceLecture = $state('');
-	let titreLecture = $state('');
+	const lecteur = lecteurAudio();
 	let durees = $state<Record<string, string>>({});
 	// Les écoutes finies sur cette page, ajoutées à ce que le serveur sait déjà : la carte passe
 	// en lue sans attendre un rechargement. Dérivé et non copié de `data.lues`, pour suivre
@@ -22,15 +13,14 @@
 	let ecouteesIci = $state<string[]>([]);
 	const lues = $derived(new Set([...(data.lues ?? []), ...ecouteesIci]));
 
-	async function ecouteTerminee(evenement: Event): Promise<void> {
-		const date = await signalerEcouteTerminee(evenement);
-		if (date && !ecouteesIci.includes(date)) ecouteesIci = [...ecouteesIci, date];
-	}
-
-	function dateLisible(iso: string): string {
-		const texte = formatDate.format(new Date(`${iso}T00:00:00Z`));
-		return texte.charAt(0).toUpperCase() + texte.slice(1);
-	}
+	// Le marquage lui-même part du layout ; la page ne fait que suivre à l'écran ce qu'il
+	// marquera, selon la même règle : une piste de journée entière, et ses propres résumés.
+	$effect(() =>
+		lecteur.surEcouteTerminee((piste) => {
+			if (!data.proprietaire || !piste.journeeEntiere || piste.username !== data.username) return;
+			if (!ecouteesIci.includes(piste.date)) ecouteesIci = [...ecouteesIci, piste.date];
+		})
+	);
 
 	function datePieces(iso: string): { jourEtNumero: string; moisAnnee: string } {
 		const texte = dateLisible(iso);
@@ -62,12 +52,27 @@
 		if (duree) durees = { ...durees, [cleAudio(date, nom)]: duree };
 	}
 
-	async function lire(date: string, nom: string): Promise<void> {
-		sourceLecture = urlAudio(date, nom);
-		titreLecture = dateLisible(date);
-		await new Promise<void>((resolve) => queueMicrotask(resolve));
-		lecteur?.play();
+	/** Ce que joue la carte : son premier fichier n'est la journée entière que s'il en est le
+	 * montage, comme sur la page de la journée. */
+	function pisteDeCarte(date: string, nom: string): PisteAudio {
+		const indicateurs = data.indicateursJournees?.[date];
+		return PisteAudio.pourFichier(
+			data.username,
+			date,
+			nom,
+			indicateurs?.montage ?? null,
+			indicateurs?.categoriesAudio?.[nom] ?? null
+		);
 	}
+
+	/** La carte ne porte pas de lecteur : elle lance celui du layout, qui continue d'une page à
+	 * l'autre, ou le met en pause quand c'est déjà sa piste qui joue. */
+	function lire(piste: PisteAudio): void {
+		if (lecteur.piste?.cle === piste.cle) lecteur.basculer();
+		else lecteur.lancer(piste);
+	}
+
+	const enLecture = (piste: PisteAudio) => lecteur.piste?.cle === piste.cle && lecteur.enLecture;
 
 	const urlAudio = (date: string, nom: string) =>
 		`/audio/${encodeURIComponent(data.username)}/${encodeURIComponent(date)}/${encodeURIComponent(nom)}`;
@@ -122,6 +127,7 @@
 		<li class="carte journee" class:lue>
 			{#if journee.audios.length}
 				{@const audio = journee.audios[0]}
+				{@const piste = pisteDeCarte(journee.date, audio.nom)}
 				<audio class="meta-audio" preload="metadata" src={urlAudio(journee.date, audio.nom)} onloadedmetadata={(evenement) => lireMeta(journee.date, audio.nom, evenement)}></audio>
 				<div class="titre-carte">
 					<h2>
@@ -140,9 +146,9 @@
 					<li>{pluriel(indicateurs?.articles ?? 0, 'article', 'articles')}</li>
 				</ul>
 				<div class="actions">
-					<button type="button" class="lecture" onclick={() => lire(journee.date, audio.nom)}>
-						<span class="icone-lecture" aria-hidden="true">▶</span>
-						<span class="texte-lecture">Lecture</span>
+					<button type="button" class="lecture" onclick={() => lire(piste)}>
+						<span class="icone-lecture" aria-hidden="true">{enLecture(piste) ? '❚❚' : '▶'}</span>
+						<span class="texte-lecture">{enLecture(piste) ? 'Pause' : 'Lecture'}</span>
 					</button>
 					<a class="resume-secondaire" href={urlJournee(journee.date)} data-sveltekit-preload-data="off">Lire le résumé</a>
 				</div>
@@ -172,16 +178,6 @@
 		</li>
 	{/each}
 </ul>
-
-{#if sourceLecture}
-	<div class="lecteur-large">
-		<div class="lecteur-entete">
-			<strong>{titreLecture}</strong>
-			<button type="button" class="fermer" aria-label="Fermer le lecteur" onclick={() => { sourceLecture = ''; titreLecture = ''; }}>×</button>
-		</div>
-		<audio bind:this={lecteur} controls autoplay src={sourceLecture} onended={ecouteTerminee}></audio>
-	</div>
-{/if}
 
 <style>
 	:global(main) {
@@ -341,34 +337,6 @@
 		display: none;
 	}
 
-	.lecteur-large {
-		position: fixed;
-		left: 15.5rem;
-		right: 0;
-		bottom: 0;
-		z-index: 30;
-		background: var(--surface-jaune);
-		border-top: 4px solid var(--bord);
-		padding: 0.65rem 1rem 0.8rem;
-	}
-
-	.lecteur-entete {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 0.35rem;
-	}
-
-	.fermer {
-		padding: 0.15rem 0.55rem;
-		box-shadow: none;
-	}
-
-	.lecteur-large audio {
-		display: block;
-		width: 100%;
-	}
-
 	@media (max-width: 1100px) {
 		.journees {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -382,12 +350,6 @@
 	@media (max-width: 1500px) {
 		.journees {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-	}
-
-	@media (max-width: 900px) {
-		.lecteur-large {
-			left: 0;
 		}
 	}
 
