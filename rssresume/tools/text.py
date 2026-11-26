@@ -206,6 +206,30 @@ def casefold_ascii(value: str) -> str:
     return "".join(c for c in decompose if not unicodedata.combining(c)).casefold()
 
 
+#: Un préfixe numérique en tête de libellé : « 11 - … » commence par 11.
+PREFIXE_NUMERIQUE = re.compile(r"^\s*(\d+)")
+
+
+def cle_tri_naturel(libelle: str) -> tuple[int, int, str]:
+    """Clé de tri d'un libellé de catégorie : « 2 … » avant « 11 … ».
+
+    Un tri alphabétique de chaînes classe « 11 » avant « 2 », ce qui contredit la
+    numérotation que la personne a choisie pour ses catégories. Le préfixe numérique
+    est donc comparé comme un nombre, et non comme du texte.
+
+    Une catégorie sans préfixe numérique se classe après celles qui en ont un, par
+    ordre alphabétique — un classement « en dur » des sans-préfixe en tête aurait mis
+    en premier ce que la numérotation pousse en dernier. À numéro égal, le reste du
+    libellé départage, replié comme ailleurs pour que la casse et les accents ne
+    comptent pas.
+    """
+    texte = libelle or ""
+    prefixe = PREFIXE_NUMERIQUE.match(texte)
+    if prefixe:
+        return (0, int(prefixe.group(1)), casefold_ascii(texte[prefixe.end():]))
+    return (1, 0, casefold_ascii(texte))
+
+
 def words(value: str) -> tuple[str, ...]:
     """Les mots d'un texte, casse et accents retirés, ponctuation jetée.
 

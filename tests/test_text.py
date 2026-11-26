@@ -8,6 +8,7 @@ import unittest
 
 from rssresume.tools.text import (
     casefold_ascii,
+    cle_tri_naturel,
     contains_words,
     decouper,
     strip_html,
@@ -129,6 +130,41 @@ class CasefoldAsciiTests(unittest.TestCase):
 
     def test_an_empty_value_is_not_an_error(self):
         self.assertEqual("", casefold_ascii(None))
+
+
+class CleTriNaturelTests(unittest.TestCase):
+    """Le tri naturel des libellés de catégories : le préfixe numérique compte comme un
+    nombre, et non comme du texte — « 11 » avant « 2 » serait l'inverse de la numérotation
+    choisie."""
+
+    def test_a_numeric_prefix_sorts_numerically(self):
+        libelles = ["11 - Veille", "2 - Alertes", "1 - Annonces"]
+        tries = sorted(libelles, key=cle_tri_naturel)
+
+        self.assertEqual(["1 - Annonces", "2 - Alertes", "11 - Veille"], tries)
+
+    def test_a_category_without_prefix_sorts_after_those_with_one(self):
+        libelles = ["Cybersécurité", "2 - Alertes", "1 - Annonces", "Marché"]
+        tries = sorted(libelles, key=cle_tri_naturel)
+
+        self.assertEqual(["1 - Annonces", "2 - Alertes", "Cybersécurité", "Marché"], tries)
+
+    def test_categories_without_prefix_sort_alphabetically(self):
+        libelles = ["veille", "Cybersécurité", "Marché"]
+        tries = sorted(libelles, key=cle_tri_naturel)
+
+        self.assertEqual(["Cybersécurité", "Marché", "veille"], tries)
+
+    def test_the_same_number_is_broken_by_the_text(self):
+        """Accents et casse ne comptent pas dans le départage non plus."""
+        self.assertLess(
+            cle_tri_naturel("2 - Alpha"),
+            cle_tri_naturel("2 - bêta"),
+        )
+
+    def test_an_empty_label_is_tolerated(self):
+        self.assertEqual((1, 0, ""), cle_tri_naturel(None))
+        self.assertEqual((1, 0, ""), cle_tri_naturel(""))
 
 
 class WordsTests(unittest.TestCase):

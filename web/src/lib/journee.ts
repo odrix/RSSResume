@@ -92,3 +92,45 @@ export function paragraphes(texte: string): string[] {
 		.map((morceau) => morceau.trim())
 		.filter(Boolean);
 }
+
+/** Un préfixe numérique en tête de libellé : « 11 - … » commence par 11. */
+const PREFIXE_NUMERIQUE = /^\s*(\d+)/;
+
+/** Le texte replié pour comparaison, comme `casefold_ascii` côté API : casse repliée,
+ * accents retirés, pour que la comparaison ne dépende ni de la casse ni des accents. */
+function casefoldAscii(texte: string): string {
+	return (texte ?? '')
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.toLowerCase();
+}
+
+/** La clé de tri naturel d'un libellé : `[0, numéro, reste]` s'il commence par un nombre,
+ * `[1, 0, libellé replié]` sinon. Même règle que `cle_tri_naturel` côté API, pour que le
+ * site et l'email classent les catégories dans le même ordre. */
+function cleTriNaturel(libelle: string): [number, number, string] {
+	const prefixe = PREFIXE_NUMERIQUE.exec(libelle ?? '');
+	if (prefixe) {
+		return [0, Number(prefixe[1]), casefoldAscii(libelle.slice(prefixe[0].length))];
+	}
+	return [1, 0, casefoldAscii(libelle)];
+}
+
+/** Comparateur de tri naturel : « 2 … » avant « 11 … », les libellés sans préfixe
+ * numérique après, par ordre alphabétique, et à numéro égal le texte départage.
+ *
+ * Un tri de chaînes plain classerait « 11 » avant « 2 », ce qui contredit la numérotation
+ * choisie pour les catégories. */
+export function triNaturel(a: string, b: string): number {
+	const [ga, na, ra] = cleTriNaturel(a);
+	const [gb, nb, rb] = cleTriNaturel(b);
+	if (ga !== gb) return ga - gb;
+	if (na !== nb) return na - nb;
+	return ra < rb ? -1 : ra > rb ? 1 : 0;
+}
+
+/** Les catégories d'une journée dans l'ordre d'affichage : le tri naturel de leur
+ * libellé, le même que celui des sections de l'email. */
+export function categoriesTriees(contenu: ContenuJournee): CategorieJournee[] {
+	return [...contenu.categories].sort((a, b) => triNaturel(a.categorie, b.categorie));
+}

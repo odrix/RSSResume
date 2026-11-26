@@ -44,6 +44,7 @@ from rssresume.liens import lien_sur
 from rssresume.models import CategoryDigest, Ephemeride, Link, Montage
 from rssresume.retours import OBJET_RETOUR, Avis, LienRetour
 from rssresume.tools import duration
+from rssresume.tools.text import cle_tri_naturel
 
 if TYPE_CHECKING:
     from rssresume.config import AppConfig
@@ -307,11 +308,20 @@ class Lettre:
         `montage` est le seul paramètre qui change la forme de la lettre : avec lui, une
         seule pièce jointe et une seule durée, annoncées une fois sous l'introduction.
         Les sections gardent tout le reste — leur texte, leurs ancres, leurs deux listes.
+
+        Les sections suivent le tri naturel de leur catégorie — « 2 … » avant « 11 … » —
+        parce que le site relit cette même lettre pour afficher la journée : un ordre
+        différent entre l'email et la page serait un ordre dont on ne sait plus lequel
+        est le bon. C'est aussi le seul point de tri, ce qui couvre l'email du jour,
+        le `--send-only` et le site d'un seul geste.
         """
         moment = generated_at or dt.datetime.now().astimezone()
         return cls(
             day=day,
-            sections=[Section.from_digest(digest) for digest in digests],
+            sections=[
+                Section.from_digest(digest)
+                for digest in sorted(digests, key=lambda d: cle_tri_naturel(d.category))
+            ],
             ephemeride=ephemeride,
             generated_at=moment,
             sent_on=ephemeride.jour if ephemeride else moment.date(),
