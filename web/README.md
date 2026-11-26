@@ -65,6 +65,9 @@ src/
   env.ts                     variables d'environnement déclarées (SvelteKit 3)
   hooks.server.ts            session → locals.utilisateur, en-têtes de sécurité
   lib/profil.ts              types du profil, régimes, axes, lecture du formulaire (partagé)
+  lib/lecteur.svelte.ts      le lecteur audio unique, fourni par le layout : survit aux navigations
+  lib/LecteurGlobal.svelte   le mini-lecteur en bas d'écran, quand la page n'a pas d'emplacement
+  lib/LecteurPlein.svelte    l'emplacement plein qu'une page offre à une piste
   lib/server/
     contexte.ts              le seul endroit où l'environnement est lu et tout assemblé
     api-resume.ts            client typé de l'API de résumé

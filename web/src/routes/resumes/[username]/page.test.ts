@@ -1,5 +1,6 @@
 import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
+import { CLE_LECTEUR, LecteurAudio } from '#lib/lecteur.svelte.js';
 import Page from './+page.svelte';
 
 const PASSAGE = { heure: '04:00', fuseau: 'Europe/Paris', prochain: '2026-11-23T04:00:00+01:00' };
@@ -9,8 +10,10 @@ function rendre(data: Record<string, unknown>): string {
 		data: { username: 'moi', proprietaire: true, journees: [], passage: null, erreur: null, ...data },
 		params: { username: String(data.username ?? 'moi') }
 	};
+	// Le lecteur est celui du layout, que la page reçoit par le contexte.
+	const context = new Map([[CLE_LECTEUR, new LecteurAudio()]]);
 	// La page n'attend que `data` ; le reste des props de SvelteKit n'y sert pas.
-	return render(Page, { props } as unknown as Parameters<typeof render<typeof Page>>[1]).body;
+	return render(Page, { props, context } as unknown as Parameters<typeof render<typeof Page>>[1]).body;
 }
 
 describe('page des résumés, état vide', () => {
@@ -44,5 +47,12 @@ describe('page des résumés, état vide', () => {
 		expect(html).toContain('8 MIN');
 		expect(html).toContain('4 catégories');
 		expect(html).toContain('5 articles');
+	});
+
+	it("ne pose plus de lecteur dans la page : l'écoute part dans celui du layout", () => {
+		const html = rendre({ journees: [{ date: '2026-11-21', audios: [{ nom: 'jour.mp3', taille: 2048 }] }] });
+		expect(html).toContain('Lecture');
+		expect(html).not.toContain('<audio controls');
+		expect(html).not.toContain('lecteur-large');
 	});
 });

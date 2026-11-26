@@ -1,9 +1,14 @@
 <script lang="ts">
 	import '#lib/style.css';
 	import { onMount } from 'svelte';
+	import LecteurGlobal from '#lib/LecteurGlobal.svelte';
+	import { LecteurAudio, fournirLecteur } from '#lib/lecteur.svelte.js';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
+
+	// Le layout survit aux navigations, pas les pages : l'écoute vit donc ici.
+	fournirLecteur(new LecteurAudio());
 	let stylePage = $state<'brutal' | 'minimaliste'>('brutal');
 
 	function appliquerStyle(style: 'brutal' | 'minimaliste'): void {
@@ -72,3 +77,5 @@
 <footer class="pied">
 	<a href="/confidentialite">Confidentialité</a>
 </footer>
+
+<LecteurGlobal />

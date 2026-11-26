@@ -2,6 +2,7 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 import ContenuJournee from './ContenuJournee.svelte';
 import type { ContenuJournee as Contenu } from './journee.js';
+import { CLE_LECTEUR, LecteurAudio, PisteAudio } from './lecteur.svelte.js';
 
 function contenu(partiel: Partial<Contenu> = {}): Contenu {
 	return {
@@ -35,7 +36,14 @@ const HOSTILE = contenu({
 	]
 });
 
-const rendre = (valeur: Contenu, username = 'moi') => render(ContenuJournee, { props: { contenu: valeur, username } }).body;
+const rendre = (valeur: Contenu, username = 'moi', lecteur = new LecteurAudio()) =>
+	render(ContenuJournee, {
+		props: { contenu: valeur, username },
+		context: new Map([[CLE_LECTEUR, lecteur]])
+	}).body;
+
+/** Les lecteurs pleins hors lecture : un lien vers le MP3, que le lecteur du site intercepte. */
+const lecteursPleins = (html: string) => html.match(/<a class="bouton ecouter[^"]*" href="\/audio\//g) ?? [];
 
 describe('ContenuJournee', () => {
 	it("échappe le texte du modèle et des flux, et ne fait un lien que d'une URL http(s)", () => {
@@ -50,7 +58,9 @@ describe('ContenuJournee', () => {
 		// Le titre sans lien reste affiché, en texte.
 		expect(html).toContain('Données');
 		expect(html).toMatch(/<a href="https:\/\/exemple\.test\/a\?x=1&amp;y=&quot;2&quot;" rel="noopener noreferrer">Sûr<\/a>/);
-		expect(html.match(/<a /g)).toHaveLength(1);
+		// Le seul autre lien est celui du lecteur, vers le relais audio du site.
+		expect(html.match(/<a /g)).toHaveLength(2);
+		expect(lecteursPleins(html)).toHaveLength(1);
 	});
 
 	it('rend chaque paragraphe du résumé et les deux listes', () => {
@@ -62,22 +72,45 @@ describe('ContenuJournee', () => {
 	});
 
 	it("pose les lecteurs sur le relais audio du site, celui de la journée en mode global", () => {
-		expect(rendre(HOSTILE, 'moi')).toContain('src="/audio/moi/2026-11-21/cyber.mp3"');
+		const parCategorie = rendre(HOSTILE, 'moi');
+		expect(parCategorie).toContain('href="/audio/moi/2026-11-21/cyber.mp3"');
+		expect(parCategorie).not.toContain('<audio');
 		const globale = rendre(
 			contenu({
 				montage: { audio: 'journee.mp3', ecoute: '12 min' },
 				categories: [{ ...HOSTILE.categories[0], audio: null }]
 			})
 		);
-		expect(globale).toContain('src="/audio/moi/2026-11-21/journee.mp3"');
-		expect(globale.match(/<audio /g)).toHaveLength(1);
+		expect(globale).toContain('href="/audio/moi/2026-11-21/journee.mp3"');
+		expect(lecteursPleins(globale)).toHaveLength(1);
+		expect(globale).not.toContain('<audio');
 		expect(globale).toContain('12 min');
 	});
 
-	it("affiche la raison d'une journée sans article", () => {
+	it('montre les commandes pleines, et non le lien, pour la piste en cours', () => {
+		const element = {
+			src: '',
+			currentTime: 0,
+			duration: Number.NaN,
+			paused: true,
+			play() {},
+			pause() {},
+			addEventListener() {}
+		};
+		const lecteur = new LecteurAudio(() => element);
+		lecteur.lancer(new PisteAudio('moi', '2026-11-21', 'cyber.mp3', 'x', false));
+		const html = rendre(HOSTILE, 'moi', lecteur);
+		expect(lecteursPleins(html)).toHaveLength(0);
+		expect(html).toContain('type="range"');
+		expect(html).toContain('aria-label="Lecture"');
+	});
+
+	it("affiche la raison d'une journée sans article, sans lecteur vide", () => {
 		const html = rendre(contenu({ raison: 'Aucun article trouvé pour le vendredi 21 novembre 2026.' }));
 		expect(html).toContain('Aucun article trouvé pour le vendredi 21 novembre 2026.');
 		expect(html).not.toContain('<audio');
+		expect(html).not.toContain('/audio/');
+		expect(html).not.toContain('lecteur-plein');
 		expect(html).not.toContain('<section');
 	});
 

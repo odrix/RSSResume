@@ -45,6 +45,22 @@ export interface Passage {
 	prochain: string;
 }
 
+const FORMAT_DATE = new Intl.DateTimeFormat('fr-FR', {
+	weekday: 'long',
+	day: 'numeric',
+	month: 'long',
+	year: 'numeric',
+	timeZone: 'UTC'
+});
+
+/** « Vendredi 21 novembre 2026 ». En UTC : la date ISO est un jour, pas un instant, et le
+ * fuseau du serveur ne doit pas la faire glisser à la veille. Partagée par la liste des
+ * résumés et le titre des pistes du lecteur. */
+export function dateLisible(iso: string): string {
+	const texte = FORMAT_DATE.format(new Date(`${iso}T00:00:00Z`));
+	return texte.charAt(0).toUpperCase() + texte.slice(1);
+}
+
 /** L'URL si elle mène à une page web, `null` sinon.
  *
  * Svelte échappe le texte d'un attribut, pas son sens : un `href="javascript:…"` reste

@@ -6,13 +6,27 @@
 	deviennent des `href` qu'après `urlSure`, l'échappement ne protégeant pas d'un `javascript:`.
 -->
 <script lang="ts">
-	import { paragraphes, urlSure, type ContenuJournee, type LienArticle } from '#lib/journee.js';
+	import LecteurPlein from '#lib/LecteurPlein.svelte';
+	import { PisteAudio } from '#lib/lecteur.svelte.js';
+	import {
+		dateLisible,
+		paragraphes,
+		urlSure,
+		type ContenuJournee,
+		type LienArticle
+	} from '#lib/journee.js';
 
 	let { contenu, username }: { contenu: ContenuJournee; username: string } = $props();
 
-	/** La même URL que les lecteurs de la liste : le relais du site, jamais l'API. */
-	const urlAudio = (nom: string) =>
-		`/audio/${encodeURIComponent(username)}/${encodeURIComponent(contenu.date)}/${encodeURIComponent(nom)}`;
+	/** La même piste que la carte de la liste, pour qu'une écoute lancée là-bas se reprenne ici. */
+	const montage = $derived(
+		contenu.montage?.audio
+			? new PisteAudio(username, contenu.date, contenu.montage.audio, dateLisible(contenu.date), true)
+			: null
+	);
+
+	const pisteCategorie = (categorie: ContenuJournee['categories'][number], nom: string) =>
+		new PisteAudio(username, contenu.date, nom, `${dateLisible(contenu.date)} · ${categorie.categorie}`, false);
 
 	const listes = (categorie: ContenuJournee['categories'][number]) =>
 		[
@@ -31,10 +45,10 @@
 	<p class="attenue">{contenu.raison}</p>
 {/if}
 
-{#if contenu.montage?.audio}
+{#if montage}
 	<div class="audio carte">
-		<span>Journée{#if contenu.montage.ecoute}<span class="attenue"> · {contenu.montage.ecoute}</span>{/if}</span>
-		<audio controls preload="none" src={urlAudio(contenu.montage.audio)}></audio>
+		<span>Journée{#if contenu.montage?.ecoute}<span class="attenue"> · {contenu.montage.ecoute}</span>{/if}</span>
+		<LecteurPlein piste={montage} />
 	</div>
 {/if}
 
@@ -64,7 +78,7 @@
 		{/each}
 		{#if categorie.audio && !contenu.montage}
 			<div class="audio">
-				<audio controls preload="none" src={urlAudio(categorie.audio)}></audio>
+				<LecteurPlein piste={pisteCategorie(categorie, categorie.audio)} />
 			</div>
 		{/if}
 	</section>

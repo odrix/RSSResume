@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Utilisateur } from '#lib/server/comptes.js';
 import { ConsultationResumes } from '#lib/server/consultation.js';
 import { EMAIL_ADMIN, monter } from '#lib/server/outils-test.js';
+import { CLE_LECTEUR, LecteurAudio } from '#lib/lecteur.svelte.js';
 import Page from './+page.svelte';
 
 /* Le contexte réel lit l'environnement et ouvre la base : la route reçoit à la place celui
@@ -33,7 +34,8 @@ function evenement(utilisateur: Utilisateur | null, corps: Record<string, string
 
 function rendre(data: unknown, form: unknown = null): string {
 	const props = { data, form };
-	return render(Page, { props } as unknown as Parameters<typeof render<typeof Page>>[1])
+	const context = new Map([[CLE_LECTEUR, new LecteurAudio()]]);
+	return render(Page, { props, context } as unknown as Parameters<typeof render<typeof Page>>[1])
 		.body.replace(/<!--[\s\S]*?-->/g, '')
 		.replace(/\s+/g, ' ');
 }
