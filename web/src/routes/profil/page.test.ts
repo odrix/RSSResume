@@ -62,6 +62,20 @@ function bloc(html: string, texte: string): string {
 	return (html.match(/<fieldset[\s\S]*?<\/fieldset>/g) ?? []).find((fieldset) => fieldset.includes(texte)) ?? '';
 }
 
+/** Les blocs `<dialog>…</dialog>` du rendu. */
+function dialogs(html: string): string[] {
+	return html.match(/<dialog[\s\S]*?<\/dialog>/g) ?? [];
+}
+
+/** Le bouton d'une popup, celui qui porte `titre`. */
+function boutonPopup(html: string, titre: string): string {
+	return (
+		(html.match(/<button[^>]*type="button"[^>]*>[\s\S]*?<\/button>/g) ?? []).find((bouton) =>
+			bouton.includes(titre)
+		) ?? ''
+	);
+}
+
 describe('page Mon profil', () => {
 	it('ne propose que les catégories autorisées, avec leur description', async () => {
 		const { api } = monter();
@@ -153,5 +167,64 @@ describe('page Mon profil', () => {
 		expect(html).not.toContain('rubriques et catégories');
 		expect(html).toContain('Remplace le texte, le régime de sécurité, les rubriques par ceux');
 		expect(champs(html, 'categories_editees')).toEqual([]);
+	});
+
+	it('montre chaque section réglable en bouton résumant son état actuel', () => {
+		const html = rendre({});
+		expect(boutonPopup(html, 'Catégories suivies')).toContain('toutes suivies');
+		expect(boutonPopup(html, 'Régime de sécurité')).toContain('Exploitant');
+		expect(boutonPopup(html, 'Rubriques du résumé')).toContain('rubriques par défaut');
+		expect(boutonPopup(html, 'Prénom')).toContain('non renseigné');
+		expect(boutonPopup(html, 'Adresses de réception')).toContain('1 adresse');
+		expect(boutonPopup(html, 'Stack surveillée')).toContain('aucune');
+
+		const rempli = rendre({
+			depart: {
+				...PROFIL,
+				categories: ['Qualité'],
+				securite: 'decideur',
+				axes: [{ slug: 'cyber', libelle: 'Cyber', description: 'Les failles.' }],
+				prenom: 'Adrien',
+				email: ['moi@example.com', 'autre@example.com'],
+				stack: ['PostgreSQL']
+			},
+			enAttente: ['nouvelle@example.com']
+		});
+		expect(boutonPopup(rempli, 'Catégories suivies')).toContain('1 suivie');
+		expect(boutonPopup(rempli, 'Régime de sécurité')).toContain('Décideur');
+		expect(boutonPopup(rempli, 'Rubriques du résumé')).toContain('1 rubrique');
+		expect(boutonPopup(rempli, 'Prénom')).toContain('Adrien');
+		expect(boutonPopup(rempli, 'Adresses de réception')).toContain('3 adresses, dont 1 en attente');
+		expect(boutonPopup(rempli, 'Stack surveillée')).toContain('1 logiciel');
+	});
+
+	it("met le contenu d'édition de chaque section dans un <dialog>, sauf le profil de veille", () => {
+		const contenu = dialogs(rendre({}));
+		// Six sections en popup : catégories, régime, rubriques, prénom, adresses, stack.
+		expect(contenu).toHaveLength(6);
+		const tout = contenu.join(' ');
+		for (const nom of ['categories', 'securite', 'axe_libelle', 'prenom', 'email', 'stack_nom']) {
+			expect(tout).toContain(`name="${nom}"`);
+		}
+		// La textarea « Profil de veille » reste sur la page, hors de tout dialog.
+		expect(contenu.every((dialog) => !dialog.includes('name="profil"'))).toBe(true);
+		expect(rendre({})).toContain('name="profil"');
+		// Les dialogs sont fermés à l'affichage.
+		expect(contenu.every((dialog) => !/<dialog[^>]*\sopen/.test(dialog))).toBe(true);
+	});
+
+	it('rend ouvert le dialog du champ refusé, et seulement celui-là', () => {
+		const html = rendre({}, { message: 'securite : refusé', saisie: PROFIL, champ: 'securite' });
+		const ouverts = dialogs(html).filter((dialog) => /<dialog[^>]*\sopen/.test(dialog));
+		expect(ouverts).toHaveLength(1);
+		expect(ouverts[0]).toContain('name="securite"');
+
+		const refuse = rendre(
+			{},
+			{ message: 'catégorie inconnue', saisie: { ...PROFIL, categories: ['Tech'] }, champ: 'categories' }
+		);
+		const ouvert = dialogs(refuse).filter((dialog) => /<dialog[^>]*\sopen/.test(dialog));
+		expect(ouvert).toHaveLength(1);
+		expect(ouvert[0]).toContain('name="categories"');
 	});
 });
