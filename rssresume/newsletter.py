@@ -9,6 +9,7 @@ Ce qu'une lettre porte, dans l'ordre :
 
     Veille du 30 août 2026                            <- le titre : la date du CONTENU
     6 catégories, 21 min d'écoute                     <- le sous-titre, détaillé en info-bulle
+    Écouter la journée : https://veille…/audio/…      <- le lien audio, si le réglage est posé
     Dimanche 31 août 2026, saint Aristide. 1991 -…    <- l'introduction : le jour de l'ENVOI
     ┌ Cybersécurité technique, 5 min ──────────────┐
     │ le texte du résumé, celui qu'a lu la voix     │
@@ -36,6 +37,7 @@ import datetime as dt
 import email.utils
 import html
 import pathlib
+import urllib.parse
 from typing import TYPE_CHECKING
 
 from rssresume import ancres
@@ -74,6 +76,11 @@ TITRE = "Veille"
 #: L'étiquette qui annonce le fichier audio d'une catégorie. Le même mot que celui du
 #: client mail : c'est sous ce nom que le lecteur va le chercher en bas du message.
 PIECE_JOINTE = "Pièce jointe :"
+
+#: L'étiquette du lien vers l'audio de la journée sur le site, posé en tête de lettre
+#: quand le réglage le demande. La route visée est authentifiée : c'est elle qui rend
+#: les écoutes comptables.
+LIEN_AUDIO = "Écouter la journée"
 
 #: La question qui précède les deux liens de vote, au pied.
 QUESTION_AVIS = "Cette journée vous a-t-elle été utile ?"
@@ -203,6 +210,24 @@ class Abonnement:
     profil_id: str = ""
     #: `None` quand il manque la clé ou l'identifiant : la lettre part sans demander d'avis.
     retour: LienRetour | None = None
+    #: Le lien vers l'audio de la journée sur le site, en tête de lettre. Réglage de
+    #: l'installation : `false` par défaut, la lettre ne porte aucun lien sur l'audio.
+    audio_lien: bool = False
+
+    def lien_audio(self, day: dt.date, nom: str) -> str:
+        """L'URL de la route audio authentifiée du site pour ce fichier de la journée.
+
+        La route est `/audio/[username]/[date]/[nom]` (voir `web/src/routes/audio/…`
+        et `web/src/lib/lecteur.svelte.ts`) : les trois segments sont encodés comme le
+        fait le site avec `encodeURIComponent`, un nom de profil ou de fichier qui
+        porte un espace ou un accent ne doit pas couper l'URL.
+        """
+        return "{}/audio/{}/{}/{}".format(
+            self.site_url,
+            urllib.parse.quote(self.username, safe=""),
+            urllib.parse.quote(day.isoformat(), safe=""),
+            urllib.parse.quote(nom, safe=""),
+        )
 
     def liens_avis(self, day: dt.date) -> list[LienPied]:
         """« Utile » et « Pas utile » pour la journée `day`, ou rien sans de quoi les signer.
@@ -242,7 +267,8 @@ class Abonnement:
         personne. Le lien de désabonnement exige en plus la clé, l'identifiant et des
         destinataires ; s'il en manque un, la lettre part sans lui plutôt que sans pied.
         Les liens de vote n'exigent que la clé et l'identifiant : ils ne portent pas les
-        adresses.
+        adresses. Le lien vers l'audio de la journée n'exige que `site_url` : c'est la
+        route authentifiée du site, pas un lien signé.
         """
         if not config.site_url or not config.username:
             return None
@@ -263,6 +289,7 @@ class Abonnement:
             lien_desabonnement=lien,
             profil_id=config.profil_id or "",
             retour=retour,
+            audio_lien=config.audio_lien,
         )
 
 
@@ -354,6 +381,20 @@ class Lettre:
     def montage_path(self) -> pathlib.Path | None:
         """Le fichier de l'audio de journée, `None` s'il n'y en a pas ou plus."""
         return self.montage.audio_path if self.montage else None
+
+    @property
+    def lien_audio_haut(self) -> str | None:
+        """Le lien vers l'audio de la journée sur le site, `None` quand il n'y en a pas.
+
+        En tête de lettre seulement en mode `global` (quand il y a un montage) et
+        seulement quand l'installation a posé le réglage : en mode `category`, aucun
+        lien n'est ajouté. La pièce jointe, elle, reste attachée dans tous les cas.
+        """
+        if self.abonnement is None or not self.abonnement.audio_lien:
+            return None
+        if self.montage_path is None:
+            return None
+        return self.abonnement.lien_audio(self.day, self.montage_path.name)
 
     @property
     def montage_ecoute(self) -> str | None:
@@ -559,16 +600,25 @@ class Lettre:
         if not self.sections:
             # Le pied aussi : une journée vide part chez les mêmes lecteurs, qui doivent
             # pouvoir l'arrêter tout autant. La date en toutes lettres, comme le titre.
+            entete = f"{TITRE.upper()} DU {date_courte(self.day).upper()}"
+            if self.lien_audio_haut:
+                entete += f"\n\n{LIEN_AUDIO} : {self.lien_audio_haut}"
             return (
-                f"{TITRE.upper()} DU {date_courte(self.day).upper()}\n\n"
+                f"{entete}\n\n"
                 f"{introduction}\n\nAucun article trouvé pour le {date_longue(self.day)}.\n\n"
                 f"{self._pied_texte}\n"
             )
         blocs = [
             f"{TITRE.upper()} DU {date_courte(self.day).upper()}",
             self._sous_titre + (f"\n{self._detail_ecoute}" if self._detail_ecoute else ""),
-            introduction,
         ]
+
+        # Le lien vers l'audio de la journée sur le site, posé après le bloc titre et
+        # avant l'introduction : c'est la première chose à voir, et c'est lui qui rend
+        # l'écoute comptée. La pièce jointe reste attachée, elle.
+        if self.lien_audio_haut:
+            blocs.append(f"{LIEN_AUDIO} : {self.lien_audio_haut}")
+        blocs.append(introduction)
         # L'audio de la journée s'annonce une fois, ici, avant les sections : il ne
         # relève d'aucune d'elles. En mode par catégorie, la ligne n'existe pas et
         # chaque section nomme son fichier comme avant.
@@ -614,10 +664,23 @@ class Lettre:
         return _DOCUMENT.format(
             titre=_e(f"{TITRE} du {date_courte(self.day)}"),
             entete=self._entete_html(),
+            lien_audio=self._lien_audio_html(),
             introduction=self._introduction_html(),
             sections=corps,
             pied=self._pied_html,
         )
+
+    def _lien_audio_html(self) -> str:
+        """Le bloc cliquable vers l'audio de la journée, entre l'en-tête et l'introduction.
+
+        Cliquable, contrairement au nom de la pièce jointe en pied de section : aucun
+        client mail n'ouvre une pièce jointe depuis le corps du message, mais un lien
+        vers le site, si. Vide quand le lien du haut n'existe pas.
+        """
+        url = self.lien_audio_haut
+        if not url:
+            return ""
+        return _LIEN_AUDIO.format(url=_e(url), libelle=_e(LIEN_AUDIO))
 
     def _entete_html(self) -> str:
         """Le titre au-dessus de la boîte, le sous-titre et les durées dedans.
@@ -887,6 +950,16 @@ _ANNONCE_AUDIO = (
     'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;">{texte}</p>'
 )
 
+#: Le lien vers l'audio de la journée sur le site, entre l'en-tête et l'introduction.
+#: Proéminent : c'est le bouton d'écoute, vers la route authentifiée qui rend les
+#: écoutes comptables. La pièce jointe reste attachée à côté, son nom n'est pas un lien.
+_LIEN_AUDIO = """
+      <tr><td style="padding:0 4px 18px;">
+        <a href="{url}" style="display:block;background:#1a4fa0;border-radius:10px;
+           padding:13px 18px;text-align:center;color:#ffffff;font-size:15px;
+           font-weight:600;text-decoration:none;">{libelle}</a>
+      </td></tr>"""
+
 _SECTION = """
       <tr><td style="padding:0 0 14px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -938,6 +1011,7 @@ _DOCUMENT = """<!DOCTYPE html>
            style="width:100%;max-width:640px;font-family:-apple-system,BlinkMacSystemFont,
                   'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 {entete}
+{lien_audio}
       <tr><td style="padding:20px 4px 22px;">{introduction}</td></tr>
 {sections}
       <tr><td style="padding:22px 6px 0;border-top:1px solid #dde3ec;">

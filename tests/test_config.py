@@ -19,6 +19,7 @@ from rssresume.config import (
     DEFAULT_TIMEZONE,
     ENV_API_TOKEN,
     ENV_ARTICLE_CHAR_LIMIT,
+    ENV_AUDIO_LIEN,
     ENV_AUDIO_MODE,
     ENV_CERTFR_CATEGORIES,
     ENV_DEBUG,
@@ -376,6 +377,26 @@ class AudioModeTests(unittest.TestCase):
         self.assertIn("journee", str(raised.exception))
         # Le message nomme ce qu'il accepte : c'est ce qui évite un second essai à l'aveugle.
         self.assertIn(AUDIO_MODE_GLOBAL, str(raised.exception))
+
+
+class AudioLienTests(unittest.TestCase):
+    """Le lien vers l'audio de la journée en tête de lettre, réglé par variable.
+
+    Comme `RSSRESUME_DEBUG` : seul « true » l'active, toute autre valeur le laisse
+    éteint, et un drapeau qu'on croit posé est pire qu'un drapeau absent.
+    """
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_link_is_off_by_default(self):
+        self.assertFalse(AppConfig.from_env().audio_lien)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_LIEN: " TRUE "}, clear=True)
+    def test_the_link_is_read_whatever_its_casing(self):
+        self.assertTrue(AppConfig.from_env().audio_lien)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_LIEN: "1"}, clear=True)
+    def test_only_true_turns_it_on(self):
+        self.assertFalse(AppConfig.from_env().audio_lien)
 
 
 class DebugTests(unittest.TestCase):

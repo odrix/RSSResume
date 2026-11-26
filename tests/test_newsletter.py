@@ -686,6 +686,81 @@ def abonnement(lien=LIEN_DESABONNEMENT, username="bea"):
     return Abonnement(expediteur="La Veille", site_url=SITE, username=username, lien_desabonnement=lien)
 
 
+class LienAudioTests(unittest.TestCase):
+    """Le lien vers l'audio de la journée sur le site, posé en tête de lettre.
+
+    Ce que ces tests protègent : le lien n'existe qu'en mode `global` (quand il y a un
+    montage) et seulement quand l'installation a posé le réglage, dans les deux
+    rendus ; la pièce jointe, elle, reste attachée dans tous les cas.
+    """
+
+    URL = f"{SITE}/audio/bea/2026-08-27/journee.wav"
+
+    def _abonnement(self, audio_lien):
+        return Abonnement(
+            expediteur="La Veille", site_url=SITE, username="bea", audio_lien=audio_lien
+        )
+
+    def _lettre(self, tmpdir, audio_lien=True, montage=True):
+        kwargs = {}
+        if montage:
+            kwargs["montage"] = Montage(
+                texte="Bonjour Adrien.", audio_path=wav(tmpdir, 120, nom="journee.wav")
+            )
+        return Lettre.compose(
+            JOUR,
+            [digest()],
+            ephem(),
+            generated_at=COMPOSEE_LE,
+            abonnement=self._abonnement(audio_lien),
+            **kwargs,
+        )
+
+    def test_in_link_mode_the_top_of_the_letter_points_to_the_authenticated_audio_route(self):
+        """Mode lien + montage : le lien est en tête, en texte comme en HTML, et la
+        pièce jointe reste attachée."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, audio_lien=True)
+
+            self.assertIn(f"Écouter la journée : {self.URL}", lettre.text)
+            self.assertIn(f'href="{self.URL}"', lettre.html)
+            # En tête : après le titre, avant l'introduction.
+            self.assertLess(
+                lettre.text.index(self.URL), lettre.text.index("Vendredi 28 août 2026")
+            )
+            # La pièce jointe part toujours.
+            self.assertEqual(["journee.wav"], [c.name for c in lettre.attachments])
+
+    def test_without_a_montage_no_link_is_added(self):
+        """Mode « category » : aucun lien, même avec le réglage posé."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, audio_lien=True, montage=False)
+
+            self.assertNotIn("/audio/", lettre.text)
+            self.assertNotIn("/audio/", lettre.html)
+
+    def test_without_the_setting_no_link_and_the_attachment_remains(self):
+        """Sans le réglage : la lettre est celle d'aujourd'hui, pièce jointe comprise."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lettre = self._lettre(tmpdir, audio_lien=False)
+
+            self.assertNotIn("/audio/", lettre.text)
+            self.assertNotIn("/audio/", lettre.html)
+            self.assertEqual(["journee.wav"], [c.name for c in lettre.attachments])
+
+    def test_depuis_config_propagates_the_flag_and_builds_the_route(self):
+        """Le seul constructeur de l'abonnement, partagé par le passage du jour et le
+        renvoi `--send-only` : les deux rendent la même lettre."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = dataclasses.replace(
+                make_config(tmpdir), site_url=SITE, username="bea", audio_lien=True
+            )
+            abonne = Abonnement.depuis_config(config)
+
+            self.assertTrue(abonne.audio_lien)
+            self.assertEqual(self.URL, abonne.lien_audio(JOUR, "journee.wav"))
+
+
 class AbonnementPiedTests(unittest.TestCase):
     """Le pied d'une lettre qu'un inconnu reçoit : qui écrit, pourquoi, et comment arrêter.
 
