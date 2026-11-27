@@ -19,6 +19,7 @@ from rssresume.config import (
     DEFAULT_TIMEZONE,
     ENV_API_TOKEN,
     ENV_ARTICLE_CHAR_LIMIT,
+    ENV_AUDIO_FILE,
     ENV_AUDIO_LIEN,
     ENV_AUDIO_MODE,
     ENV_CERTFR_CATEGORIES,
@@ -397,6 +398,31 @@ class AudioLienTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_LIEN: "1"}, clear=True)
     def test_only_true_turns_it_on(self):
         self.assertFalse(AppConfig.from_env().audio_lien)
+
+
+class AudioFileTests(unittest.TestCase):
+    """Le fichier audio joint ou non, réglé par variable.
+
+    `true` par défaut : sans la variable, le mp3 part en pièce jointe comme avant.
+    Seul « true » le laisse joint, toute autre valeur le retire, comme `RSSRESUME_DEBUG`
+    : un drapeau qu'on croit posé est pire qu'un drapeau absent.
+    """
+
+    @mock.patch.dict(os.environ, BASE_ENV, clear=True)
+    def test_the_file_is_attached_by_default(self):
+        self.assertTrue(AppConfig.from_env().audio_file)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_FILE: " TRUE "}, clear=True)
+    def test_true_reads_whatever_its_casing(self):
+        self.assertTrue(AppConfig.from_env().audio_file)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_FILE: "false"}, clear=True)
+    def test_false_detaches_the_file(self):
+        self.assertFalse(AppConfig.from_env().audio_file)
+
+    @mock.patch.dict(os.environ, {**BASE_ENV, ENV_AUDIO_FILE: "1"}, clear=True)
+    def test_only_true_keeps_the_file_attached(self):
+        self.assertFalse(AppConfig.from_env().audio_file)
 
 
 class DebugTests(unittest.TestCase):

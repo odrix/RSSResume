@@ -213,6 +213,9 @@ class Abonnement:
     #: Le lien vers l'audio de la journée sur le site, en tête de lettre. Réglage de
     #: l'installation : `false` par défaut, la lettre ne porte aucun lien sur l'audio.
     audio_lien: bool = False
+    #: Le fichier audio part-il en pièce jointe. `True` par défaut, comme avant la
+    #: variable `RSSRESUME_AUDIO_FILE` ; `False` : la lettre ne joint plus rien.
+    audio_file: bool = True
 
     def lien_audio(self, day: dt.date, nom: str) -> str:
         """L'URL de la route audio authentifiée du site pour ce fichier de la journée.
@@ -290,6 +293,7 @@ class Abonnement:
             profil_id=config.profil_id or "",
             retour=retour,
             audio_lien=config.audio_lien,
+            audio_file=config.audio_file,
         )
 
 
@@ -388,7 +392,7 @@ class Lettre:
 
         En tête de lettre seulement en mode `global` (quand il y a un montage) et
         seulement quand l'installation a posé le réglage : en mode `category`, aucun
-        lien n'est ajouté. La pièce jointe, elle, reste attachée dans tous les cas.
+        lien n'est ajouté. La pièce jointe, elle, ne part que si `audio_file` est vrai.
         """
         if self.abonnement is None or not self.abonnement.audio_lien:
             return None
@@ -401,14 +405,23 @@ class Lettre:
         return duree(self.montage_secondes)
 
     @property
+    def _joint_audio(self) -> bool:
+        """Le fichier audio part-il en pièce jointe. `True` sans abonnement, comme avant
+        le réglage : le site relit la lettre sans abonnement et garde ses mentions."""
+        return self.abonnement is None or self.abonnement.audio_file
+
+    @property
     def _annonce_audio(self) -> str | None:
         """`Pièce jointe : journee.mp3, 12 min`, la seule mention du fichier.
 
         Une ligne pour la lettre entière, et non une par section : en mode `global` le
         message ne porte qu'un fichier, et le nommer sous chaque catégorie donnerait six
         fois le même nom sans rien apprendre. La durée y est jointe parce que c'est ici
-        qu'elle sert, juste avant de décider d'écouter.
+        qu'elle sert, juste avant de décider d'écouter. Aucun fichier joint, aucune
+        annonce : ce qui n'est pas joint ne doit pas être nommé comme s'il l'était.
         """
+        if not self._joint_audio:
+            return None
         nom = self.montage_path.name if self.montage_path else None
         if not nom:
             return None
@@ -438,7 +451,11 @@ class Lettre:
 
         Jamais les deux : un mode produit l'un, l'autre mode produit les autres. La
         condition porte donc sur le montage, et les sections restent la règle générale.
+        Aucun fichier quand l'installation a posé `RSSRESUME_AUDIO_FILE=false` : la
+        lettre part alors sans pièce jointe du tout.
         """
+        if not self._joint_audio:
+            return []
         if self.montage_path:
             return [self.montage_path]
         return [section.audio_path for section in self.sections if section.audio_path]
@@ -615,7 +632,7 @@ class Lettre:
 
         # Le lien vers l'audio de la journée sur le site, posé après le bloc titre et
         # avant l'introduction : c'est la première chose à voir, et c'est lui qui rend
-        # l'écoute comptée. La pièce jointe reste attachée, elle.
+        # l'écoute comptée. La pièce jointe ne part que si `audio_file` est vrai.
         if self.lien_audio_haut:
             blocs.append(f"{LIEN_AUDIO} : {self.lien_audio_haut}")
         blocs.append(introduction)
@@ -628,8 +645,7 @@ class Lettre:
         blocs.append(self._pied_texte)
         return "\n\n".join(blocs).rstrip() + "\n"
 
-    @staticmethod
-    def _section_texte(section: Section) -> str:
+    def _section_texte(self, section: Section) -> str:
         titre = section.category.upper()
         if section.ecoute:
             titre += f", {section.ecoute}"
@@ -643,8 +659,9 @@ class Lettre:
             if liens:
                 lignes.extend(["", entete])
                 lignes.extend(_lien_texte(lien) for lien in liens)
-        if section.audio_name:
+        if section.audio_name and self._joint_audio:
             # En dernier : c'est une référence, pas du contenu. Elle ferme la section.
+            # Pas de fichier joint, pas de mention : la section ne nomme que ce qui part.
             lignes.extend(["", f"{PIECE_JOINTE} {section.audio_name}"])
         return "\n".join(lignes)
 
@@ -735,8 +752,7 @@ class Lettre:
             lignes.append(_ANNONCE_AUDIO.format(texte=_e(self._annonce_audio)))
         return "".join(lignes)
 
-    @classmethod
-    def _section_html(cls, section: Section) -> str:
+    def _section_html(self, section: Section) -> str:
         badge = (
             _BADGE.format(texte=_e(section.ecoute))
             if section.ecoute
@@ -748,13 +764,14 @@ class Lettre:
             # Les liens retenus SEULEMENT : ce sont eux que le résumé raconte, et un
             # article dont il n'a pas parlé n'a aucun mot à quoi s'accrocher.
             resume=_resume_html(section.summary_text, section.links),
-            liens=cls._liens_html("À lire", section.links, "#1a4fa0")
-            + cls._liens_html("À surveiller", section.watchlist, "#6b7280"),
+            liens=self._liens_html("À lire", section.links, "#1a4fa0")
+            + self._liens_html("À surveiller", section.watchlist, "#6b7280"),
             # Pas un lien : aucun client mail n'ouvre une pièce jointe depuis le corps
             # du message, et un lien inerte se lit comme un lien cassé. Le nom seul
-            # suffit à faire le rapprochement avec le bandeau des pièces jointes.
+            # suffit à faire le rapprochement avec le bandeau des pièces jointes. Pas de
+            # fichier joint, pas de mention.
             audio=_AUDIO.format(etiquette=_e(PIECE_JOINTE), fichier=_e(section.audio_name))
-            if section.audio_name
+            if section.audio_name and self._joint_audio
             else "",
         )
 

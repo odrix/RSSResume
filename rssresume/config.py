@@ -111,6 +111,11 @@ ENV_SITE_URL = "RSSRESUME_SITE_URL"
 #: `false` par défaut, la lettre reste celle d'avant.
 ENV_AUDIO_LIEN = "RSSRESUME_AUDIO_LIEN"
 
+#: Le fichier audio est-il joint à la lettre. `true`, le défaut, conserve le comportement
+#: d'avant cette variable : le mp3 part en pièce jointe. `false` : aucun fichier n'est
+#: joint, et la lettre ne l'annonce plus comme une pièce jointe.
+ENV_AUDIO_FILE = "RSSRESUME_AUDIO_FILE"
+
 
 def load_timezone(name: str | None = None) -> dt.tzinfo:
     """Le fuseau nommé, résolu au lancement : un nom inconnu doit échouer tout de suite.
@@ -345,6 +350,9 @@ class AppConfig:
     #: Le lien vers l'audio de la journée sur le site, en tête de lettre, en mode
     #: `global` seulement et quand `site_url` est posée. La pièce jointe reste.
     audio_lien: bool = False
+    #: Le fichier audio part-il en pièce jointe avec la lettre. `True` par défaut, comme
+    #: avant cette variable ; `False` : la lettre ne joint plus aucun fichier audio.
+    audio_file: bool = True
     #: Le secret des liens signés de la lettre, lu dans `RSSRESUME_API_TOKEN` : l'API qui
     #: vérifie le lien de désabonnement le connaît déjà. `None` : pas de lien de
     #: désabonnement, les autres liens restent.
@@ -427,6 +435,7 @@ class AppConfig:
             axes=personne.axes,
             site_url=load_site_url(_env(ENV_SITE_URL)),
             audio_lien=(_env(ENV_AUDIO_LIEN, "false") or "").lower() == "true",
+            audio_file=(_env(ENV_AUDIO_FILE, "true") or "").lower() == "true",
             cle_signature=_env(ENV_API_TOKEN),
             admin_email=load_admin_email(_env(ENV_ADMIN_EMAIL)),
         )
