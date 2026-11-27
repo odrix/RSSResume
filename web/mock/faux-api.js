@@ -248,15 +248,30 @@ export class FausseApi {
 			}
 			const journees = this.journees.get(username) ?? [];
 			if (date === undefined) {
-				return json(
-					200,
-					[...journees]
-						.sort((a, b) => b.date.localeCompare(a.date))
-						.map((j) => ({
-							date: j.date,
-							audios: j.audios.map((a) => ({ nom: a.nom, taille: a.octets.length }))
-						}))
-				);
+				/** @param {JourneeStockee} j */
+				const enJson = (j) => ({
+					date: j.date,
+					audios: j.audios.map((a) => ({ nom: a.nom, taille: a.octets.length }))
+				});
+				// Tri date décroissante avant le découpage, comme `Sorties.journees`.
+				const toutes = [...journees].sort((a, b) => b.date.localeCompare(a.date));
+				const query = new URL(requete.url).searchParams;
+				const decalageBrut = query.get('decalage');
+				const limiteBrute = query.get('limite');
+				// Sans paramètre de pagination : le tableau complet, comme l'API.
+				if (decalageBrut === null && limiteBrute === null) return json(200, toutes.map(enJson));
+				// Comme l'API : entiers positifs, decalage >= 0, limite >= 1, sinon 400.
+				/** @param {string | null} v @param {number} defaut @returns {number} */
+				const entier = (v, defaut) => (v === null ? defaut : /^\d+$/.test(v) ? Number(v) : NaN);
+				/** @param {string | null} v @returns {number | null} */
+				const entierOuNull = (v) => (v === null ? null : /^\d+$/.test(v) ? Number(v) : NaN);
+				const decalage = entier(decalageBrut, 0);
+				const limite = entierOuNull(limiteBrute);
+				if (Number.isNaN(decalage) || (limite !== null && (Number.isNaN(limite) || limite < 1))) {
+					return erreur(400, 'paramètre de pagination invalide');
+				}
+				const lot = limite === null ? toutes.slice(decalage) : toutes.slice(decalage, decalage + limite);
+				return json(200, { journees: lot.map(enJson), total: toutes.length });
 			}
 			const journee = journees.find((j) => j.date === date);
 			if (quoi === undefined) {

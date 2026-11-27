@@ -143,8 +143,13 @@ class Sorties:
     def dossier(self, id: str) -> pathlib.Path:
         return self.racine / id
 
-    def journees(self, id: str) -> list[Journee]:
-        """Les journées du profil, la plus récente d'abord. Aucune encore : liste vide."""
+    def journees(self, id: str, decalage: int = 0, limite: int | None = None) -> list[Journee]:
+        """Les journées du profil, la plus récente d'abord. Aucune encore : liste vide.
+
+        `decalage` et `limite` découpent la liste **après** le tri, pour que le lot d'une
+        page garde l'ordre date décroissante sans que l'appelant ait à re-trier. `limite=None`
+        rend tout ce qui reste depuis `decalage`.
+        """
         dossier = self.dossier(id)
         if not dossier.is_dir():
             return []
@@ -153,7 +158,9 @@ class Sorties:
             date = date_valide(entree.name)
             if date is not None and entree.is_dir() and not entree.is_symlink():
                 journees.append(Journee(date, self._audios(entree)))
-        return sorted(journees, key=lambda journee: journee.date, reverse=True)
+        journees.sort(key=lambda journee: journee.date, reverse=True)
+        fin = None if limite is None else decalage + limite
+        return journees[decalage:fin]
 
     def contenu(self, id: str, texte_date: str) -> ContenuJournee | None:
         """Le contenu d'une journée produite, relu de ses journaux ; sinon `None`.

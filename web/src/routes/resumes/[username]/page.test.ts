@@ -207,3 +207,74 @@ describe('/resumes/[username], le chargement des journées lues', () => {
 		expect(await load(evenement(admin))).toMatchObject({ lues: [] });
 	});
 });
+
+describe('page des résumés, premier lot paginé', () => {
+	let env: ReturnType<typeof monter>;
+	let bea: Utilisateur;
+
+	function evenement(utilisateur: Utilisateur | null, username = 'bea') {
+		return {
+			params: { username },
+			url: new URL(`https://site.test/resumes/${username}`),
+			locals: { utilisateur }
+		} as never;
+	}
+
+	beforeEach(async () => {
+		env = monter();
+		await env.api.creerProfil('bea', { profil: 'Veille', stack: [], email: [], prenom: '', securite: 'exploitant' });
+		for (let jour = 1; jour <= 25; jour++) {
+			env.fausseApi.ajouterContenu('bea', `2026-10-${String(jour).padStart(2, '0')}`, {});
+		}
+		bea = await env.creerConfirme('bea@example.com', 'bea');
+		env.journeesLues.marquer(bea, 'bea', '2026-10-05', 'pages'); // 21e journée, hors du 1er lot
+		etat.env = env;
+	});
+
+	it('ne livre que 10 journées, du plus récent au plus ancien, avec total et aSuite', async () => {
+		const data = (await load(evenement(bea))) as {
+			journees: { date: string }[];
+			indicateursJournees: Record<string, unknown>;
+			total: number;
+			aSuite: boolean;
+		};
+		expect(data.journees).toHaveLength(10);
+		expect(data.total).toBe(25);
+		expect(data.aSuite).toBe(true);
+		const dates = data.journees.map((j) => j.date);
+		expect(dates[0]).toBe('2026-10-25');
+		expect(dates).toEqual([...dates].sort().reverse());
+		// Les indicateurs ne sont chargés que pour le premier lot.
+		expect(Object.keys(data.indicateursJournees)).toHaveLength(10);
+	});
+
+	it('aSuite false et total exact quand la liste tient dans le premier lot', async () => {
+		env.fausseApi.journees.set('bea', []);
+		for (const date of ['2026-10-01', '2026-10-02', '2026-10-03']) env.fausseApi.ajouterContenu('bea', date, {});
+		const data = (await load(evenement(bea))) as { journees: unknown[]; total: number; aSuite: boolean };
+		expect(data.journees).toHaveLength(3);
+		expect(data.total).toBe(3);
+		expect(data.aSuite).toBe(false);
+	});
+
+	it('rend le set des lues en entier, y compris hors du premier lot', async () => {
+		const data = (await load(evenement(bea))) as { lues: string[] };
+		expect(data.lues).toEqual(['2026-10-05']);
+	});
+
+	it('les cartes du premier lot portent leur lien profond vers la journée', async () => {
+		const data = (await load(evenement(bea))) as Record<string, unknown>;
+		const html = rendre({ ...data, username: 'bea' });
+		expect(html).toContain('href="/resumes/bea/2026-10-25"');
+		expect(html).toContain('href="/resumes/bea/2026-10-16"');
+		expect(html).not.toContain('href="/resumes/bea/2026-10-15"');
+	});
+
+	it('affiche « Charger plus » quand il reste des lots, « Fin de la liste » sinon', () => {
+		const carte = { date: '2026-11-21', audios: [] };
+		expect(rendre({ journees: [carte], aSuite: true })).toContain('Charger plus');
+		expect(rendre({ journees: [carte], aSuite: true })).not.toContain('Fin de la liste');
+		expect(rendre({ journees: [carte], aSuite: false })).toContain('Fin de la liste');
+		expect(rendre({ journees: [carte], aSuite: false })).not.toContain('Charger plus');
+	});
+});

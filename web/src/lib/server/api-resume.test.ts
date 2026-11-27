@@ -255,6 +255,28 @@ describe('ClientApiResume', () => {
 		expect(absent.introuvable).toBe(true);
 	});
 
+	it('transmet decalage et limite dans la query string, et rend le lot avec son total', async () => {
+		const { api, fausseApi } = monter();
+		await api.creerProfil('moi', SAISIE);
+		for (let jour = 1; jour <= 25; jour++) {
+			fausseApi.ajouterContenu('moi', `2026-10-${String(jour).padStart(2, '0')}`, {});
+		}
+		fausseApi.requetes.length = 0;
+
+		const lot = await api.listerJournees('moi', { decalage: 10, limite: 10 });
+		expect(lot.total).toBe(25);
+		expect(lot.journees.map((j) => j.date)).toEqual([
+			'2026-10-15', '2026-10-14', '2026-10-13', '2026-10-12', '2026-10-11',
+			'2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06'
+		]);
+		expect(fausseApi.requetes.at(-1)?.url).toBe('http://api.test/api/v1/profils/moi/journees?decalage=10&limite=10');
+
+		// Sans options : le tableau complet, sans query string (rétrocompatible).
+		const tout = await api.listerJournees('moi');
+		expect(tout).toHaveLength(25);
+		expect(fausseApi.requetes.at(-1)?.url).toBe('http://api.test/api/v1/profils/moi/journees');
+	});
+
 	it('lireJournee et lirePassage appellent les bons chemins', async () => {
 		const { api, fausseApi } = monter();
 		await api.creerProfil('moi', SAISIE);

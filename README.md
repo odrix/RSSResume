@@ -909,7 +909,7 @@ document la nomme en plus : `{"erreur": "…", "champ": "securite"}`.
 | `GET /api/v1/profils/{username}` | `{"id","username","profil","stack","email","prenom","securite","modifie_le"}` ; 404 |
 | `PUT /api/v1/profils/{username}` | corps `{"profil","stack","email","prenom","securite"}` → 200 ; 404 ; 422 (id et nom ne changent pas) |
 | `DELETE /api/v1/profils/{username}` | 204 ; 404, les journées restent sur le disque |
-| `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord |
+| `GET /api/v1/profils/{username}/journees` | `[{"date","audios":[{"nom","taille"}]}]`, la plus récente d'abord ; avec `?decalage=N&limite=M` (entiers, `decalage ≥ 0`, `limite ≥ 1`, `400` sinon) : `{"journees": […], "total": N}`, un lot de la liste triée |
 | `GET /api/v1/profils/{username}/journees/{date}/audios/{nom}` | l'audio (`audio/mpeg` ou `audio/wav`), 200 ou 206 avec `Range`, 416 hors du fichier |
 | `GET /api/v1/profils/{username}/journees/{date}` | le contenu de la journée relu de ses journaux, comme `--send-only` : résumés, articles « à lire » et « à surveiller » (`url` à `null` hors http(s)), audios, `raison` d'une journée sans article ; 404 |
 | `GET /api/v1/passage` | `{"heure","fuseau","prochain"}`, lus de `RSSRESUME_SCHEDULE` et `RSSRESUME_TIMEZONE` comme le travailleur |

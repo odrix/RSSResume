@@ -13,6 +13,23 @@
 	let ecouteesIci = $state<string[]>([]);
 	const lues = $derived(new Set([...(data.lues ?? []), ...ecouteesIci]));
 
+	// La liste paginée : le premier lot vient du serveur, les suivants s'y ajoutent au
+	// défilement. L'effet ci-dessous la réinitialise sur une navigation vers un autre profil ;
+	// l'initialisation ne lit `data` qu'une fois, c'est voulu (le rendu SSR n'a pas d'effet).
+	// svelte-ignore state_referenced_locally
+	let journees = $state(data.journees);
+	// svelte-ignore state_referenced_locally
+	let indicateursJournees = $state(data.indicateursJournees ?? {});
+	// svelte-ignore state_referenced_locally
+	let aSuite = $state(data.aSuite);
+	let chargement = $state(false);
+	let sentinelle: HTMLDivElement | undefined = $state();
+	$effect(() => {
+		journees = data.journees;
+		indicateursJournees = data.indicateursJournees ?? {};
+		aSuite = data.aSuite;
+	});
+
 	// Le marquage lui-même part du layout ; la page ne fait que suivre à l'écran ce qu'il
 	// marquera, selon la même règle : une piste de journée entière, et ses propres résumés.
 	$effect(() =>
@@ -55,7 +72,7 @@
 	/** Ce que joue la carte : son premier fichier n'est la journée entière que s'il en est le
 	 * montage, comme sur la page de la journée. */
 	function pisteDeCarte(date: string, nom: string): PisteAudio {
-		const indicateurs = data.indicateursJournees?.[date];
+		const indicateurs = indicateursJournees[date];
 		return PisteAudio.pourFichier(
 			data.username,
 			date,
@@ -97,6 +114,48 @@
 		}
 	});
 
+	/** Charge le lot suivant et l'ajoute à la liste. Le bouton « Charger plus » en repli
+	 * appelle la même fonction quand l'observateur d'intersection est indisponible ; un
+	 * échec laisse la liste telle quelle et le bouton disponible pour réessayer. */
+	async function chargerPlus(): Promise<void> {
+		if (chargement || !aSuite) return;
+		chargement = true;
+		try {
+			const reponse = await fetch(
+				`/resumes/${encodeURIComponent(data.username)}/lots?decalage=${journees.length}`
+			);
+			if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+			const lot = (await reponse.json()) as {
+				journees: typeof journees;
+				indicateursJournees: typeof indicateursJournees;
+				total: number;
+				aSuite: boolean;
+			};
+			journees = [...journees, ...lot.journees];
+			indicateursJournees = { ...indicateursJournees, ...lot.indicateursJournees };
+			aSuite = lot.aSuite;
+		} catch (cause) {
+			console.error('Chargement du lot de résumés :', cause);
+		} finally {
+			chargement = false;
+		}
+	}
+
+	// Le chargement paresseux : à l'approche de la sentinelle en bas de liste, le lot
+	// suivant part tout seul. L'effet se rejoue quand `aSuite` ou la sentinelle changent,
+	// et se démonte quand la fin de liste est atteinte.
+	$effect(() => {
+		if (!sentinelle || !aSuite || typeof IntersectionObserver === 'undefined') return;
+		const observateur = new IntersectionObserver(
+			(entrees) => {
+				if (entrees.some((entree) => entree.isIntersecting)) void chargerPlus();
+			},
+			{ rootMargin: '400px' }
+		);
+		observateur.observe(sentinelle);
+		return () => observateur.disconnect();
+	});
+
 </script>
 
 <svelte:head>
@@ -107,7 +166,7 @@
 
 {#if data.erreur}
 	<p class="message erreur" role="alert">{data.erreur}</p>
-{:else if !data.journees.length}
+{:else if !journees.length}
 	<p class="attenue">
 		{#if prochainPassage}
 			Aucun résumé pour l'instant. {data.proprietaire
@@ -120,8 +179,8 @@
 {/if}
 
 <ul class="journees">
-	{#each data.journees as journee (journee.date)}
-		{@const indicateurs = data.indicateursJournees?.[journee.date]}
+	{#each journees as journee (journee.date)}
+		{@const indicateurs = indicateursJournees[journee.date]}
 		{@const date = datePieces(journee.date)}
 		{@const lue = lues.has(journee.date)}
 		<li class="carte journee" class:lue>
@@ -178,6 +237,18 @@
 		</li>
 	{/each}
 </ul>
+
+{#if aSuite}
+	<!-- La sentinelle déclenche le lot suivant à l'approche du bas de page. -->
+	<div bind:this={sentinelle} class="sentinelle" aria-hidden="true"></div>
+	{#if chargement}
+		<p class="attenue chargement-lot" role="status">Chargement…</p>
+	{:else}
+		<button type="button" class="charger-plus" onclick={chargerPlus}>Charger plus</button>
+	{/if}
+{:else if journees.length}
+	<p class="attenue">Fin de la liste</p>
+{/if}
 
 <style>
 	:global(main) {
@@ -335,6 +406,26 @@
 
 	.meta-audio {
 		display: none;
+	}
+
+	.sentinelle {
+		height: 1px;
+	}
+
+	.chargement-lot {
+		text-align: center;
+	}
+
+	.charger-plus {
+		display: block;
+		margin: 1.5rem auto;
+		padding: 0.8rem 2.2rem;
+		border: 3px solid var(--bord);
+		background: var(--surface);
+		box-shadow: 5px 5px 0 var(--bord);
+		font-family: Impact, 'Arial Black', Arial, sans-serif;
+		font-size: 1.05rem;
+		text-transform: uppercase;
 	}
 
 	@media (max-width: 1100px) {

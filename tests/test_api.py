@@ -509,6 +509,55 @@ class JourneesTests(ServeurTestCase):
         ):
             self.assertEqual(404, self.audio(nom, jour)[0], (nom, jour))
 
+    def _semer(self, nombre: int) -> None:
+        """`nombre` journées de plus en septembre 2026, pour dépasser un lot de dix."""
+        dossier = self.sortie / self.fiche.id
+        for jour in range(1, nombre + 1):
+            (dossier / f"2026-09-{jour:02d}").mkdir()
+
+    def test_pagination_returns_a_lot_and_the_total_most_recent_first(self):
+        self._semer(25)  # 28 journées au total avec celles du setUp
+        statut, corps = self.json("GET", "/api/v1/profils/bea/journees?decalage=0&limite=10")
+        self.assertEqual(200, statut)
+        self.assertEqual(28, corps["total"])
+        dates = [journee["date"] for journee in corps["journees"]]
+        self.assertEqual(10, len(dates))
+        self.assertEqual("2026-09-25", dates[0])
+        self.assertEqual("2026-09-16", dates[-1])
+        self.assertEqual(sorted(dates, reverse=True), dates)
+
+    def test_pagination_walks_the_lots_in_order_until_the_end(self):
+        self._semer(25)
+        _, deuxieme = self.json("GET", "/api/v1/profils/bea/journees?decalage=10&limite=10")
+        self.assertEqual(28, deuxieme["total"])
+        self.assertEqual("2026-09-15", deuxieme["journees"][0]["date"])
+        self.assertEqual(10, len(deuxieme["journees"]))
+        _, dernier = self.json("GET", "/api/v1/profils/bea/journees?decalage=20&limite=10")
+        self.assertEqual(28, dernier["total"])
+        self.assertEqual(8, len(dernier["journees"]))
+        self.assertEqual("2026-08-22", dernier["journees"][-1]["date"])
+
+    def test_pagination_beyond_the_end_is_an_empty_lot_with_the_total(self):
+        self._semer(25)
+        statut, corps = self.json("GET", "/api/v1/profils/bea/journees?decalage=100&limite=10")
+        self.assertEqual(200, statut)
+        self.assertEqual({"journees": [], "total": 28}, corps)
+
+    def test_pagination_accepts_a_single_parameter(self):
+        self._semer(25)
+        _, parLimite = self.json("GET", "/api/v1/profils/bea/journees?limite=2")
+        self.assertEqual(2, len(parLimite["journees"]))
+        self.assertEqual(28, parLimite["total"])
+        _, parDecalage = self.json("GET", "/api/v1/profils/bea/journees?decalage=26")
+        self.assertEqual(["2026-08-23", "2026-08-22"], [j["date"] for j in parDecalage["journees"]])
+        self.assertEqual(28, parDecalage["total"])
+
+    def test_pagination_parameters_must_be_valid_integers(self):
+        for query in ("decalage=-1", "decalage=abc", "decalage=1.5", "limite=0", "limite=-3", "limite=x"):
+            statut, corps = self.json("GET", f"/api/v1/profils/bea/journees?{query}")
+            self.assertEqual(400, statut, query)
+            self.assertIn("erreur", corps)
+
 
 def wav_silencieux(chemin: pathlib.Path, secondes: int) -> None:
     """Un vrai `.wav`, pour que la durée se mesure : le reste du disque est factice."""
