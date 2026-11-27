@@ -77,10 +77,18 @@ TITRE = "Veille"
 #: client mail : c'est sous ce nom que le lecteur va le chercher en bas du message.
 PIECE_JOINTE = "Pièce jointe :"
 
-#: L'étiquette du lien vers l'audio de la journée sur le site, posé en tête de lettre
-#: quand le réglage le demande. La route visée est authentifiée : c'est elle qui rend
-#: les écoutes comptables.
+#: L'étiquette du lien vers la page de la journée sur le site, posée en tête de lettre
+#: quand le réglage le demande : la page porte le lecteur audio et rend les écoutes
+#: comptables.
 LIEN_AUDIO = "Écouter la journée"
+
+#: L'étiquette de l'URL directe du mp3, pour le lecteur embarqué dans le HTML. La route
+#: `/audio/…` est authentifiée : le fichier n'est lu que pour un compte connecté.
+FICHIER_AUDIO = "Fichier audio direct"
+
+#: La mention qui accompagne le lecteur embarqué et l'URL directe : la route audio du
+#: site exige une session, un client mail sans cookie du site ne lira rien.
+NOTE_CONNEXION = "connexion à votre compte sur le site requise"
 
 #: La question qui précède les deux liens de vote, au pied.
 QUESTION_AVIS = "Cette journée vous a-t-elle été utile ?"
@@ -230,6 +238,18 @@ class Abonnement:
             urllib.parse.quote(self.username, safe=""),
             urllib.parse.quote(day.isoformat(), safe=""),
             urllib.parse.quote(nom, safe=""),
+        )
+
+    def lien_journee(self, day: dt.date) -> str:
+        """L'URL de la page de la journée sur le site : `/resumes/[username]/[date]`.
+
+        C'est vers elle que la lettre renvoie : la page porte le lecteur audio et tout
+        le contenu de la journée, sans exiger de route dédiée dans le client mail.
+        """
+        return "{}/resumes/{}/{}".format(
+            self.site_url,
+            urllib.parse.quote(self.username, safe=""),
+            urllib.parse.quote(day.isoformat(), safe=""),
         )
 
     def liens_avis(self, day: dt.date) -> list[LienPied]:
@@ -387,16 +407,38 @@ class Lettre:
         return self.montage.audio_path if self.montage else None
 
     @property
-    def lien_audio_haut(self) -> str | None:
-        """Le lien vers l'audio de la journée sur le site, `None` quand il n'y en a pas.
+    def _lien_audio_actif(self) -> bool:
+        """Le bloc audio de tête existe-t-il : réglage posé et montage présent.
 
-        En tête de lettre seulement en mode `global` (quand il y a un montage) et
-        seulement quand l'installation a posé le réglage : en mode `category`, aucun
-        lien n'est ajouté. La pièce jointe, elle, ne part que si `audio_file` est vrai.
+        En mode `global` seulement (quand il y a un montage) et seulement quand
+        l'installation a posé `RSSRESUME_AUDIO_LIEN` : en mode `category`, aucun bloc
+        n'est ajouté. La pièce jointe, elle, ne part que si `audio_file` est vrai.
         """
-        if self.abonnement is None or not self.abonnement.audio_lien:
+        return (
+            self.abonnement is not None
+            and self.abonnement.audio_lien
+            and self.montage_path is not None
+        )
+
+    @property
+    def lien_journee_haut(self) -> str | None:
+        """Le lien vers la page de la journée sur le site, `None` quand il n'y en a pas.
+
+        C'est le lien annoncé en tête de lettre : la page `/resumes/…` porte le lecteur
+        et le contenu, et ne dépend pas d'une route lue depuis le client mail.
+        """
+        if not self._lien_audio_actif:
             return None
-        if self.montage_path is None:
+        return self.abonnement.lien_journee(self.day)
+
+    @property
+    def lien_audio_haut(self) -> str | None:
+        """L'URL directe du mp3 de la journée, `None` quand il n'y en a pas.
+
+        C'est la source du lecteur audio embarqué dans le HTML : la route `/audio/…`
+        du site ne sert le fichier qu'à un compte connecté, la lettre le dit.
+        """
+        if not self._lien_audio_actif:
             return None
         return self.abonnement.lien_audio(self.day, self.montage_path.name)
 
@@ -618,8 +660,11 @@ class Lettre:
             # Le pied aussi : une journée vide part chez les mêmes lecteurs, qui doivent
             # pouvoir l'arrêter tout autant. La date en toutes lettres, comme le titre.
             entete = f"{TITRE.upper()} DU {date_courte(self.day).upper()}"
-            if self.lien_audio_haut:
-                entete += f"\n\n{LIEN_AUDIO} : {self.lien_audio_haut}"
+            if self.lien_journee_haut:
+                entete += (
+                    f"\n\n{LIEN_AUDIO} : {self.lien_journee_haut}"
+                    f"\n{FICHIER_AUDIO} ({NOTE_CONNEXION}) : {self.lien_audio_haut}"
+                )
             return (
                 f"{entete}\n\n"
                 f"{introduction}\n\nAucun article trouvé pour le {date_longue(self.day)}.\n\n"
@@ -630,11 +675,16 @@ class Lettre:
             self._sous_titre + (f"\n{self._detail_ecoute}" if self._detail_ecoute else ""),
         ]
 
-        # Le lien vers l'audio de la journée sur le site, posé après le bloc titre et
-        # avant l'introduction : c'est la première chose à voir, et c'est lui qui rend
-        # l'écoute comptée. La pièce jointe ne part que si `audio_file` est vrai.
-        if self.lien_audio_haut:
-            blocs.append(f"{LIEN_AUDIO} : {self.lien_audio_haut}")
+        # Le lien vers la page de la journée sur le site, posé après le bloc titre et
+        # avant l'introduction : c'est la première chose à voir. Le fichier audio direct
+        # est donné à côté, avec la mention de connexion requise : la route /audio/… du
+        # site ne sert qu'un compte connecté. La pièce jointe ne part que si
+        # `audio_file` est vrai.
+        if self.lien_journee_haut:
+            blocs.append(
+                f"{LIEN_AUDIO} : {self.lien_journee_haut}\n"
+                f"{FICHIER_AUDIO} ({NOTE_CONNEXION}) : {self.lien_audio_haut}"
+            )
         blocs.append(introduction)
         # L'audio de la journée s'annonce une fois, ici, avant les sections : il ne
         # relève d'aucune d'elles. En mode par catégorie, la ligne n'existe pas et
@@ -688,16 +738,21 @@ class Lettre:
         )
 
     def _lien_audio_html(self) -> str:
-        """Le bloc cliquable vers l'audio de la journée, entre l'en-tête et l'introduction.
+        """Le bloc audio de tête, entre l'en-tête et l'introduction.
 
-        Cliquable, contrairement au nom de la pièce jointe en pied de section : aucun
-        client mail n'ouvre une pièce jointe depuis le corps du message, mais un lien
-        vers le site, si. Vide quand le lien du haut n'existe pas.
+        Un bouton vers la page de la journée, un lecteur `<audio>` dont la source est
+        l'URL directe du mp3, et la mention de connexion : la route `/audio/…` ne sert
+        le fichier qu'à un compte connecté au site, un client mail sans session ne lira
+        rien. Vide quand le bloc du haut n'existe pas.
         """
-        url = self.lien_audio_haut
-        if not url:
+        if not self.lien_journee_haut:
             return ""
-        return _LIEN_AUDIO.format(url=_e(url), libelle=_e(LIEN_AUDIO))
+        return _LIEN_AUDIO.format(
+            url_page=_e(self.lien_journee_haut),
+            url_audio=_e(self.lien_audio_haut),
+            libelle=_e(LIEN_AUDIO),
+            note=_e(f"{FICHIER_AUDIO} : {NOTE_CONNEXION}."),
+        )
 
     def _entete_html(self) -> str:
         """Le titre au-dessus de la boîte, le sous-titre et les durées dedans.
@@ -967,14 +1022,18 @@ _ANNONCE_AUDIO = (
     'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;">{texte}</p>'
 )
 
-#: Le lien vers l'audio de la journée sur le site, entre l'en-tête et l'introduction.
-#: Proéminent : c'est le bouton d'écoute, vers la route authentifiée qui rend les
-#: écoutes comptables. La pièce jointe reste attachée à côté, son nom n'est pas un lien.
+#: Le bloc audio de tête, entre l'en-tête et l'introduction : un bouton vers la page
+#: de la journée, puis un lecteur embarqué dont la source est l'URL directe du mp3
+#: (route authentifiée /audio/…), et la mention de connexion requise. La pièce jointe
+#: reste attachée à côté, son nom n'est pas un lien.
 _LIEN_AUDIO = """
       <tr><td style="padding:0 4px 18px;">
-        <a href="{url}" style="display:block;background:#1a4fa0;border-radius:10px;
+        <a href="{url_page}" style="display:block;background:#1a4fa0;border-radius:10px;
            padding:13px 18px;text-align:center;color:#ffffff;font-size:15px;
            font-weight:600;text-decoration:none;">{libelle}</a>
+        <audio controls preload="none" src="{url_audio}"
+               style="display:block;width:100%;margin-top:10px;"></audio>
+        <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#8a93a5;">{note}</p>
       </td></tr>"""
 
 _SECTION = """

@@ -687,14 +687,17 @@ def abonnement(lien=LIEN_DESABONNEMENT, username="bea"):
 
 
 class LienAudioTests(unittest.TestCase):
-    """Le lien vers l'audio de la journée sur le site, posé en tête de lettre.
+    """Le bloc audio de tête de lettre : lien vers la page de la journée et lecteur
+    embarqué vers le mp3 direct.
 
-    Ce que ces tests protègent : le lien n'existe qu'en mode `global` (quand il y a un
+    Ce que ces tests protègent : le bloc n'existe qu'en mode `global` (quand il y a un
     montage) et seulement quand l'installation a posé le réglage, dans les deux
-    rendus ; la pièce jointe, elle, reste attachée dans tous les cas.
+    rendus ; le lien mène à la page de la journée, le lecteur à la route authentifiée
+    `/audio/…` avec la mention de connexion requise ; la pièce jointe reste attachée.
     """
 
-    URL = f"{SITE}/audio/bea/2026-08-27/journee.wav"
+    URL_PAGE = f"{SITE}/resumes/bea/2026-08-27"
+    URL_MP3 = f"{SITE}/audio/bea/2026-08-27/journee.wav"
 
     def _abonnement(self, audio_lien):
         return Abonnement(
@@ -716,26 +719,35 @@ class LienAudioTests(unittest.TestCase):
             **kwargs,
         )
 
-    def test_in_link_mode_the_top_of_the_letter_points_to_the_authenticated_audio_route(self):
-        """Mode lien + montage : le lien est en tête, en texte comme en HTML, et la
-        pièce jointe reste attachée."""
+    def test_in_link_mode_the_top_links_to_the_day_page_and_embeds_a_player_on_the_mp3(self):
+        """Mode lien + montage : en tête, en texte comme en HTML, le lien mène à la
+        page de la journée, le lecteur embarqué au mp3 direct avec la mention de
+        connexion, et la pièce jointe reste attachée."""
         with tempfile.TemporaryDirectory() as tmpdir:
             lettre = self._lettre(tmpdir, audio_lien=True)
 
-            self.assertIn(f"Écouter la journée : {self.URL}", lettre.text)
-            self.assertIn(f'href="{self.URL}"', lettre.html)
+            # Texte : le lien de la page, puis l'URL directe avec la mention.
+            self.assertIn(f"Écouter la journée : {self.URL_PAGE}", lettre.text)
+            self.assertIn("connexion à votre compte sur le site requise", lettre.text)
+            self.assertIn(self.URL_MP3, lettre.text)
+            # HTML : bouton vers la page, lecteur <audio> sur le mp3, mention.
+            self.assertIn(f'href="{self.URL_PAGE}"', lettre.html)
+            self.assertIn(f'<audio controls preload="none" src="{self.URL_MP3}"', lettre.html)
+            self.assertIn("connexion à votre compte sur le site requise", lettre.html)
             # En tête : après le titre, avant l'introduction.
             self.assertLess(
-                lettre.text.index(self.URL), lettre.text.index("Vendredi 28 août 2026")
+                lettre.text.index(self.URL_PAGE), lettre.text.index("Vendredi 28 août 2026")
             )
             # La pièce jointe part toujours.
             self.assertEqual(["journee.wav"], [c.name for c in lettre.attachments])
 
     def test_without_a_montage_no_link_is_added(self):
-        """Mode « category » : aucun lien, même avec le réglage posé."""
+        """Mode « category » : aucun lien vers la journée, même avec le réglage posé."""
         with tempfile.TemporaryDirectory() as tmpdir:
             lettre = self._lettre(tmpdir, audio_lien=True, montage=False)
 
+            self.assertNotIn(self.URL_PAGE, lettre.text)
+            self.assertNotIn(self.URL_PAGE, lettre.html)
             self.assertNotIn("/audio/", lettre.text)
             self.assertNotIn("/audio/", lettre.html)
 
@@ -744,11 +756,13 @@ class LienAudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             lettre = self._lettre(tmpdir, audio_lien=False)
 
+            self.assertNotIn(self.URL_PAGE, lettre.text)
+            self.assertNotIn(self.URL_PAGE, lettre.html)
             self.assertNotIn("/audio/", lettre.text)
             self.assertNotIn("/audio/", lettre.html)
             self.assertEqual(["journee.wav"], [c.name for c in lettre.attachments])
 
-    def test_depuis_config_propagates_the_flag_and_builds_the_route(self):
+    def test_depuis_config_propagates_the_flag_and_builds_the_routes(self):
         """Le seul constructeur de l'abonnement, partagé par le passage du jour et le
         renvoi `--send-only` : les deux rendent la même lettre."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -758,7 +772,8 @@ class LienAudioTests(unittest.TestCase):
             abonne = Abonnement.depuis_config(config)
 
             self.assertTrue(abonne.audio_lien)
-            self.assertEqual(self.URL, abonne.lien_audio(JOUR, "journee.wav"))
+            self.assertEqual(self.URL_PAGE, abonne.lien_journee(JOUR))
+            self.assertEqual(self.URL_MP3, abonne.lien_audio(JOUR, "journee.wav"))
 
 
 class AudioFileTests(unittest.TestCase):
@@ -828,15 +843,18 @@ class AudioFileTests(unittest.TestCase):
             self.assertNotIn("Pièce jointe", lettre.html)
 
     def test_at_false_with_the_link_mode_the_letter_carries_only_the_link(self):
-        """Lien + pas de fichier : la lettre ne porte plus que le lien vers l'audio
-        du site, en tête, dans les deux rendus."""
+        """Lien + pas de fichier : la lettre ne porte plus que le bloc audio du site,
+        en tête, dans les deux rendus."""
         with tempfile.TemporaryDirectory() as tmpdir:
             lettre = self._lettre(tmpdir, audio_file=False, audio_lien=True)
 
             self.assertEqual([], lettre.attachments)
-            url = f"{SITE}/audio/bea/2026-08-27/journee.wav"
-            self.assertIn(f"Écouter la journée : {url}", lettre.text)
-            self.assertIn(f'href="{url}"', lettre.html)
+            url_page = f"{SITE}/resumes/bea/2026-08-27"
+            url_mp3 = f"{SITE}/audio/bea/2026-08-27/journee.wav"
+            self.assertIn(f"Écouter la journée : {url_page}", lettre.text)
+            self.assertIn(url_mp3, lettre.text)
+            self.assertIn(f'href="{url_page}"', lettre.html)
+            self.assertIn(f'src="{url_mp3}"', lettre.html)
 
     def test_depuis_config_propagates_the_flag(self):
         with tempfile.TemporaryDirectory() as tmpdir:
