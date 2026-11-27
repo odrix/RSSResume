@@ -21,6 +21,13 @@ export interface Journee {
 	audios: AudioJournee[];
 }
 
+/** Un lot de la liste des journées, rendu quand `decalage`/`limite` sont passés : le serveur
+ * a découpé après le tri, `total` est le nombre de journées du profil. */
+export interface LotJournees {
+	journees: Journee[];
+	total: number;
+}
+
 /** Ce qu'un lien de désabonnement désigne, avant qu'on l'applique. */
 export interface DemandeDesabonnement {
 	username: string;
@@ -142,8 +149,22 @@ export class ClientApiResume {
 		await this.#json('DELETE', this.#profil(username));
 	}
 
-	listerJournees(username: string): Promise<Journee[]> {
-		return this.#json('GET', `${this.#profil(username)}/journees`);
+	/** Sans options : le tableau complet, comme avant. Avec `decalage`/`limite` : ils partent
+	 * dans la query string et l'API rend un lot plus le total (`LotJournees`, web/API.md). */
+	listerJournees(username: string): Promise<Journee[]>;
+	listerJournees(username: string, options: { decalage?: number; limite?: number }): Promise<LotJournees>;
+	listerJournees(
+		username: string,
+		options?: { decalage?: number; limite?: number }
+	): Promise<Journee[] | LotJournees> {
+		let chemin = `${this.#profil(username)}/journees`;
+		if (options) {
+			const query = new URLSearchParams();
+			if (options.decalage !== undefined) query.set('decalage', String(options.decalage));
+			if (options.limite !== undefined) query.set('limite', String(options.limite));
+			chemin += `?${query.toString()}`;
+		}
+		return this.#json('GET', chemin);
 	}
 
 	lireJournee(username: string, date: string): Promise<ContenuJournee> {

@@ -393,15 +393,50 @@ class RouteProfil(Route):
         requete.repondre_vide(204)
 
 
+def _pagination(query: dict[str, list[str]]) -> tuple[int, int | None]:
+    """Le couple `(decalage, limite)` lu dans la query string ; `ErreurApi(400)` sinon.
+
+    Un entier positif exigé pour chacun : `decalage` vaut 0 et `limite` tout le reste quand
+    il est absent, pour qu'un seul des deux suffise à demander un lot.
+    """
+
+    def entier(nom: str, defaut: int | None) -> int | None:
+        valeurs = query.get(nom)
+        if not valeurs:
+            return defaut
+        texte = valeurs[-1]
+        if re.fullmatch(r"[0-9]+", texte) is None:
+            raise ErreurApi(400, f"Paramètre « {nom} » : un entier positif est attendu.")
+        return int(texte)
+
+    decalage = entier("decalage", 0)
+    limite = entier("limite", None)
+    if limite is not None and limite < 1:
+        raise ErreurApi(400, "Paramètre « limite » : 1 au moins est attendu.")
+    return decalage, limite
+
+
 class RouteJournees(Route):
-    """`/api/v1/profils/{username}/journees` : les journées produites, la plus récente d'abord."""
+    """`/api/v1/profils/{username}/journees` : les journées produites, la plus récente d'abord.
+
+    Avec `?decalage=N&limite=M` : un lot de la liste triée, plus `total`, le nombre de
+    journées du profil. C'est le serveur qui découpe après le tri, l'appelant n'a ni à
+    re-trier ni à filtrer. Sans paramètre de pagination : le tableau complet, comme avant.
+    """
 
     motif = re.compile(re.escape(PREFIXE) + r"/profils/([^/]+)/journees")
     methodes = ("GET",)
 
     def get(self, requete, username):
         fiche = self.fiche(username)
-        requete.repondre_json(200, [journee.en_json() for journee in self.sorties.journees(fiche.id)])
+        query = requete.parametres_query()
+        if not (query.get("decalage") or query.get("limite")):
+            requete.repondre_json(200, [journee.en_json() for journee in self.sorties.journees(fiche.id)])
+            return
+        decalage, limite = _pagination(query)
+        lot = self.sorties.journees(fiche.id, decalage=decalage, limite=limite)
+        total = len(self.sorties.journees(fiche.id))
+        requete.repondre_json(200, {"journees": [journee.en_json() for journee in lot], "total": total})
 
 
 class RouteJournee(Route):

@@ -226,6 +226,16 @@ class GestionnaireApi(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ErreurApi(400, f"JSON invalide : {exc}") from exc
 
+    def parametres_query(self) -> dict[str, list[str]]:
+        """Les paramètres de la query string, décodés : `?decalage=10&limite=10` donne
+        `{"decalage": ["10"], "limite": ["10"]}`.
+
+        Seul le chemin sert au routage ; la query string n'est lue que par les routes qui
+        la demandent (la pagination des journées), jamais journalisée.
+        """
+
+        return urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+
     def repondre_json(self, statut: int, objet: object, entetes: dict[str, str] | None = None) -> None:
         corps = json.dumps(objet, ensure_ascii=False).encode("utf-8")
         self.send_response(statut)

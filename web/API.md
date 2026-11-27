@@ -162,6 +162,18 @@ il fait partie du contrat pour l'administration à venir.
 `taille` en octets. Une journée sans audio (aucun article, ou rien de retenu) est listée
 avec `"audios": []`. `404` si le profil n'existe pas ; `[]` s'il n'a encore rien produit.
 
+Avec `?decalage=N&limite=M` (entiers positifs, `decalage ≥ 0`, `limite ≥ 1`, `400` sinon,
+`{"erreur": "…"}`) : un **lot** de la liste, découpé par le serveur **après** le tri, plus
+`total`, le nombre de journées du profil. Sans paramètre de pagination, le tableau complet
+ci-dessus (rétrocompatible) :
+
+```json
+{"journees": [{"date": "2026-11-18", "audios": [{"nom": "journee.mp3", "taille": 12345}]}], "total": 42}
+```
+
+Le site s'en sert pour charger la liste des résumés dix par dix : `decalage` est le nombre
+de journées déjà affichées, `limite` la taille du lot.
+
 ### `GET /api/v1/profils/{username}/journees/{date}`
 
 Le contenu de la journée, relu de ses journaux exactement comme `--send-only` le relit pour
