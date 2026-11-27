@@ -114,6 +114,12 @@ export function mp3Silencieux(secondes) {
 	return octets;
 }
 
+/** Les coûts d'un profil sans journal de dépenses : zéro, tarification complète. */
+function coutsVides() {
+	const periode = { devise: 'EUR', total: 0, tarification_complete: true, modeles_sans_tarif: [] };
+	return { couts_7j: periode, couts_30j: { ...periode } };
+}
+
 /**
  * @param {number} statut
  * @param {unknown} [corps]
@@ -149,6 +155,9 @@ export class FausseApi {
 	liensRetour = new Map();
 	/** Les votes, un par profil et par journée (clé `username|jour`). @type {Map<string, RetourStocke & { rang: number }>} */
 	retours = new Map();
+	/** Ce que `GET /api/v1/profils/{u}/couts` rend ; absent, un coût nul et complet est servi.
+	 * @type {Map<string, { couts_7j: object, couts_30j: object }>} */
+	couts = new Map();
 	#rangRetour = 0;
 
 	/** @param {string} jeton */
@@ -230,6 +239,10 @@ export class FausseApi {
 					privee: proprietaires.length > 0
 				}))
 			});
+		} else if (sous === 'couts' && date === undefined) {
+			if (!this.profils.has(username)) return erreur(404, `profil inconnu : ${username}`);
+			if (methode !== 'GET') return erreur(405, 'méthode non prise en charge');
+			return json(200, this.couts.get(username) ?? coutsVides());
 		} else if (sous === 'journees' && date !== undefined && quoi === 'retour' && nom === undefined) {
 			// Comme l'API : la journée n'a pas à exister sur le disque, seule la date doit être valide.
 			if (!this.profils.has(username) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -304,6 +317,16 @@ export class FausseApi {
 	 */
 	ajouterContenu(username, date, contenu) {
 		this.#journee(username, date).contenu = contenu;
+	}
+
+	/**
+	 * Les coûts servis pour `username` par `GET .../couts` : `{ couts_7j, couts_30j }`,
+	 * chacun `{ devise, total, tarification_complete, modeles_sans_tarif }`.
+	 * @param {string} username
+	 * @param {{ couts_7j: object, couts_30j: object }} couts
+	 */
+	ajouterCouts(username, couts) {
+		this.couts.set(username, couts);
 	}
 
 	/**
