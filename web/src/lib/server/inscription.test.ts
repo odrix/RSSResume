@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GABARITS_DEMO } from '../../../mock/faux-api.js';
+import { CATALOGUE_DEMO, GABARITS_DEMO } from '../../../mock/faux-api.js';
 import { PROFIL_PAR_DEFAUT } from '#lib/profil.js';
 import { ClientApiResume } from './api-resume.js';
 import { CourrierAbsent, CourrierJournal } from './courrier.js';
@@ -264,6 +264,78 @@ describe('Inscription', () => {
 		);
 		expect(erreur.message).toMatch(/déjà utilisé/);
 		expect(comptes.lister()[0].confirme).toBe(false);
+	});
+
+	it('un 409 sur un compte confirmé entre-temps rend le succès et consomme le jeton', async () => {
+		const { inscription, api, comptes, jetons, courrier, fausseApi } = monter();
+		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
+		const jeton = jetonDuLien(courrier.envoyes[0].texte);
+		const compte = comptes.parEmail('moi@example.com')!;
+
+		// Le premier envoi simultané a abouti pendant que le second était en vol vers l'API :
+		// le profil existe déjà côté API, et le compte vient de passer confirmé.
+		await api.creerProfil('moi', { profil: 'déjà là', stack: [], email: [], prenom: '', securite: 'exploitant' });
+		const enCourse = new ClientApiResume({
+			baseUrl: 'http://api.test',
+			jeton: JETON,
+			fetch: (entree, init) => {
+				const requete = new Request(entree, init);
+				if (requete.method === 'POST' && new URL(requete.url).pathname === '/api/v1/profils') {
+					comptes.confirmer(compte.id);
+				}
+				return fausseApi.traiter(entree, init);
+			}
+		});
+		const perdant = new Inscription(comptes, jetons, enCourse, courrier);
+
+		const resultat = await perdant.confirmer(jeton, ORIGINE);
+		expect(resultat.confirme).toBe(true);
+		expect(fausseApi.profils.has('moi')).toBe(true);
+
+		// Le jeton est consommé : le lien ne sert plus.
+		expect(jetons.lire(jeton)).toBeNull();
+		await echec(perdant.confirmer(jeton, ORIGINE), ErreurConfirmation);
+
+		// L'envoi perdant n'a rien renvoyé : ni alerte à l'administrateur, ni bienvenue,
+		// partis une seule fois avec le premier envoi.
+		expect(courrier.envoyes.filter((m) => m.destinataire === EMAIL_ADMIN)).toHaveLength(0);
+		expect(courrier.envoyes.filter((m) => m.sujet === SUJET_BIENVENUE)).toHaveLength(0);
+		expect(courrier.envoyes).toHaveLength(1);
+	});
+
+	it('à la confirmation, écarte une catégorie du gabarit disparue du catalogue', async () => {
+		const { inscription, courrier, fausseApi } = monter();
+		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
+
+		// Le catalogue est réimporté entre-temps, sans « Cybersécurité ».
+		fausseApi.catalogue = CATALOGUE_DEMO.filter((categorie) => categorie.libelle !== 'Cybersécurité');
+
+		const confirme = await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+		expect(confirme.confirme).toBe(true);
+		expect(fausseApi.profils.get('moi')?.categories).toEqual(['Tech generaliste']);
+
+		// Deux POST : le premier refusé (422), le second avec les catégories restantes.
+		const posts = fausseApi.requetes.filter((r) => r.method === 'POST');
+		expect(posts).toHaveLength(2);
+		expect(await posts[0].json()).toMatchObject({ categories: CTO.categories });
+		expect(await posts[1].json()).toMatchObject({ categories: ['Tech generaliste'] });
+	});
+
+	it('à la confirmation, sans plus aucune catégorie servie, crée le profil sans clé categories', async () => {
+		const { inscription, courrier, fausseApi } = monter();
+		await inscription.inscrire({ ...SAISIE, metier: 'cto' }, ORIGINE);
+
+		// Toutes les catégories du gabarit ont disparu du catalogue réimporté.
+		fausseApi.catalogue = CATALOGUE_DEMO.filter((categorie) => !CTO.categories.includes(categorie.libelle));
+
+		const confirme = await inscription.confirmer(jetonDuLien(courrier.envoyes[0].texte), ORIGINE);
+		expect(confirme.confirme).toBe(true);
+		// Profil sans catégories : il suivra tout le catalogue.
+		expect(fausseApi.profils.get('moi')).not.toHaveProperty('categories');
+
+		const posts = fausseApi.requetes.filter((r) => r.method === 'POST');
+		expect(posts).toHaveLength(2);
+		expect(await posts[1].json()).not.toHaveProperty('categories');
 	});
 
 	it.each([

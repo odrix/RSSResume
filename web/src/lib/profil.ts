@@ -289,8 +289,9 @@ export function depuisGabarit(
 }
 
 /** La forme sous laquelle deux libellés se comparent, comme `cle_categorie` côté appli :
- * rognée, sans casse ni accents. */
-function cleCategorie(libelle: string): string {
+ * rognée, sans casse ni accents. Exportée pour le serveur : une catégorie du gabarit
+ * copiée dans le brouillon se retrouve comparée au catalogue reimporté à la confirmation. */
+export function cleCategorie(libelle: string): string {
 	return libelle
 		.trim()
 		.normalize('NFD')
