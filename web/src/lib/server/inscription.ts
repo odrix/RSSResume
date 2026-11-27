@@ -9,7 +9,7 @@
  */
 
 import type { Passage } from '#lib/journee.js';
-import { PROFIL_PAR_DEFAUT, type Gabarit, type ProfilSaisi } from '#lib/profil.js';
+import { cleCategorie, PROFIL_PAR_DEFAUT, type Gabarit, type ProfilSaisi } from '#lib/profil.js';
 import { ErreurApi, type ClientApiResume } from './api-resume.js';
 import { CompteExistant, type Brouillon, type Comptes, type Utilisateur } from './comptes.js';
 import type { Courrier, Inscrit } from './courrier.js';
@@ -155,12 +155,34 @@ export class Inscription {
 		} catch (erreur) {
 			if (!(erreur instanceof ErreurApi)) throw erreur;
 			if (erreur.statut === 409) {
+				// Deux envois simultanés du même lien : le premier a créé le profil et confirmé
+				// le compte entre la lecture du compte et cet appel. Le compte relu tranche :
+				// confirmé, cette personne a bien son compte, le jeton est consommé et rien
+				// n'est renvoyé (alerte et bienvenue sont parties avec le premier envoi).
+				const relu = this.comptes.parId(compte.id);
+				if (relu?.confirme) {
+					this.jetons.consommer(jeton);
+					return relu;
+				}
 				console.error(`Confirmation de ${compte.username} : le profil existe déjà côté API.`);
 				throw new ErreurConfirmation(
 					"Ce nom d'utilisateur est déjà utilisé par le service de résumé. Contactez l'administrateur."
 				);
 			}
-			throw new ErreurConfirmation(erreur.message);
+			if (erreur.statut === 422 && erreur.champ === 'categories' && saisie.categories) {
+				// Le catalogue a pu être réimporté depuis l'inscription : une catégorie du
+				// gabarit copié dans le brouillon n'existe plus ou n'est plus servie. Une seule
+				// reprise, avec les catégories encore servies ; un second refus reste un échec.
+				try {
+					saisie.categories = await this.#categoriesServies(compte.username, saisie.categories);
+					await this.api.creerProfil(compte.username, saisie);
+				} catch (nouvelleErreur) {
+					if (!(nouvelleErreur instanceof ErreurApi)) throw nouvelleErreur;
+					throw new ErreurConfirmation(nouvelleErreur.message);
+				}
+			} else {
+				throw new ErreurConfirmation(erreur.message);
+			}
 		}
 
 		const premiere = this.comptes.confirmer(compte.id);
@@ -192,6 +214,27 @@ export class Inscription {
 		const gabarit = gabarits.find((candidat) => candidat.metier === metier);
 		if (!gabarit) throw new ErreurInscription('metier', "Ce métier n'est pas proposé. Choisissez-en un dans la liste.");
 		return gabarit;
+	}
+
+	/** Les catégories du brouillon qui restent servies à `username`, sous le libellé que le
+	 * catalogue actuel propose : la copie du gabarit a pu nommer une catégorie disparue ou
+	 * devenue privée d'un autre depuis l'inscription. Rien ne reste -> `null` : le profil
+	 * suivra alors tout le catalogue plutôt que rien, et les catégories écartées sont
+	 * signalées dans les logs. */
+	async #categoriesServies(username: string, categories: string[]): Promise<string[] | null> {
+		const proposees = await this.api.listerCategories(username);
+		const saisies = new Set(categories.map(cleCategorie));
+		const retenues = proposees.categories
+			.map((categorie) => categorie.libelle)
+			.filter((libelle) => saisies.has(cleCategorie(libelle)));
+		const servies = new Set(retenues.map(cleCategorie));
+		const ecartees = categories.filter((libelle) => !servies.has(cleCategorie(libelle)));
+		if (ecartees.length) {
+			console.error(
+				`Confirmation de ${username} : catégories du gabarit hors du catalogue servi, écartées : ${ecartees.join(', ')}.`
+			);
+		}
+		return retenues.length ? retenues : null;
 	}
 
 	/** Un échec d'envoi ne défait rien : le compte et son profil sont là, le premier digest
