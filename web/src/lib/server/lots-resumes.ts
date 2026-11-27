@@ -1,5 +1,5 @@
 /**
- * Le chargement des résumés par lots : dix journées par appel, le découpage est fait par
+ * Le chargement des résumés par lots : sept journées par appel, le découpage est fait par
  * l'API (`decalage`/`limite` dans la query string), jamais filtré ni re-trié côté client.
  *
  * Partagé par la page des résumés (premier lot au rendu) et la route `lots` (lots suivants
@@ -14,7 +14,7 @@ import type { Utilisateur } from './comptes.js';
 import { contexte } from './contexte.js';
 
 /** La taille d'un lot de résumés. Constante : ce n'est pas un réglage. */
-export const TAILLE_LOT = 10;
+export const TAILLE_LOT = 7;
 
 /** Ce qu'une carte de journée affiche en plus de sa date : durée, compteurs, bouton lecture. */
 export interface IndicateursJournee {

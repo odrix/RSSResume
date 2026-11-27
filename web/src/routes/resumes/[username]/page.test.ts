@@ -231,21 +231,21 @@ describe('page des résumés, premier lot paginé', () => {
 		etat.env = env;
 	});
 
-	it('ne livre que 10 journées, du plus récent au plus ancien, avec total et aSuite', async () => {
+	it('ne livre que 7 journées, du plus récent au plus ancien, avec total et aSuite', async () => {
 		const data = (await load(evenement(bea))) as {
 			journees: { date: string }[];
 			indicateursJournees: Record<string, unknown>;
 			total: number;
 			aSuite: boolean;
 		};
-		expect(data.journees).toHaveLength(10);
+		expect(data.journees).toHaveLength(7);
 		expect(data.total).toBe(25);
 		expect(data.aSuite).toBe(true);
 		const dates = data.journees.map((j) => j.date);
 		expect(dates[0]).toBe('2026-10-25');
 		expect(dates).toEqual([...dates].sort().reverse());
 		// Les indicateurs ne sont chargés que pour le premier lot.
-		expect(Object.keys(data.indicateursJournees)).toHaveLength(10);
+		expect(Object.keys(data.indicateursJournees)).toHaveLength(7);
 	});
 
 	it('aSuite false et total exact quand la liste tient dans le premier lot', async () => {
@@ -266,8 +266,8 @@ describe('page des résumés, premier lot paginé', () => {
 		const data = (await load(evenement(bea))) as Record<string, unknown>;
 		const html = rendre({ ...data, username: 'bea' });
 		expect(html).toContain('href="/resumes/bea/2026-10-25"');
-		expect(html).toContain('href="/resumes/bea/2026-10-16"');
-		expect(html).not.toContain('href="/resumes/bea/2026-10-15"');
+		expect(html).toContain('href="/resumes/bea/2026-10-19"');
+		expect(html).not.toContain('href="/resumes/bea/2026-10-18"');
 	});
 
 	it('affiche « Charger plus » quand il reste des lots, « Fin de la liste » sinon', () => {

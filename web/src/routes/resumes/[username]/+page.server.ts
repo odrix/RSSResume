@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 	// 404 et non 403 : la page ne confirme pas l'existence d'un username à qui n'y a pas droit.
 	if (!utilisateur.peutConsulter(params.username)) error(404, 'Page introuvable');
 
-	// Un seul lot au rendu (les 10 plus récentes) : les suivants partent à la route `lots`,
+	// Un seul lot au rendu (les 7 plus récentes) : les suivants partent à la route `lots`,
 	// au défilement. `lues` reste l'ensemble complet, pour marquer aussi les lots chargés après.
 	let journees: Journee[] = [];
 	let indicateursJournees: Record<string, IndicateursJournee> = {};

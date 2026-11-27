@@ -16,7 +16,7 @@ const { GET } = await import('./+server.js');
 
 type Env = ReturnType<typeof monter>;
 
-function evenement(utilisateur: Utilisateur | null, username = 'bea', decalage = '10') {
+function evenement(utilisateur: Utilisateur | null, username = 'bea', decalage = '7') {
 	return {
 		params: { username },
 		url: new URL(`https://site.test/resumes/${username}/lots?decalage=${decalage}`),
@@ -51,36 +51,36 @@ describe('GET /resumes/[username]/lots', () => {
 		etat.env = env;
 	});
 
-	it('rend le lot suivant au-delà de 10, dans l’ordre décroissant, avec total et aSuite', async () => {
-		const reponse = await GET(evenement(bea, 'bea', '10'));
+	it('rend le lot suivant au-delà de 7, dans l’ordre décroissant, avec total et aSuite', async () => {
+		const reponse = await GET(evenement(bea, 'bea', '7'));
 		expect(reponse.status).toBe(200);
 		const lot = await reponse.json();
 		expect(lot.total).toBe(25);
-		expect(lot.journees).toHaveLength(10);
+		expect(lot.journees).toHaveLength(7);
 		expect(lot.aSuite).toBe(true);
-		expect(lot.journees[0].date).toBe('2026-10-15');
-		expect(lot.journees.at(-1).date).toBe('2026-10-06');
+		expect(lot.journees[0].date).toBe('2026-10-18');
+		expect(lot.journees.at(-1).date).toBe('2026-10-12');
 		// Les indicateurs suivent le lot, pour des cartes identiques à celles du 1er lot.
-		expect(Object.keys(lot.indicateursJournees)).toHaveLength(10);
+		expect(Object.keys(lot.indicateursJournees)).toHaveLength(7);
 	});
 
 	it('rend aSuite false au dernier lot', async () => {
-		const reponse = await GET(evenement(bea, 'bea', '20'));
+		const reponse = await GET(evenement(bea, 'bea', '21'));
 		const lot = await reponse.json();
 		expect(lot.total).toBe(25);
-		expect(lot.journees).toHaveLength(5);
+		expect(lot.journees).toHaveLength(4);
 		expect(lot.journees.at(-1).date).toBe('2026-10-01');
 		expect(lot.aSuite).toBe(false);
 	});
 
 	it("un administrateur peut charger les lots du profil d'un autre", async () => {
-		const reponse = await GET(evenement(admin, 'bea', '10'));
+		const reponse = await GET(evenement(admin, 'bea', '7'));
 		expect(reponse.status).toBe(200);
-		expect((await reponse.json()).journees).toHaveLength(10);
+		expect((await reponse.json()).journees).toHaveLength(7);
 	});
 
 	it('rend 404 à qui n’a pas le droit de consulter, sans dire si le profil existe', async () => {
-		expect(isHttpError(await leve(GET(evenement(autre, 'bea', '10'))), 404)).toBe(true);
+		expect(isHttpError(await leve(GET(evenement(autre, 'bea', '7'))), 404)).toBe(true);
 		expect(isHttpError(await leve(GET(evenement(autre, 'inconnu', '0'))), 404)).toBe(true);
 	});
 
