@@ -10,7 +10,7 @@
 
 import { estAvis, LONGUEUR_MAX_COMMENTAIRE, type Avis } from '#lib/retour.js';
 import { ErreurApi, type ClientApiResume, type LectureRetour, type Retour } from './api-resume.js';
-import type { Utilisateur } from './comptes.js';
+import { type Comptes, type Utilisateur } from './comptes.js';
 import { MOTIF_USERNAME } from './validation.js';
 
 export const LIEN_RETOUR_INVALIDE = 'Ce lien de vote est invalide.';
@@ -52,7 +52,12 @@ export function saisieRetour(form: FormData): SaisieRetour {
 }
 
 export class Retours {
-	constructor(private readonly api: ClientApiResume) {}
+	/** `comptes` écrit le vote dans la base du site, pour les compteurs de /admin : tout vote
+	 * passe par ici, qu'il vienne du lien de la lettre ou de la page des résumés. */
+	constructor(
+		private readonly api: ClientApiResume,
+		private readonly comptes: Comptes
+	) {}
 
 	/** Ce que le lien désigne et le vote déjà donné, ou `null` s'il est invalide.
 	 *
@@ -73,7 +78,9 @@ export class Retours {
 	async voterParLien(jeton: string, saisie: SaisieRetour): Promise<LectureRetour> {
 		if (!jetonPlausible(jeton)) throw new ErreurRetour(LIEN_RETOUR_INVALIDE);
 		try {
-			return await this.api.voterParLien(jeton, saisie.avis, saisie.commentaire);
+			const lecture = await this.api.voterParLien(jeton, saisie.avis, saisie.commentaire);
+			this.comptes.noterRetour(lecture.username, lecture.jour, saisie.avis);
+			return lecture;
 		} catch (erreur) {
 			if (erreur instanceof ErreurApi && erreur.introuvable) throw new ErreurRetour(LIEN_RETOUR_INVALIDE);
 			if (erreur instanceof ErreurApi) throw new ErreurRetour(erreur.message);
@@ -100,7 +107,9 @@ export class Retours {
 	async voter(utilisateur: Utilisateur, username: string, date: string, saisie: SaisieRetour): Promise<Retour | null> {
 		if (!this.#peutVoter(utilisateur, username, date)) return null;
 		try {
-			return await this.api.voter(username, date, saisie.avis, saisie.commentaire);
+			const retour = await this.api.voter(username, date, saisie.avis, saisie.commentaire);
+			this.comptes.noterRetour(username, date, saisie.avis);
+			return retour;
 		} catch (erreur) {
 			if (erreur instanceof ErreurApi) throw new ErreurRetour(erreur.message);
 			throw erreur;

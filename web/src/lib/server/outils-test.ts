@@ -17,6 +17,7 @@ import { JourneesLues } from './journees-lues.js';
 import { LimiteurTentatives } from './limiteur.js';
 import { MagicLink } from './magic-link.js';
 import { Reinitialisation } from './reinitialisation.js';
+import { RelaisAudio } from './relais-audio.js';
 import { Retours } from './retours.js';
 import { Sessions } from './sessions.js';
 
@@ -69,11 +70,12 @@ export function monter(maintenant: () => number = Date.now) {
 		new LimiteurTentatives(10, 60 * 60 * 1000, maintenant)
 	);
 	const desabonnement = new Desabonnement(api);
-	const retours = new Retours(api);
+	const retours = new Retours(api, comptes);
 	const reinitialisation = new Reinitialisation(comptes, jetons, sessions, courrier);
 	const identifiants = new Identifiants(comptes, jetons, sessions, courrier);
 	const magicLink = new MagicLink(comptes, jetons, courrier, base, maintenant);
 	const journeesLues = new JourneesLues(base, maintenant);
+	const relaisAudio = new RelaisAudio(api, comptes);
 
 	/** Un compte confirmé, sans passer par l'API : pour les tests qui ne portent pas sur
 	 * l'inscription. */
@@ -99,6 +101,7 @@ export function monter(maintenant: () => number = Date.now) {
 		identifiants,
 		magicLink,
 		journeesLues,
+		relaisAudio,
 		creerConfirme
 	};
 }

@@ -104,4 +104,34 @@ describe('Retours', () => {
 			retours.voter(bea, 'bea', JOUR, { avis: 'utile', commentaire: 'x'.repeat(LONGUEUR_MAX_COMMENTAIRE + 1) })
 		).rejects.toBeInstanceOf(ErreurRetour);
 	});
+
+	it('enregistre chaque vote réussi dans la base du site, une fois par profil et par journée', async () => {
+		// Horloge fixée : la fenêtre des sept jours dépend du jour réel.
+		const env = monter(() => Date.parse('2026-11-28T10:00:00Z'));
+		await env.api.creerProfil('bea', { profil: 'Veille', stack: [], email: [], prenom: '', securite: 'exploitant' });
+		env.fausseApi.ajouterLienRetour(JETON, 'bea', JOUR);
+		const { retours, comptes, base, creerConfirme } = env;
+		const bea = await creerConfirme('bea@example.com', 'bea');
+
+		await retours.voterParLien(JETON, { avis: 'utile', commentaire: 'Bien.' });
+		expect(comptes.retoursSeptJours('bea')).toBe(1);
+
+		// Un second vote sur la même journée remplace le premier : toujours une ligne.
+		await retours.voterParLien(JETON, { avis: 'pas_utile', commentaire: 'Non.' });
+		expect(comptes.retoursSeptJours('bea')).toBe(1);
+		expect(base.prepare("SELECT avis FROM retours WHERE username = 'bea'").get()).toEqual({ avis: 'pas_utile' });
+
+		// Le vote du site est enregistré lui aussi, et un refus n'écrit rien.
+		await retours.voter(bea, 'bea', '2026-11-23', { avis: 'utile', commentaire: '' });
+		expect(comptes.retoursSeptJours('bea')).toBe(2);
+		await expect(
+			retours.voter(bea, 'bea', '2026-11-24', { avis: 'utile', commentaire: 'x'.repeat(LONGUEUR_MAX_COMMENTAIRE + 1) })
+		).rejects.toBeInstanceOf(ErreurRetour);
+		expect(comptes.retoursSeptJours('bea')).toBe(2);
+
+		// Un vote refusé pour un autre profil n'enregistre rien.
+		const autre = await creerConfirme('autre@example.com', 'autre');
+		await retours.voter(autre, 'bea', '2026-11-25', { avis: 'utile', commentaire: '' });
+		expect(comptes.retoursSeptJours('bea')).toBe(2);
+	});
 });

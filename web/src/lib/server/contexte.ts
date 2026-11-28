@@ -83,10 +83,10 @@ export class Contexte {
 			courrier,
 			new LimiteurTentatives(10, 60 * MINUTE_MS)
 		);
-		this.relaisAudio = new RelaisAudio(this.api);
+		this.relaisAudio = new RelaisAudio(this.api, this.comptes);
 		this.consultation = new ConsultationResumes(this.api, base);
 		this.desabonnement = new Desabonnement(this.api);
-		this.retours = new Retours(this.api);
+		this.retours = new Retours(this.api, this.comptes);
 		this.reinitialisation = new Reinitialisation(this.comptes, this.jetons, this.sessions, courrier);
 		this.identifiants = new Identifiants(this.comptes, this.jetons, this.sessions, courrier);
 		this.magicLink = new MagicLink(this.comptes, this.jetons, courrier, base);

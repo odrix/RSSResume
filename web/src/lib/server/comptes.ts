@@ -9,6 +9,7 @@
 import { hash, verify } from '@node-rs/argon2';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Axe, ComposantStack, Securite } from '#lib/profil.js';
+import type { Avis } from '#lib/retour.js';
 import { normaliserEmail } from './validation.js';
 
 export type Role = 'membre' | 'admin';
@@ -318,6 +319,50 @@ export class Comptes {
 		const ligne = this.base
 			.prepare('SELECT COUNT(*) AS nombre FROM consultations WHERE compte_id = ? AND jour >= ?')
 			.get(id, debut) as { nombre: number };
+		return ligne.nombre;
+	}
+
+	parUsername(username: string): Utilisateur | null {
+		const ligne = this.base
+			.prepare(`SELECT ${COLONNES} FROM comptes WHERE username = ?`)
+			.get(username) as LigneCompte | undefined;
+		return ligne ? this.#utilisateur(ligne) : null;
+	}
+
+	/** Compte une écoute d'un audio servi : une fois par compte, par jour d'écoute et par
+	 * journée audio. `INSERT OR IGNORE` : re-servir le même audio le même jour ne compte qu'une fois. */
+	noterEcoute(compteId: number, journee: string): void {
+		const jour = new Date(this.maintenant()).toISOString().slice(0, 10);
+		this.base
+			.prepare('INSERT OR IGNORE INTO ecoutes (compte_id, jour, journee) VALUES (?, ?, ?)')
+			.run(compteId, jour, journee);
+	}
+
+	ecoutesSeptJours(id: number): number {
+		const debut = new Date(this.maintenant() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const ligne = this.base
+			.prepare('SELECT COUNT(*) AS nombre FROM ecoutes WHERE compte_id = ? AND jour >= ?')
+			.get(id, debut) as { nombre: number };
+		return ligne.nombre;
+	}
+
+	/** Garde le vote d'un profil sur une journée, au nom du profil et non du compte : un
+	 * destinataire de la lettre vote par le lien signé sans avoir de compte. Un second vote
+	 * sur la même journée remplace le premier, comme côté API. */
+	noterRetour(username: string, journee: string, avis: Avis): void {
+		this.base
+			.prepare(
+				`INSERT INTO retours (username, journee, avis) VALUES (?, ?, ?)
+				ON CONFLICT (username, journee) DO UPDATE SET avis = excluded.avis`
+			)
+			.run(username, journee, avis);
+	}
+
+	retoursSeptJours(username: string): number {
+		const debut = new Date(this.maintenant() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const ligne = this.base
+			.prepare('SELECT COUNT(*) AS nombre FROM retours WHERE username = ? AND journee >= ?')
+			.get(username, debut) as { nombre: number };
 		return ligne.nombre;
 	}
 }

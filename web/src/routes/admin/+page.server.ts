@@ -25,6 +25,12 @@ interface LigneAdmin {
 	inscritLe: string | null;
 	derniereConnexionLe: string | null;
 	consultations7j: number;
+	/** Écoutes des audios du profil servies par le site sur 7 jours. Zéro quand le profil n'a pas
+	 * de compte : une écoute exige une session, elle n'est alors pas traçable. */
+	ecoutes7j: number;
+	/** Retours « utile / pas utile » du profil sur 7 jours, venus du lien de la lettre comme de
+	 * la page des résumés. */
+	retours7j: number;
 	desabonne: boolean;
 	/** Régime de sécurité du profil ; `null` sans profil. */
 	securite: Securite | null;
@@ -89,6 +95,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		inscritLe: null,
 		derniereConnexionLe: null,
 		consultations7j: 0,
+		ecoutes7j: 0,
+		retours7j: 0,
 		desabonne: false,
 		securite: null,
 		categoriesLibelles: null,
@@ -110,8 +118,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		ligne.inscritLe = compte.creeLe;
 		ligne.derniereConnexionLe = compte.derniereConnexionLe;
 		ligne.consultations7j = ctx.comptes.consultationsSeptJours(compte.id);
+		ligne.ecoutes7j = ctx.comptes.ecoutesSeptJours(compte.id);
 		ligne.confirme = compte.confirme;
 		lignes.set(compte.username, ligne);
+	}
+
+	// Les retours sont gardés au nom du profil, pas du compte : un destinataire de la lettre
+	// vote sans compte, et la ligne d'un profil sans compte les montre quand même.
+	for (const ligne of lignes.values()) {
+		ligne.retours7j = ctx.comptes.retoursSeptJours(ligne.username);
 	}
 
 	// Après `exigerAdmin`, et jamais avant : la liste ne part de l'API que pour qui a le droit

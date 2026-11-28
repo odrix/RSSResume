@@ -126,7 +126,27 @@ const MIGRATIONS = [
 		origine TEXT NOT NULL CHECK (origine IN ('pages', 'audio')),
 		lue_le TEXT NOT NULL,
 		PRIMARY KEY (compte_id, date)
-	);`
+	);`,
+	// Les écoutes et les retours servis par le site, pour les indicateurs de /admin. Une écoute
+	// vaut par compte, par jour d'écoute et par journée audio servie : écouter deux journées le
+	// même jour compte deux fois. Un retour vaut par profil (son username, pas son id de compte :
+	// un destinataire de la lettre peut voter sans avoir de compte) et par journée ; la clé primaire
+	// fait qu'un second vote remplace le premier, comme côté API. Pas de clé étrangère sur `retours` :
+	// le retour d'un profil supprimé a été donné, il reste.
+	`CREATE TABLE ecoutes (
+		compte_id INTEGER NOT NULL REFERENCES comptes (id) ON DELETE CASCADE,
+		jour TEXT NOT NULL,
+		journee TEXT NOT NULL,
+		PRIMARY KEY (compte_id, jour, journee)
+	);
+	CREATE INDEX ecoutes_jour ON ecoutes (jour);
+	CREATE TABLE retours (
+		username TEXT NOT NULL,
+		journee TEXT NOT NULL,
+		avis TEXT NOT NULL CHECK (avis IN ('utile', 'pas_utile')),
+		PRIMARY KEY (username, journee)
+	);
+	CREATE INDEX retours_journee ON retours (journee);`
 ];
 
 /** `:memory:` pour les tests ; un chemin de fichier sinon, dont le dossier est créé. */
