@@ -1,8 +1,16 @@
+# La review Claude ne note pas la complexité : elle dit si la PR peut être fusionnée sans
+# que personne la lise. Son verdict, une ligne `VERDICT: AUTO|HUMAIN` dans un commentaire
+# marqué, est relu par auto-approve.yml ; un verdict absent ou illisible vaut HUMAIN.
 name: Claude Code Review
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+
+# Deux pushes rapprochés : seule la review du dernier commit compte.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
@@ -24,15 +32,49 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Analyse cette pull request et fais une review complète du code.
-            À la fin de ta review, **ajoute un commentaire avec le score suivant** (format strict) :
-            ---
-            Score: [X]/10
-            Justification: [1 phrase expliquant le score]
-            ---
-            Où X est un entier entre 1 et 10 basé sur :
-            - 1-4 : Changement trivial (ex: typo, reformattage, docs)
-            - 5-7 : Changement modéré (nouvelle fonctionnalité simple, refactor mineur)
-            - 8-10 : Changement complexe ou critique (refactor majeur, sécurité, composants critiques)
-            Exemple : "Score: 2/10\nJustification: Correction d'une faute de frappe dans un commentaire."
-          claude_args: '--allowed-tools mcp__github_inline_comment__create_inline_comment'
+            REPO : ${{ github.repository }}
+            PR : ${{ github.event.pull_request.number }}
+            COMMIT : ${{ github.event.pull_request.head.sha }}
+
+            Tu relis cette pull request pour le CTO, développeur .NET expérimenté qui ne lit
+            ni Svelte ni Python. Ta synthèse décide s'il doit s'en occuper ou si la PR peut
+            être fusionnée sans lui. Réponds en français.
+
+            1. Lis CLAUDE.md, puis la description (`gh pr view`) et le diff (`gh pr diff`).
+               Ouvre les fichiers touchés pour le contexte autour des changements.
+
+            2. Pour chaque problème réel, poste un commentaire en ligne avec
+               `mcp__github_inline_comment__create_inline_comment` : bug, régression, cas
+               limite non géré, faille, comportement ajouté ou corrigé sans test, règle de
+               CLAUDE.md enfreinte. Pas de remarque de style ni de goût. « Aucun problème »
+               est une réponse acceptable, pas une réponse par défaut : cherche vraiment.
+
+            3. Réponds par oui ou par non, avec une phrase de justification, à chaque question :
+               - Données : la PR peut-elle perdre, corrompre ou exposer des données des inscrits ?
+               - Emails : change-t-elle à qui, quand, combien ou quels emails partent ?
+               - Coûts : augmente-t-elle le nombre, la taille ou le modèle des appels IA ?
+               - Sécurité : touche-t-elle l'authentification, les droits, les secrets ou la
+                 validation d'une entrée utilisateur ?
+               - Tests : un comportement change-t-il sans test qui le couvre ?
+               - Problèmes : un commentaire de l'étape 2 reste-t-il à corriger ?
+
+            4. Poste un seul commentaire de synthèse avec `gh pr comment`, dans ce format exact
+               (la première ligne et la ligne VERDICT sont lues par une machine) :
+
+               <!-- rssresume-verdict -->
+               VERDICT: AUTO
+               ## Ce qui change pour l'utilisateur
+               Deux ou trois phrases, sans jargon de code.
+               ## Questions
+               Un tableau : question, oui/non, justification.
+
+               Et, si le verdict est HUMAIN, en plus :
+               ## Pourquoi un humain
+               ## Comment vérifier à la main
+               Les gestes concrets à faire dans l'application.
+               ## Décision à prendre
+               Une ou deux questions de produit, pas de code.
+
+               VERDICT: AUTO seulement si toutes les réponses de l'étape 3 sont non.
+               Au moindre doute, VERDICT: HUMAIN.
+          claude_args: '--allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"'

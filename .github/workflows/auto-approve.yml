@@ -1,4 +1,8 @@
-name: Auto-Approve & Merge PR
+# Après la review Claude, fusionne seule une PR sans risque et signale les autres.
+# Une PR va à l'humain si elle touche un chemin sensible, supprime un test, si Claude
+# conclut HUMAIN ou si son verdict est introuvable : dans le doute, c'est l'humain.
+# Même AUTO, rien ne fusionne tant que toutes les vérifications de la PR ne sont pas vertes.
+name: Auto-merge PR
 
 on:
   workflow_run:
@@ -6,99 +10,101 @@ on:
     types: [completed]
 
 jobs:
-  auto-approve-merge:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  decider:
+    # Une review annulée a été remplacée par celle d'un push plus récent.
+    if: github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
+      issues: write
+      checks: read
       actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      REVIEW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      REVIEW_DEBUT: ${{ github.event.workflow_run.created_at }}
+      LABEL: revue-humaine
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install GitHub CLI
+      - name: Décider, signaler, fusionner
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gh
-          gh --version
+          # Ce qu'un humain doit voir quoi qu'en dise Claude : la CI et les hooks (les
+          # garde-fous eux-mêmes), le déploiement et les dépendances, l'authentification
+          # et les comptes, l'envoi d'emails, le transport et le réglage des appels IA
+          # (un prompt modifié relance tout le scoring).
+          SENSIBLES='^(\.github/|\.claude/|Dockerfile$|docker-compose\.yml$|requirements\.txt$|\.env\.example$|web/Dockerfile$|web/package(-lock)?\.json$|web/src/hooks\.server\.ts$|web/src/lib/server/(sessions|csrf|cookie|garde|identifiants|inscription|magic-link|reinitialisation|jetons-email|limiteur|comptes|desabonnement|destinataires|courrier|validation)\.ts$|web/src/routes/admin/.*\.server\.ts$|rssresume/external/|rssresume/llm/(base\.py|prompts\.py|providers\.json)$)'
 
-      - name: Configure GitHub CLI
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          if [ -z "$PR" ]; then
+            echo "Aucune PR associée à ce commit (fork ?) : rien à décider."
+            exit 0
+          fi
 
-      - name: Get PR number
-        id: pr-details
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Extraire le numéro de PR depuis l'événement workflow_run
-          PR_NUMBER=$(jq --raw-output '.workflow_run.pull_requests[0].number' "$GITHUB_EVENT_PATH")
-          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "PR Number: $PR_NUMBER"
+          read -r ETAT BROUILLON TETE < <(gh pr view "$PR" --json state,isDraft,headRefOid \
+            --jq '"\(.state) \(.isDraft) \(.headRefOid)"')
+          if [ "$ETAT" != "OPEN" ] || [ "$TETE" != "$HEAD_SHA" ]; then
+            echo "PR $ETAT ou poussée depuis la review ($TETE ≠ $HEAD_SHA) : la prochaine review décidera."
+            exit 0
+          fi
 
-      - name: Fetch all comments for the PR
-        id: fetch-comments
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
-        run: |
-          # Récupérer tous les commentaires de la PR
-          COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments)
-          echo "comments=$COMMENTS" >> $GITHUB_OUTPUT
-          echo "Comments fetched: $(echo "$COMMENTS" | jq length)"
+          MOTIFS=""
+          ajouter() { MOTIFS="${MOTIFS}- $1"$'\n'; }
 
-      - name: Extract score from comments
-        id: score
-        env:
-          COMMENTS: ${{ steps.fetch-comments.outputs.comments }}
-        run: |
-          # Chercher un commentaire contenant "Score: X/10"
-          SCORE=$(echo "$COMMENTS" | jq -r '.[] | select(.body | test("Score:\\s*\\d+/10")) | .body' | head -1)
-          if [ -z "$SCORE" ]; then
-            echo "No score found in comments, defaulting to 10"
-            SCORE_VALUE=10
-          else
-            SCORE_VALUE=$(echo "$SCORE" | grep -oP 'Score:\s*\(\K\d+' | head -1)
-            if [ -z "$SCORE_VALUE" ]; then
-              echo "Failed to parse score, defaulting to 10"
-              SCORE_VALUE=10
+          FICHIERS=$(gh api "repos/$GH_REPO/pulls/$PR/files" --paginate \
+            --jq '.[] | "\(.status) \(.filename)"')
+          while read -r STATUT FICHIER; do
+            [ -z "$FICHIER" ] && continue
+            if [[ "$FICHIER" =~ $SENSIBLES ]]; then
+              ajouter "chemin sensible : \`$FICHIER\`"
             fi
-          fi
-          echo "score=$SCORE_VALUE" >> $GITHUB_OUTPUT
-          echo "Extracted Score: $SCORE_VALUE/10"
+            if [ "$STATUT" = "removed" ] && [[ "$FICHIER" =~ (^tests/|\.test\.|\.spec\.) ]]; then
+              ajouter "test supprimé : \`$FICHIER\`"
+            fi
+          done <<< "$FICHIERS"
 
-      - name: Post score summary comment
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
-          SCORE: ${{ steps.score.outputs.score }}
-        run: |
-          gh pr comment "$PR_NUMBER" --body "
-          🔍 **Score de complexité** : **$SCORE/10**
-          - **1-4** : Simple/Trivial → Auto-approve + merge
-          - **5-7** : Modéré → Review humaine recommandée
-          - **8-10** : Complexe/Critique → Review humaine **requise**
-          "
+          # Le verdict de cette review-ci : un commentaire de bot, marqué, posté après son
+          # démarrage. Un verdict d'un push précédent ne vaut pas pour ce commit.
+          VERDICT=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[]' \
+            | jq -rs --arg depuis "$REVIEW_DEBUT" '
+                map(select(.user.type == "Bot"
+                           and .created_at >= $depuis
+                           and (.body | contains("<!-- rssresume-verdict -->"))))
+                | last | .body // ""' \
+            | grep -oE '^VERDICT: *(AUTO|HUMAIN)' | grep -oE 'AUTO|HUMAIN' | head -1 || true)
 
-      - name: Auto-approve, merge, and delete branch (if score < 5)
-        if: ${{ steps.score.outputs.score < 5 }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr-details.outputs.pr_number }}
-        run: |
-          # Approuver la PR
-          gh pr review --approve "$PR_NUMBER" -b "✅ **Auto-approved** : Score = ${{ steps.score.outputs.score }}/10 (Simple/Trivial)"
-          sleep 5
-          # Attendre que l'approbation soit enregistrée
-          
-          # Vérifier que la PR a au moins une approbation
-          APPROVALS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews | jq '[.[] | select(.state == "APPROVED")] | length')
-          if [ "$APPROVALS" -ge 1 ]; then
-            # Merger la PR en squashant et supprimant la branche
-            gh pr merge "$PR_NUMBER" --squash --delete-branch -b "🤖 **Auto-merged** : Score = ${{ steps.score.outputs.score }}/10"
-          else
-            echo "No approvals found after auto-approve, skipping merge"
+          if [ "$REVIEW_CONCLUSION" != "success" ]; then
+            ajouter "la review Claude a échoué ($REVIEW_CONCLUSION)"
+          elif [ -z "$VERDICT" ]; then
+            ajouter "verdict de Claude introuvable"
+          elif [ "$VERDICT" = "HUMAIN" ]; then
+            ajouter "Claude demande un humain (voir sa synthèse plus haut)"
           fi
+
+          gh label create "$LABEL" --color D93F0B \
+            --description "Le verdict de revue demande un humain" --force
+
+          if [ -n "$MOTIFS" ]; then
+            gh pr edit "$PR" --add-label "$LABEL"
+            printf '👤 **Revue humaine demandée**\n\n%s' "$MOTIFS" | gh pr comment "$PR" --body-file -
+            exit 0
+          fi
+
+          gh pr edit "$PR" --remove-label "$LABEL" || true
+
+          if [ "$BROUILLON" = "true" ]; then
+            gh pr comment "$PR" --body "✅ **Verdict AUTO**, mais la PR est en brouillon : pas de fusion."
+            exit 0
+          fi
+
+          if ! gh pr checks "$PR" --watch --interval 30; then
+            gh pr edit "$PR" --add-label "$LABEL"
+            gh pr comment "$PR" --body "❌ **Verdict AUTO, mais des vérifications sont rouges** : pas de fusion."
+            exit 0
+          fi
+
+          gh pr comment "$PR" --body "🤖 **Verdict AUTO et vérifications vertes** : fusion automatique."
+          gh pr merge "$PR" --squash --delete-branch --match-head-commit "$HEAD_SHA"
