@@ -17,7 +17,6 @@ from rssresume import runlog
 from rssresume.certfr import CertfrService
 from rssresume.config import AUDIO_MODE_GLOBAL, AppConfig
 from rssresume.ephemeride import EphemerideService
-from rssresume.external.freshrss import Etiquettes
 from rssresume.llm import providers
 from rssresume.models import (
     WATCHLIST_MAX,
@@ -42,6 +41,7 @@ from rssresume.protocols import (
     FreshRSSClientProtocol,
     MontageServiceProtocol,
     ScorerProtocol,
+    ScoringCacheProtocol,
     SummaryGeneratorProtocol,
 )
 from rssresume.tools import console, cve
@@ -68,6 +68,7 @@ class DigestService:
         ephemeride_service: EphemerideServiceProtocol | None = None,
         certfr_service: CertfrServiceProtocol | None = None,
         montage_service: MontageServiceProtocol | None = None,
+        cache_scoring: ScoringCacheProtocol | None = None,
     ):
         self._config = config
         self._freshrss_client = freshrss_client
@@ -89,10 +90,9 @@ class DigestService:
         #: `None` quand aucune clé d'API ne le permet : tous les articles entrent alors
         #: dans le digest, sans note et sans seuil.
         self._scorer = scorer
-        #: Les tags que ce digest relit comme cache : ceux de sa personne seulement. Lus
-        #: de la configuration, comme ceux que le client FreshRSS écrit, une seule source
-        #: pour le nom, sans quoi on relirait sous un préfixe ce qu'on écrit sous un autre.
-        self._etiquettes = Etiquettes(config.username)
+        #: Le cache des notes, clé (item_id, empreinte) : `None` en mode dossier de
+        #: profils (sans `RSSRESUME_PROFILES_DB`), où chaque passage renote tout.
+        self._cache_scoring = cache_scoring
 
     def run(
         self,
@@ -118,10 +118,11 @@ class DigestService:
             console.log(f"{len(categories)} catégorie(s) à traiter : {', '.join(categories) or '(aucune)'}")
 
             if not write_tags:
-                console.log("Tags FreshRSS (scores, digest) : ignorés (--no-tags)")
+                console.log("Cache de scoring et tag digested : ignorés (--no-tags)")
 
-            # Les tags sont écrits catégorie par catégorie : un échec en cours de route
-            # ne fait pas perdre les scores déjà calculés, qui seraient repayés au passage suivant.
+            # Les notes sont écrites dans le cache catégorie par catégorie : un échec en
+            # cours de route ne fait pas perdre les scores déjà calculés, qui seraient
+            # repayés au passage suivant.
             digests = [
                 self._build_digest(category, day, day_dir, write_tags) for category in categories
             ]
@@ -402,9 +403,9 @@ class DigestService:
                 marker_path=marker_path,
             )
 
-        notes, new_notes, stale = self._score(articles_a_traiter)
+        notes, new_notes = self._score(articles_a_traiter)
         # Le journal veut toutes les notes, pas seulement celles calculées : c'est la
-        # seule vue où un score relu des tags et un score frais se lisent côte à côte.
+        # seule vue où un score relu du cache et un score frais se lisent côte à côte.
         journal.set_notes(notes, new_notes)
         selection = self._select(articles_a_traiter, notes, regle)
         journal.set_seuil_applique(selection.seuil)
@@ -427,13 +428,12 @@ class DigestService:
             )
             if write_tags:
                 # Les notes restent à écrire : sans elles, tout serait renoté au passage suivant.
-                self._write_tags(articles, selected, new_notes, stale)
+                self._write_tags(selected, new_notes)
             return CategoryDigest(
                 category=category,
                 articles=articles,
                 summary_text=no_selection_message(category, selection.seuil),
                 new_notes=new_notes,
-                stale_item_ids=stale,
                 marker_path=marker_path,
                 # C'est ici que la liste de veille sert le plus : la catégorie n'a rien
                 # à raconter, mais elle a lu des articles, et certains valent un lien.
@@ -456,7 +456,7 @@ class DigestService:
             )
 
         if write_tags:
-            self._write_tags(articles_a_traiter, selected, new_notes, stale)
+            self._write_tags(selected, new_notes)
 
         return CategoryDigest(
             category=category,
@@ -464,7 +464,6 @@ class DigestService:
             summary_text=summary_text,
             selected=selected,
             new_notes=new_notes,
-            stale_item_ids=stale,
             audio_path=audio_path,
             watchlist=self._watchlist(articles, selected, notes),
             notes=notes,
@@ -545,47 +544,38 @@ class DigestService:
 
     def _score(
         self, articles: list[Article]
-    ) -> tuple[dict[str, Note], dict[str, Note], list[str]]:
-        """Note les articles, en réutilisant les notes déjà posées comme tags.
+    ) -> tuple[dict[str, Note], dict[str, Note]]:
+        """Note les articles, en réutilisant les notes déjà en cache.
 
-        Renvoie (toutes les notes, celles calculées maintenant, les articles à renettoyer).
-        Sans API configurée, aucune note : tous les articles entrent dans le digest.
+        Renvoie (toutes les notes, celles calculées maintenant). Sans API configurée,
+        aucune note : tous les articles entrent dans le digest. Sans cache (`None`,
+        mode dossier de profils), chaque passage renote tout.
         """
         if self._scorer is None:
-            return {}, {}, []
+            return {}, {}
 
-        digest = self._scoring_fingerprint()
+        empreinte = self._scoring_fingerprint()
         a_noter: list[Article] = []
-        stale: list[str] = []
         notes: dict[str, Note] = {}
 
         for article in articles:
-            porte = self._etiquettes.empreinte_de(article.tags)
-            score = self._etiquettes.score_de(article.tags)
-            thematique = self._etiquettes.theme_de(article.tags)
-            # La thématique est exigée autant que le score : une note partielle n'est pas
-            # un cache utilisable, elle rangerait l'article dans le mauvais groupe.
-            if (
-                porte == digest
-                and score is not None
-                and thematique is not None
-                and self._config.axes.contient(thematique)
-            ):
-                # L'angle, lui, n'est pas dans les tags : cet article ira au résumé sans
-                # sa phrase de contexte, ce dont le prompt tient compte.
-                notes[article.item_id] = Note(score=score, thematique=thematique)
+            note = (
+                self._cache_scoring.note(article.item_id, empreinte)
+                if self._cache_scoring is not None
+                else None
+            )
+            # La thématique est exigée autant que le score : une note dont la thématique
+            # n'est plus un axe du profil rangerait l'article dans le mauvais groupe.
+            if note is not None and self._config.axes.contient(note.thematique):
+                notes[article.item_id] = note
                 continue
             a_noter.append(article)
-            if porte is not None:
-                # Noté par une version antérieure du prompt : ses tags sont à retirer.
-                stale.append(article.item_id)
 
         console.detail(
-            f"scoring : {len(notes)} note(s) relue(s) des tags, {len(a_noter)} à calculer"
-            + (f", dont {len(stale)} à renoter (prompt modifié)" if stale else "")
+            f"scoring : {len(notes)} note(s) relue(s) du cache, {len(a_noter)} à calculer"
         )
         if not a_noter:
-            return notes, {}, stale
+            return notes, {}
 
         calculees = self._scorer.score_articles(
             [self._to_payload(article) for article in a_noter],
@@ -594,15 +584,15 @@ class DigestService:
         )
         # Un article que le modèle a sauté ressort avec `notee` à faux et un score de
         # remplissage. Il est écarté ici, et de la journée : entrer avec un zéro le
-        # ferait taguer `score-00` sous l'empreinte courante, donc relire de ce cache
+        # ferait enregistrer un `0` sous l'empreinte courante, donc relire de ce cache
         # à chaque passage suivant, un accident de lot deviendrait définitif. Sans
-        # tag, un rejeu de la journée (`--include-read`) le note de nouveau, et le
-        # journal de la catégorie le montre sans note.
+        # note enregistrée, un rejeu de la journée (`--include-read`) le note de
+        # nouveau, et le journal de la catégorie le montre sans note.
         perdues = [note for note in calculees if not note.get("notee", True)]
         if perdues:
             console.detail(
                 f"scoring : {len(perdues)} article(s) laissé(s) sans note par le modèle, "
-                f"écartés du digest du jour, aucun tag posé"
+                f"écartés du digest du jour, aucune note enregistrée"
             )
         new_notes = {
             note["id"]: Note(
@@ -611,7 +601,7 @@ class DigestService:
             for note in calculees
             if note.get("notee", True)
         }
-        return {**notes, **new_notes}, new_notes, stale
+        return {**notes, **new_notes}, new_notes
 
     @staticmethod
     def _to_payload(article: Article) -> dict:
@@ -651,21 +641,20 @@ class DigestService:
 
     def _write_tags(
         self,
-        articles: list[Article],
         selected: list[Article],
         new_notes: dict[str, Note],
-        stale: list[str],
     ) -> None:
-        """Écrit les tags d'une catégorie, dès que son résumé est produit.
+        """Enregistre les notes d'une catégorie dans le cache, dès que son résumé est produit.
 
-        Le marquage comme lu, lui, attend la livraison : ces tags sont des données de
-        cache et de navigation, pas un accusé de livraison.
+        Le marquage comme lu, lui, attend la livraison : ces notes sont des données de
+        cache, pas un accusé de livraison. Le tag `digested` des retenus, lui, reste
+        posé dans FreshRSS. Sans cache injecté (mode dossier), rien n'est persisté.
         """
-        a_nettoyer = [article for article in articles if article.item_id in set(stale)]
-        if a_nettoyer:
-            self._freshrss_client.clear_scoring_tags(a_nettoyer)
-        if new_notes:
-            self._freshrss_client.tag_notes(new_notes, self._scoring_fingerprint())
+        if new_notes and self._cache_scoring is not None:
+            empreinte = self._scoring_fingerprint()
+            for item_id, note in new_notes.items():
+                self._cache_scoring.enregistrer(item_id, empreinte, note)
+            console.log(f"Cache de scoring : {len(new_notes)} note(s) enregistrée(s)")
         self._tag_digested(selected)
 
     def _mark_read(self, digests: list[CategoryDigest]) -> None:

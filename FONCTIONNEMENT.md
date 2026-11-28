@@ -7,14 +7,14 @@ Pour l'installation et les commandes, voir [README.md](README.md).
 
 ```mermaid
 flowchart TD
-    A[FreshRSS<br/>API Google Reader] -->|articles du jour + leurs tags| R{Catégorie routée ?<br/>RSSRESUME_CERTFR_CATEGORIES}
+    A[FreshRSS<br/>API Google Reader] -->|articles du jour| R{Catégorie routée ?<br/>RSSRESUME_CERTFR_CATEGORIES}
 
     R -->|oui| S["CertfrService<br/>appariement sur la stack déclarée<br/>zéro appel IA"]
     S --> J
     R -->|non| B{Scoring<br/>nécessaire ?}
 
-    B -->|tags scoring-hash + theme à jour| C[Note relue des tags<br/>zéro appel IA]
-    B -->|tag absent ou périmé| D[score_articles<br/>score + thématique + angle]
+    B -->|note en cache sous l'empreinte courante| C[Note relue du cache SQLite<br/>zéro appel IA]
+    B -->|cache manqué ou empreinte périmée| D[score_articles<br/>score + thématique + angle]
 
     C --> E[Sélection]
     D --> E
@@ -25,7 +25,7 @@ flowchart TD
     F --> M{RSSRESUME_AUDIO_MODE}
     M -->|category| G[AudioGenerator<br/>un mp3 par catégorie]
     M -->|global| T
-    G --> T[tags score-NN + theme + scoring-hash<br/>tag digested sur les retenus]
+    G --> T[notes dans le cache SQLite<br/>tag digested sur les retenus]
     T --> J["&lt;categorie&gt;.log.json<br/>articles + scores + coûts"]
     J -->|catégorie suivante| B
     J --> P{mode global ?}
@@ -44,7 +44,7 @@ flowchart TD
 
 Les blocs ambrés sont les seuls qui appellent l'API payante.
 
-Tout ce qui précède l'email se répète **par catégorie**, tags compris, et le tout **par profil** -
+Tout ce qui précède l'email se répète **par catégorie**, cache de scoring compris, et le tout **par profil** -
 voir [Plusieurs profils : la tournée](#plusieurs-profils--la-tournée). Le marquage comme lu attend
 la livraison de tous les profils ; le montage de la journée, lui, a lieu une fois toutes les
 catégories traitées, et seulement en mode `global` : voir [Les deux modes audio](#les-deux-modes-audio).
@@ -97,8 +97,8 @@ Conséquence sur le rejeu : une journée déjà livrée a ses articles marqués 
 rend plus. La rejouer demande `--include-read`. La mise au point d'un prompt, elle, passe par
 `--no-mark-read` et n'est pas concernée.
 
-Chaque article remonte avec ses **tags utilisateur déjà posés** (`Article.tags`), c'est ce qui
-rend le cache de scoring possible à l'étape suivante.
+Le cache de scoring ne se relit pas dans FreshRSS : il vit dans la base SQLite des profils
+(voir [Le cache de scoring](#le-cache-de-scoring)), clé `(item_id, empreinte)`.
 
 Une catégorie sans article s'arrête ici : un fichier marqueur vide `<categorie>.no-article` est
 écrit, et aucun appel IA n'est déclenché.
@@ -129,37 +129,38 @@ Une note, c'est trois champs, et les trois servent :
 
 | Champ | Ce que c'est | Où il sert |
 | --- | --- | --- |
-| `score` | 0 à 10 | seuil de sélection, plafond, tag `score-NN` |
-| `thematique` | l'un des axes du profil, ou les cinq axes historiques absents de `axes` | ordre de lecture du digest, tag `theme-<x>` |
+| `score` | 0 à 10 | seuil de sélection, plafond |
+| `thematique` | l'un des axes du profil, ou les cinq axes historiques absents de `axes` | ordre de lecture du digest |
 | `angle` | une phrase : en quoi l'article compte pour ce profil | passé au résumeur avec l'article |
 
-Les trois arrivent dans le même appel. Le score seul pilotait tout et les deux autres étaient
-jetés : payés puis perdus. L'angle est précisément le contexte qui manquait au résumé, il dit
-*pourquoi* l'article est là, et la thématique donne gratuitement le regroupement à l'écoute.
+Les trois arrivent dans le même appel, et les trois sont persistés dans le cache. Le score
+seul pilotait tout et les deux autres étaient jetés : payés puis perdus. L'angle est
+précisément le contexte qui manquait au résumé, il dit *pourquoi* l'article est là, et la
+thématique donne gratuitement le regroupement à l'écoute.
 
-Trois cas par article :
+Trois cas par article, lus dans la table `scores` de la base des profils :
 
 ```
-article porte scoring-<hash courant> + score-NN + theme-<x>  →  note relue des tags, aucun appel
-article porte scoring-<autre hash>                           →  renoté, anciens tags à nettoyer
-article sans tag de scoring                                  →  noté
+(item_id, empreinte courante) présent en cache  →  note relue du cache, aucun appel
+(item_id, autre empreinte) présent               →  renoté, la ligne ancienne reste, inatteignable
+aucune ligne pour cet article                    →  noté
 ```
 
-Le cache exige le score **et** la thématique : une note partielle rangerait l'article dans le
-mauvais groupe, elle est donc traitée comme absente. L'angle, lui, n'est pas mis en tag, une
-phrase entière n'a rien à faire dans un label FreshRSS. Un article relu du cache part donc au
-résumé sans son angle, et le prompt le prévoit.
+Le cache exige une thématique **dans les axes du profil** : une note dont la thématique n'est
+plus un axe rangerait l'article dans le mauvais groupe, elle est donc traitée comme absente.
+Contrairement à l'ancien cache en tags, l'angle est persisté : un article relu du cache part
+au résumé avec sa note entière.
 
 Les articles à noter partent par lots de 40 en un appel chacun.
 
 **Un lot incomplet ne fait plus tomber la journée.** Trente-neuf notes sur quarante levaient une
 erreur qui tuait la catégorie en cours et toutes les suivantes, alors que le réalignement sait
 déjà où sont les trous. L'article oublié ressort donc marqué comme non noté, et il est écarté :
-ni note en mémoire, ni tag dans FreshRSS. Ce dernier point est le seul qui compte vraiment -
-entrer avec un score de zéro le ferait taguer `score-00` sous l'empreinte courante, donc relire
-de ce cache à chaque exécution suivante : un accident de lot deviendrait définitif. Sans tag,
-un rejeu de la journée (`--include-read`) le note de nouveau, et le journal de la catégorie le
-montre sans note (`origine_note: aucune`). Une réponse dont *rien* n'est exploitable, elle,
+ni note en mémoire, ni ligne dans le cache. Ce dernier point est le seul qui compte vraiment -
+entrer avec un score de zéro le ferait enregistrer un `0` sous l'empreinte courante, donc relire
+de ce cache à chaque exécution suivante : un accident de lot deviendrait définitif. Sans ligne
+en cache, un rejeu de la journée (`--include-read`) le note de nouveau, et le journal de la
+catégorie le montre sans note (`origine_note: aucune`). Une réponse dont *rien* n'est exploitable, elle,
 reste une erreur : ce n'est plus un trou dans un lot, c'est un lot qui n'a pas été traité.
 
 **Une réponse coupée par le plafond de sortie redécoupe le lot** au lieu d'abandonner. Il n'y a
@@ -225,9 +226,9 @@ Aucun article retenu sur 3 (seuil 7).
  1/10 autre         - Test d'un casque audio sans fil
 ```
 
-C'est ce qui permet de juger un seuil trop haut sans rouvrir FreshRSS. Les tags de scoring, eux,
-sont écrits normalement (étape 6) : sans cela un lot entièrement sous le seuil serait renoté à
-chaque passage.
+C'est ce qui permet de juger un seuil trop haut sans rouvrir FreshRSS. Les notes, elles,
+sont écrites dans le cache normalement (étape 6) : sans cela un lot entièrement sous le seuil
+serait renoté à chaque passage.
 
 ### 5. Résumé et audio
 
@@ -394,19 +395,21 @@ journée entière.
 Cette étape n'existe qu'en mode `global`, et elle a lieu **une fois**, après la dernière
 catégorie. Voir [Les deux modes audio](#les-deux-modes-audio).
 
-### 6. Tags de la catégorie
+### 6. Cache de la catégorie
 
-Dès que le résumé de la catégorie est produit, ses tags sont écrits : nettoyage des tags périmés,
-`score-NN`, `theme-<thematique>`, `scoring-<hash>`, puis `digested` sur les retenus.
+Dès que le résumé de la catégorie est produit, ses notes sont enregistrées dans le cache de
+scoring (table `scores` de la base SQLite des profils, clé `(item_id, empreinte)`), puis le
+tag `digested` est posé dans FreshRSS sur les retenus.
 
 **Pourquoi ici et pas à la fin.** Ce sont des données de cache et de navigation, pas un accusé de
 livraison. Les écrire au fil de l'eau garantit qu'une panne à la 5ᵉ catégorie ne fait pas perdre le
 scoring des quatre premières, sans quoi il serait intégralement repayé au passage suivant. Deux
-tests couvrent ce cas : un échec SMTP et une panne d'API en cours de route laissent les tags déjà
-écrits en place.
+tests couvrent ce cas : un échec SMTP et une panne d'API en cours de route laissent les notes déjà
+enregistrées en place.
 
-Contrepartie : un échec d'écriture FreshRSS interrompt l'exécution **avant** l'email, alors qu'il
-survenait après auparavant. Une instance FreshRSS injoignable fait donc perdre l'email du jour.
+Contrepartie : un échec d'écriture interrompt l'exécution **avant** l'email, alors qu'il
+survenait après auparavant. Une base injoignable ou une instance FreshRSS injoignable fait donc
+perdre l'email du jour.
 
 ### 7. Email
 
@@ -664,8 +667,8 @@ passe-partout que le prompt interdit, et une conclusion fausse est pire qu'une c
 C'est le seul chemin où ces résumés servent encore à l'oreille : sans fournisseur, il n'y a
 personne pour rédiger quoi que ce soit, et ces textes-là existent déjà.
 
-La journée est déjà payée en scoring, en résumés et en tags : la perdre sur le dernier appel
-serait le plus cher des abandons. `Montage.origine` garde la trace, `montage` ou `assemblage`,
+La journée est déjà payée en scoring, en résumés et en notes mises en cache : la perdre sur le
+dernier appel serait le plus cher des abandons. `Montage.origine` garde la trace, `montage` ou `assemblage`,
 la console le dit, et `journee.json` l'écrit. Même arbitrage que `Ephemeride.origine` : un audio
 dégradé ne doit pas passer pour un audio réussi.
 
@@ -922,7 +925,7 @@ Trois choix de présentation, et chacun répond à une façon de se tromper :
 
 `--debug` ajoute sous chaque catégorie ses articles, dans la forme du marqueur `.no-article`
 ,un seul format à apprendre. `origine_note` y figure parce que c'est elle qui explique une
-journée qui n'a presque rien coûté : tout relu des tags, aucun appel de scoring.
+journée qui n'a presque rien coûté : tout relu du cache, aucun appel de scoring.
 
 **Et `RSSRESUME_DEBUG=true` imprime ce même bilan à la fin de chaque passage.** C'est le point
 de tout l'exercice : le conteneur n'expose rien, sa sortie standard est le seul endroit où
@@ -958,7 +961,7 @@ deux façons de résumer et partagent le leur :
 
 **Un appel par poste n'est donc pas une remontée partielle** : c'est le fonctionnement nominal.
 Le scoring envoie ses articles par lots de 40 (`llm.prompts.SCORING_BATCH_SIZE`), et n'y met que
-ceux dont la note n'a pas été relue des tags, une catégorie de 19 articles tient en un appel, une
+ceux dont la note n'a pas été relue du cache, une catégorie de 19 articles tient en un appel, une
 catégorie de 19 articles tous déjà notés n'en fait aucun. Le digest et la synthèse vocale, eux,
 voient toute la sélection d'un coup : un appel chacun, quel que soit le nombre d'articles retenus.
 `article` n'apparaît que pour un appel direct à `summarize_article`, hors pipeline quotidien.
@@ -1035,7 +1038,7 @@ Le profil est **injectable de l'extérieur**, dans cet ordre de priorité :
 | `DEFAULT_PROFIL` | le profil générique du dépôt, pour un appel qui n'en passe aucun ; jamais servi par la tournée |
 
 `RSSRESUME_PROFILE`, le profil en clair sur une ligne, n'est plus lue : un profil sans document
-n'a pas de nom, donc ni répertoire ni préfixe de tags. Posée, elle fait échouer le lancement
+n'a pas de nom, donc ni répertoire ni préfixe de tag. Posée, elle fait échouer le lancement
 plutôt que d'être ignorée.
 
 Trois conséquences de conception :
@@ -1087,7 +1090,7 @@ Une personne a deux noms, qui ne servent pas à la même chose :
 
 | | Forme | Sert à |
 | --- | --- | --- |
-| `username` | le nom du fichier | préfixe des tags FreshRSS, `--profil`, les logs |
+| `username` | le nom du fichier | préfixe du tag `digested`, `--profil`, les logs |
 | `id` | un UUID, clé `id` du document | le répertoire de sortie `output/<id>/` |
 
 La sortie suit l'`id` pour que renommer quelqu'un ne le sépare pas de ses journées, et pour que
@@ -1240,7 +1243,7 @@ Une table, `profils` :
 | Colonne | Contenu |
 | --- | --- |
 | `id` | clé primaire, l'UUID qui nomme `output/<id>/` |
-| `username` | `UNIQUE`, le nom des tags et de `--profil` |
+| `username` | `UNIQUE`, le nom du tag `digested` et de `--profil` |
 | `document` | le document JSON, `id` compris, normalisé : `profil`, `stack`, `email`, `prenom`, `securite` (toujours écrite, `exploitant` quand la saisie ne la porte pas), `flux_exclus` (omise quand la liste est vide) |
 | `cree_le`, `modifie_le` | horodatages ISO 8601 en UTC |
 
@@ -1250,6 +1253,16 @@ Et une seconde, `categories`, le [catalogue des catégories](#le-catalogue-des-c
 | --- | --- |
 | `libelle` | clé primaire, le libellé FreshRSS tel qu'il a été importé |
 | `document` | l'entrée JSON : `description`, `metiers`, `visibilite`, `proprietaires` si privée |
+
+Et une troisième, `scores`, le [cache de scoring](#le-cache-de-scoring) (`cache_scoring.CacheScoringSqlite`) :
+
+| Colonne | Contenu |
+| --- | --- |
+| `item_id` | identifiant de l'article FreshRSS, avec `empreinte` : clé primaire |
+| `empreinte` | SHA-256 tronqué du prompt de scoring et du modèle, cf. ci-dessous |
+| `score` | 0 à 10 |
+| `thematique` | l'un des axes du profil |
+| `angle` | la phrase de contexte, enfin persistée |
 
 Le document est validé par `profil_depuis_dict` **à l'écriture**, l'API refuse ce que la tournée
 refuserait, avec le même message, **et à la lecture**, parce qu'une base se modifie aussi à la
@@ -1343,62 +1356,67 @@ est décrit dans le [README](README.md#api-http).
 
 ## Le cache de scoring
 
-L'empreinte est un SHA-256 tronqué de `SCORING_SYSTEM` **et du modèle de scoring**. Elle est posée
-sur l'article en même temps que sa note.
+Le cache vit dans la base SQLite des profils (`RSSRESUME_PROFILES_DB`), table `scores`
+(`cache_scoring.CacheScoringSqlite`), même ouverture que l'annuaire : WAL, `busy_timeout`,
+schéma créé si absent. La clé est le couple **(item_id, empreinte)** ; la ligne porte
+`score`, `thematique` **et `angle`** : l'angle est enfin persisté.
+
+L'empreinte est un SHA-256 tronqué de `SCORING_SYSTEM`, du **profil** (son texte, pas son
+nom) **et du modèle de scoring**.
 
 ```
                     PROFIL + barème + modèle
                               │
                          sha256[:12]
                               │
-                    scoring-508f38b6e31b
+                    empreinte 508f38b6e31b
                               │
         ┌─────────────────────┴─────────────────────┐
         │                                           │
-  identique au tag                          différente du tag
-  porté par l'article                       porté par l'article
+  (item_id, empreinte)                     (item_id, autre empreinte)
+  présent en table `scores`                 ou absent
         │                                           │
-  score relu, gratuit                    anciens tags retirés,
-                                          article renoté
+  note relue, gratuit,                    article renoté, la ligne
+  angle compris                           ancienne reste, inatteignable
 ```
 
 Conséquence pratique : tant que tu ne touches ni au profil, ni au barème, ni au modèle, relancer la
 même journée ne coûte **rien** en scoring, à condition de la redemander avec `--include-read` si
 elle a déjà été marquée lue. Le profil entrant dans l'empreinte, en injecter un autre
-renote automatiquement : aucun score calculé contre l'ancien profil ne peut survivre. Dès que tu modifies l'un des trois, l'empreinte change et
-les articles concernés sont renotés automatiquement, sans que tu aies à purger quoi que ce soit.
+renote automatiquement : aucun score calculé contre l'ancien profil ne peut survivre. Deux
+profils **au texte identique** ont la même empreinte, donc partagent la même note : ils ne notent
+qu'une fois, sans mutualisation par gabarit. Dès que tu modifies l'un des trois, l'empreinte
+change et les articles concernés sont renotés automatiquement, sans que tu aies à purger quoi
+que ce soit : l'ancienne ligne reste en base, simplement inatteignable.
 
-Le nettoyage ne balaie pas les onze valeurs possibles : seuls les tags réellement portés par les
-articles concernés sont retirés, ce qui donne un appel par tag distinct. Le tag `digested` n'est
-jamais touché par ce nettoyage.
+À la migration depuis les tags FreshRSS, une journée est renotée une fois (les anciens
+libellés `score-NN` / `theme-<x>` / `scoring-<hash>` ne sont pas migrés ni relus) ; ils restent
+dans FreshRSS, inertes.
+
+Sans `RSSRESUME_PROFILES_DB` (mode dossier de profils), aucun cache n'est injecté :
+chaque passage renote tout, et plus aucun tag de scoring n'est posé dans FreshRSS.
+`--no-tags` et `--dry-run` n'écrivent rien dans la base.
 
 La clé `axes` porte de 3 à 6 rubriques `{slug, libelle, description}`. Chaque slug devient
-un tag `theme-<slug>` et doit commencer par une lettre, avec seulement des minuscules, chiffres
-ou tirets jusqu'à 24 caractères. Une thématique rendue hors liste tombe sur le dernier axe.
-Sans clé, les cinq thématiques historiques restent strictement identiques au comportement d'avant.
-Modifier les axes change l'empreinte du prompt et fait renoter une fois les articles concernés.
+la `thematique` persistée dans le cache et doit commencer par une lettre, avec seulement des
+minuscules, chiffres ou tirets jusqu'à 24 caractères. Une thématique rendue hors liste tombe
+sur le dernier axe. Sans clé, les cinq thématiques historiques restent strictement identiques
+au comportement d'avant. Modifier les axes change l'empreinte du prompt et fait renoter une
+fois les articles concernés.
 
 ## Les tags posés dans FreshRSS
 
-Chaque tag est **préfixé par le nom du profil**, `adrien-score-07`, `adrien-digested` : une note
-dépend du profil qui l'a produite, et le cache doit être à chacun. Les motifs relus sont ancrés sur
-ce préfixe : ni les tags d'un autre profil ni les anciens tags sans préfixe ne sont relus ou
-nettoyés. Passer aux profils coûte donc un re-scoring unique des articles relus ; les anciens tags
-restent dans FreshRSS, inertes. Le tableau ci-dessous donne les tags sans leur préfixe.
+Un seul : **`digested`**, préfixé par le nom du profil (`adrien-digested`), posé sur les articles
+retenus. Le cache de scoring (`score`, `theme`, `scoring-<hash>`) n'y est plus : il a quitté les
+labels FreshRSS pour la table `scores` de la base. Les anciens tags de scoring laissés par les
+versions précédentes restent dans FreshRSS, inertes : rien ne les relit ni ne les nettoie.
 
 | Tag | Posé sur | Sert à |
 | --- | --- | --- |
-| `score-00` … `score-10` | tout article noté | filtrer et trier dans FreshRSS ; relu comme cache |
-| `theme-<thematique>` | tout article noté | regrouper le digest à l'écoute ; relu comme cache |
-| `scoring-<hash>` | tout article noté | savoir quelle version du prompt a produit la note |
 | `digested` | les articles retenus | retrouver ce qui a réellement alimenté le résumé du jour |
 
-Le zéro initial de `score-NN` garde l'ordre alphabétique de la liste des tags FreshRSS cohérent avec
-l'ordre numérique. `digested` est posé mais jamais relu par le code : reposer un tag existant est
+`digested` est posé mais jamais relu par le code : reposer un tag existant est
 sans effet côté API, donc relancer la même journée est idempotent.
-
-L'`angle` de la note n'a pas de tag : il ne vaut que pour l'exécution qui l'a produit et sert
-immédiatement, au résumé. Le mettre en label ferait une phrase entière dans la liste des tags.
 
 ## Les appels à l'IA
 
@@ -1637,21 +1655,21 @@ RSSResume : digest du 2026-08-23 vers output/2026-08-23
 FreshRSS : authentifié en tant que mon-utilisateur
 1 catégorie(s) à traiter : Tech
 [Tech] 4 article(s)
-  scoring : 2 score(s) relu(s) des tags, 2 à calculer, dont 1 à renoter (prompt modifié)
+  scoring : 2 note(s) relue(s) du cache, 2 à calculer
   sélection : 2 article(s) retenu(s) sur 4 (seuil 7)
   résumé via openai, gpt-5.6-luna (2 article(s), 9140 caractère(s) envoyés)
   synthèse vocale via openai, gpt-4o-mini-tts (voix alloy)
   audio écrit : tech.mp3 (48213 octets)
-FreshRSS : nettoyage de 2 tag(s) de scoring obsolète(s)
-FreshRSS : notation de 2 article(s) sur 2 valeur(s) de score et 1 thématique(s)
+Cache de scoring : 2 note(s) enregistrée(s)
 FreshRSS : tag 'digested' sur 2 article(s)
 Email : envoyé
 FreshRSS : marquage de 4 article(s) comme lus
 Terminé : 4 article(s) lu(s), 2 retenu(s), 1 fichier(s) audio, 0 catégorie(s) sans article
 ```
 
-Deux des quatre articles n'ont coûté aucun appel de scoring. Le marquage comme lu porte sur les
-quatre ; le tag `digested` seulement sur les deux retenus.
+Deux des quatre articles n'ont coûté aucun appel de scoring : l'empreinte périmée du troisième
+est un simple cache manqué, sa ligne reste en base sans être nettoyée. Le marquage comme lu
+porte sur les quatre ; le tag `digested` seulement sur les deux retenus.
 
 En face, `output/2026-08-23/tech.log.json` garde ce que ces lignes ne disent pas : les scores des
 quatre articles, l'angle retenu pour chacun, et le coût des trois appels, un scoring, un digest,

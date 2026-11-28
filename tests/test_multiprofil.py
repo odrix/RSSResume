@@ -24,7 +24,7 @@ from rssresume.axes import Axes, AxesParDefaut
 from rssresume.categories import Catalogue, CategorieCatalogue
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import LABEL_STREAM_PREFIX, Etiquettes, FreshRSSClient
-from rssresume.models import Article, Note
+from rssresume.models import Article
 from rssresume.profil import (
     CLE_ID,
     ENV_PROFIL,
@@ -388,30 +388,12 @@ class ConfigPourTests(unittest.TestCase):
 
 
 class EtiquettesTests(unittest.TestCase):
-    def test_tags_are_prefixed_by_the_username(self):
+    def test_le_seul_tag_pose_est_digested_prefixed_par_le_username(self):
+        """Le cache de scoring a quitté FreshRSS : plus de score-/theme-/scoring- ici."""
         tags = Etiquettes("adrien")
 
-        self.assertEqual("adrien-score-07", tags.score(7))
-        self.assertEqual("adrien-scoring-abc", tags.scoring("abc"))
-        self.assertEqual("adrien-theme-cyber", tags.theme("cyber"))
         self.assertEqual("adrien-digested", tags.digest)
-
-    def test_only_the_own_tags_are_read_back(self):
-        """Ni les anciens tags sans préfixe, d'où un re-scoring unique, ni ceux d'un autre."""
-        tags = Etiquettes("adrien")
-        portes = ("score-09", "scoring-abc", "theme-cyber", "bea-score-03", "bea-scoring-def")
-
-        self.assertIsNone(tags.score_de(portes))
-        self.assertIsNone(tags.empreinte_de(portes))
-        self.assertIsNone(tags.theme_de(portes))
-
-        portes += ("adrien-score-08", "adrien-scoring-123", "adrien-theme-stack")
-        self.assertEqual(8, tags.score_de(portes))
-        self.assertEqual("123", tags.empreinte_de(portes))
-        self.assertEqual("stack", tags.theme_de(portes))
-
-    def test_a_name_that_extends_another_does_not_collide(self):
-        self.assertIsNone(Etiquettes("adrien").score_de(("adrien-score-score-07",)))
+        self.assertEqual("digested", Etiquettes().digest)
 
 
 def posts(client, action):
@@ -426,31 +408,14 @@ class ClientParProfilTests(unittest.TestCase):
         config = make_config(tmpdir).pour(Lecteur(username, Profil("P", identifiant=nouvel_id())))
         return FreshRSSClient(config)
 
-    def test_the_client_tags_under_the_profile_name(self):
+    def test_the_client_tags_digested_under_the_profile_name(self):
+        """`digested` est le seul tag posé, préfixé par le nom de la personne servie."""
         with tempfile.TemporaryDirectory() as tmpdir:
             client = self._client(tmpdir, "adrien")
 
-            labels = posts(client, lambda c: c.tag_notes({"item-1": Note(9, "cyber")}, "abc"))
-            labels += posts(client, lambda c: c.mark_digested(["item-1"]))
+            labels = posts(client, lambda c: c.mark_digested(["item-1"]))
 
-        self.assertEqual(
-            [
-                ("a", f"{LABEL_STREAM_PREFIX}adrien-score-09"),
-                ("a", f"{LABEL_STREAM_PREFIX}adrien-theme-cyber"),
-                ("a", f"{LABEL_STREAM_PREFIX}adrien-scoring-abc"),
-                ("a", f"{LABEL_STREAM_PREFIX}adrien-digested"),
-            ],
-            labels,
-        )
-
-    def test_clearing_leaves_the_tags_of_other_profiles(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            client = self._client(tmpdir, "adrien")
-            porte = article("item-1", tags=("adrien-score-02", "bea-score-09", "score-05"))
-
-            labels = posts(client, lambda c: c.clear_scoring_tags([porte]))
-
-        self.assertEqual([("r", f"{LABEL_STREAM_PREFIX}adrien-score-02")], labels)
+        self.assertEqual([("a", f"{LABEL_STREAM_PREFIX}adrien-digested")], labels)
 
     def test_a_derived_client_shares_the_readings_but_not_the_prefix(self):
         """Une tournée lit chaque catégorie une fois, quel que soit le nombre de profils."""

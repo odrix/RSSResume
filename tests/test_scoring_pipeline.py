@@ -7,15 +7,18 @@ import unittest
 from unittest import mock
 
 from rssresume.digest import DigestService
-from rssresume.external.freshrss import Etiquettes
 from rssresume.models import Article, Note
-from tests.support import FakeAudioGenerator, FakeEmailSender, FakeFreshRSSClient, FakeScorer, empreinte, make_config
+from tests.support import (
+    FakeAudioGenerator,
+    FakeCacheScoring,
+    FakeEmailSender,
+    FakeFreshRSSClient,
+    FakeScorer,
+    empreinte,
+    make_config,
+)
 
 DAY = dt.date(2026, 8, 23)
-
-#: Les tags sans préfixe : la configuration de test ne sert aucune personne nommée.
-_SANS_PREFIXE = Etiquettes()
-score_tag, scoring_tag, theme_tag = _SANS_PREFIXE.score, _SANS_PREFIXE.scoring, _SANS_PREFIXE.theme
 
 
 def make_article(item_id, tags=()):
@@ -34,8 +37,8 @@ def make_article(item_id, tags=()):
 class PipelineHarness:
     """Monte le pipeline avec une API configurée et un scoring simulé."""
 
-    def _run(self, articles, notes, config_overrides=None, **kwargs):
-        """Exécute le pipeline avec une API configurée et un scoring simulé."""
+    def _run(self, articles, notes, config_overrides=None, cache=None, **kwargs):
+        """Exécute le pipeline avec un scoring simulé ; le cache est exposé à `self.cache`."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(
                 make_config(tmpdir),
@@ -44,25 +47,29 @@ class PipelineHarness:
             )
             client = FakeFreshRSSClient({"Tech": articles})
             scorer = FakeScorer(notes)
+            self.cache = cache if cache is not None else FakeCacheScoring()
             digests = DigestService(
                 config=config,
                 freshrss_client=client,
                 scorer=scorer,
+                cache_scoring=self.cache,
                 summary_generator=mock.Mock(summarize=mock.Mock(return_value="résumé")),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
             ).run(DAY, send_email=False, **kwargs)
             return client, scorer.score_articles, digests
 
-    def _summarize_call(self, articles, notes):
+    def _summarize_call(self, articles, notes, cache=None):
         """L'appel réellement reçu par le résumeur : (catégorie, sélection, notes)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = dataclasses.replace(make_config(tmpdir), categories=["Tech"])
             generator = mock.Mock(summarize=mock.Mock(return_value="résumé"))
+            self.cache = cache if cache is not None else FakeCacheScoring()
             DigestService(
                 config=config,
                 freshrss_client=FakeFreshRSSClient({"Tech": articles}),
                 scorer=FakeScorer(notes),
+                cache_scoring=self.cache,
                 summary_generator=generator,
                 audio_generator=FakeAudioGenerator(),
                 email_sender=FakeEmailSender(),
@@ -85,44 +92,47 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
         # Tous les articles restent marqués comme lus, pas seulement les retenus.
         self.assertEqual(["item-1", "item-2"], [a.item_id for a in client.marked_as_read])
 
-    def test_scores_are_written_with_the_prompt_digest(self):
+    def test_scores_are_written_to_the_cache_with_the_prompt_digest(self):
         articles = [make_article("item-1"), make_article("item-2")]
         notes = [self.note("item-1", 9), self.note("item-2", 3)]
 
-        client, _, _ = self._run(articles, notes)
+        self._run(articles, notes)
 
-        self.assertEqual({"item-1": 9, "item-2": 3}, client.scored)
-        self.assertEqual(empreinte(), client.scoring_digest)
+        courant = empreinte()
+        self.assertEqual(
+            [("item-1", courant, Note(9, "cyber", "a")), ("item-2", courant, Note(3, "cyber", "a"))],
+            self.cache.enregistrements,
+        )
 
     def test_already_scored_articles_are_not_rescored(self):
         courant = empreinte()
-        articles = [
-            make_article("item-1", tags=(scoring_tag(courant), score_tag(9), theme_tag("cyber"))),
-            make_article("item-2", tags=(scoring_tag(courant), score_tag(2), theme_tag("marche"))),
-        ]
+        cache = FakeCacheScoring()
+        cache.enregistrer("item-1", courant, Note(9, "cyber", "un angle"))
+        cache.enregistrer("item-2", courant, Note(2, "marche", ""))
+        articles = [make_article("item-1"), make_article("item-2")]
 
-        client, scorer, _ = self._run(articles, [])
+        client, scorer, _ = self._run(articles, [], cache=cache)
 
         scorer.assert_not_called()
-        self.assertEqual({}, client.scored)
-        # Le score relu des tags pilote quand même la sélection.
+        # Le score relu du cache pilote quand même la sélection.
         self.assertEqual(["item-1"], client.digested)
+        # Et le cache n'est pas réécrit.
+        self.assertEqual(2, len(cache.enregistrements))
 
-    def test_stale_prompt_digest_triggers_rescoring_and_cleanup(self):
-        articles = [
-            make_article("item-1", tags=(scoring_tag("0123456789ab"), score_tag(2))),
-            make_article(
-                "item-2",
-                tags=(scoring_tag(empreinte()), score_tag(8), theme_tag("cyber")),
-            ),
-        ]
+    def test_an_old_fingerprint_triggers_rescoring(self):
+        """Une empreinte différente est un cache manqué : renoté, sans rien nettoyer."""
+        cache = FakeCacheScoring()
+        cache.enregistrer("item-1", "0123456789ab", Note(2, "cyber", ""))
+        cache.enregistrer("item-2", empreinte(), Note(8, "cyber", ""))
+        articles = [make_article("item-1"), make_article("item-2")]
 
-        client, scorer, _ = self._run(articles, [self.note("item-1", 9)])
+        client, scorer, _ = self._run(articles, [self.note("item-1", 9)], cache=cache)
 
         scorer.assert_called_once()
         self.assertEqual(["item-1"], [a["id"] for a in scorer.call_args.args[0]])
-        self.assertEqual(["item-1"], client.cleared)
-        self.assertEqual({"item-1": 9}, client.scored)
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", empreinte()))
+        # item-2, relu du cache à 8, est retenu lui aussi.
+        self.assertEqual(["item-1", "item-2"], client.digested)
 
     def test_scoring_payload_carries_an_excerpt_not_the_full_text(self):
         article = make_article("item-1")
@@ -256,37 +266,37 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
             {"item-1": Note(9, "reglementaire", "Impose une échéance à l'éditeur.")}, notes
         )
 
-    def test_a_note_reread_from_the_tags_arrives_without_its_angle(self):
-        """Écart assumé : une phrase entière n'est pas un tag, le cache ne la garde pas.
+    def test_a_note_reread_from_the_cache_keeps_its_angle(self):
+        """L'angle est persisté dans le cache : une note relue revient entière."""
+        cache = FakeCacheScoring()
+        cache.enregistrer("item-1", empreinte(), Note(9, "cyber", "Menace sur la stack."))
+        articles = [make_article("item-1")]
 
-        Le score et la thématique survivent, l'angle revient vide, et c'est le prompt
-        qui l'assume, pas le code : le champ est alors simplement omis du payload.
-        """
-        articles = [
-            make_article("item-1", tags=(scoring_tag(empreinte()), score_tag(9), theme_tag("cyber")))
-        ]
+        _, _, notes = self._summarize_call(articles, [], cache=cache)
 
-        _, _, notes = self._summarize_call(articles, [])
+        self.assertEqual({"item-1": Note(9, "cyber", "Menace sur la stack.")}, notes)
 
-        self.assertEqual({"item-1": Note(9, "cyber", "")}, notes)
-
-    def test_thematiques_are_written_to_freshrss(self):
+    def test_thematiques_are_written_to_the_cache(self):
         articles = [make_article("item-1"), make_article("item-2")]
         notes = [self.note("item-1", 9, "cyber"), self.note("item-2", 8, "marche")]
 
-        client, _, _ = self._run(articles, notes)
+        self._run(articles, notes)
 
-        self.assertEqual({"item-1": "cyber", "item-2": "marche"}, client.themed)
-
-    def test_a_score_without_its_thematique_is_not_a_usable_cache(self):
-        """Une note partielle rangerait l'article dans le mauvais groupe : on la renote."""
         courant = empreinte()
-        articles = [make_article("item-1", tags=(scoring_tag(courant), score_tag(9)))]
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", courant))
+        self.assertEqual(Note(8, "marche", "a"), self.cache.note("item-2", courant))
 
-        client, scorer, _ = self._run(articles, [self.note("item-1", 9, "cyber")])
+    def test_a_cached_note_outside_the_axes_is_rescored(self):
+        """Une thématique qui n'est plus un axe du profil rangerait l'article dans le
+        mauvais groupe : la note en cache est traitée comme absente."""
+        cache = FakeCacheScoring()
+        cache.enregistrer("item-1", empreinte(), Note(9, "inconnu", ""))
+        articles = [make_article("item-1")]
+
+        _, scorer, _ = self._run(articles, [self.note("item-1", 9, "cyber")], cache=cache)
 
         scorer.assert_called_once()
-        self.assertEqual({"item-1": "cyber"}, client.themed)
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", empreinte()))
 
     def test_threshold_is_read_from_the_config(self):
         articles = [make_article("item-1"), make_article("item-2")]
@@ -375,16 +385,16 @@ class ScoringPipelineTests(PipelineHarness, unittest.TestCase):
         self.assertEqual([], digests[0].selected)
         self.assertEqual([], client.digested)
 
-    def test_dry_run_writes_nothing_to_freshrss(self):
+    def test_dry_run_writes_nothing(self):
+        """--dry-run n'écrit ni dans le cache de scoring ni dans FreshRSS."""
         articles = [make_article("item-1")]
 
         client, _, _ = self._run(
             articles, [self.note("item-1", 9)], write_tags=False, mark_read=False
         )
 
+        self.assertEqual([], self.cache.enregistrements)
         self.assertEqual([], client.digested)
-        self.assertEqual({}, client.scored)
-        self.assertEqual([], client.cleared)
         self.assertEqual([], client.marked_as_read)
 
 
@@ -397,8 +407,7 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
         client, _, _ = self._run(articles, [self.note("item-1", 9)], mark_read=False)
 
         # C'est l'intérêt du découpage : le scoring n'est pas repayé au prochain essai.
-        self.assertEqual({"item-1": 9}, client.scored)
-        self.assertEqual(empreinte(), client.scoring_digest)
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", empreinte()))
         self.assertEqual(["item-1"], client.digested)
         self.assertEqual([], client.marked_as_read)
 
@@ -407,13 +416,12 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
 
         client, _, _ = self._run(articles, [self.note("item-1", 9)], write_tags=False)
 
-        self.assertEqual({}, client.scored)
+        self.assertEqual([], self.cache.enregistrements)
         self.assertEqual([], client.digested)
-        self.assertEqual([], client.cleared)
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 
-    def test_tags_survive_an_email_failure(self):
-        """Les tags sont ecrits par categorie, avant l'envoi : un echec les preserve."""
+    def test_cache_survives_an_email_failure(self):
+        """Les notes sont ecrites dans le cache par categorie, avant l'envoi."""
         articles = [make_article("item-1"), make_article("item-2")]
         notes = [self.note("item-1", 9), self.note("item-2", 2)]
 
@@ -421,12 +429,14 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
             config = dataclasses.replace(
                 make_config(tmpdir), categories=["Tech"])
             client = FakeFreshRSSClient({"Tech": articles})
+            cache = FakeCacheScoring()
             sender = FakeEmailSender()
             sender.send = mock.Mock(side_effect=RuntimeError("SMTP down"))
             service = DigestService(
                 config=config,
                 freshrss_client=client,
                 scorer=FakeScorer(notes),
+                cache_scoring=cache,
                 summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
                 audio_generator=FakeAudioGenerator(),
                 email_sender=sender,
@@ -434,13 +444,15 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 service.run(DAY)
 
-        # Scores et tag digest conserves : le prochain passage ne repaie pas le scoring.
-        self.assertEqual({"item-1": 9, "item-2": 2}, client.scored)
+        # Notes et tag digest conserves : le prochain passage ne repaie pas le scoring.
+        courant = empreinte()
+        self.assertEqual(Note(9, "cyber", "a"), cache.note("item-1", courant))
+        self.assertEqual(Note(2, "cyber", "a"), cache.note("item-2", courant))
         self.assertEqual(["item-1"], client.digested)
         # Le marquage comme lu, lui, n'a pas eu lieu : les articles seront repris.
         self.assertEqual([], client.marked_as_read)
 
-    def test_tags_of_earlier_categories_survive_a_later_failure(self):
+    def test_cache_of_earlier_categories_survives_a_later_failure(self):
         """Une categorie qui casse ne fait pas perdre les scores des precedentes."""
         tech = [make_article("item-1")]
         news = [make_article("item-2")]
@@ -450,6 +462,7 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
                 make_config(tmpdir), categories=["Tech", "News"]
             )
             client = FakeFreshRSSClient({"Tech": tech, "News": news})
+            cache = FakeCacheScoring()
             # La deuxième catégorie casse : la première ne doit pas perdre ses scores.
             scorer = FakeScorer(
                 side_effect=[[self.note("item-1", 9)], RuntimeError("API down")]
@@ -460,12 +473,13 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
                     config=config,
                     freshrss_client=client,
                     scorer=scorer,
+                    cache_scoring=cache,
                     summary_generator=mock.Mock(summarize=mock.Mock(return_value="r")),
                     audio_generator=FakeAudioGenerator(),
                     email_sender=FakeEmailSender(),
                 ).run(DAY, send_email=False)
 
-        self.assertEqual({"item-1": 9}, client.scored)
+        self.assertEqual(Note(9, "cyber", "a"), cache.note("item-1", empreinte()))
         self.assertEqual(["item-1"], client.digested)
 
     def test_default_run_writes_everything(self):
@@ -473,7 +487,7 @@ class WriteFlagsTests(PipelineHarness, unittest.TestCase):
 
         client, _, _ = self._run(articles, [self.note("item-1", 9)])
 
-        self.assertEqual({"item-1": 9}, client.scored)
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", empreinte()))
         self.assertEqual(["item-1"], client.digested)
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 
@@ -490,15 +504,16 @@ class DegradedScoringTests(PipelineHarness, unittest.TestCase):
         """La note de remplissage que rend `read_scores` pour un article oublié."""
         return {"id": item_id, "score": 0, "thematique": "autre", "angle": "", "notee": False}
 
-    def test_an_unscored_article_is_neither_tagged_nor_digested(self):
+    def test_an_unscored_article_is_neither_cached_nor_digested(self):
         articles = [make_article("item-1"), make_article("item-2")]
 
         client, _, digests = self._run(
             articles, [self.note("item-1", 9), self.sans_note("item-2")]
         )
 
-        self.assertEqual({"item-1": 9}, client.scored)
-        self.assertEqual({"item-1": "cyber"}, client.themed)
+        courant = empreinte()
+        self.assertEqual(Note(9, "cyber", "a"), self.cache.note("item-1", courant))
+        self.assertIsNone(self.cache.note("item-2", courant))
         self.assertEqual(["item-1"], client.digested)
         self.assertEqual(["item-1"], [a.item_id for a in digests[0].selected])
 
@@ -516,7 +531,7 @@ class DegradedScoringTests(PipelineHarness, unittest.TestCase):
 
         client, _, digests = self._run(articles, [self.sans_note("item-1"), self.sans_note("item-2")])
 
-        self.assertEqual({}, client.scored)
+        self.assertEqual([], self.cache.enregistrements)
         self.assertEqual([], digests[0].selected)
         self.assertIsNone(digests[0].audio_path)
 
@@ -600,7 +615,7 @@ class NoSelectionMarkerTests(unittest.TestCase):
             contenu.splitlines(),
         )
 
-    def test_scores_are_still_cached_in_freshrss(self):
+    def test_scores_are_still_written_to_the_cache(self):
         """Sans cela, un lot entièrement sous le seuil serait renoté chaque jour."""
         articles = [make_article("item-1")]
         notes = [{"id": "item-1", "score": 2, "thematique": "autre", "angle": "a"}]
@@ -610,17 +625,18 @@ class NoSelectionMarkerTests(unittest.TestCase):
                 make_config(tmpdir), categories=["Tech"]
             )
             client = FakeFreshRSSClient({"Tech": articles})
+            cache = FakeCacheScoring()
             DigestService(
                 config=config,
                 freshrss_client=client,
                 scorer=FakeScorer(notes),
+                cache_scoring=cache,
                 summary_generator=mock.Mock(),
                 audio_generator=mock.Mock(),
                 email_sender=FakeEmailSender(),
             ).run(DAY, send_email=False)
 
-        self.assertEqual({"item-1": 2}, client.scored)
-        self.assertEqual(empreinte(), client.scoring_digest)
+        self.assertEqual(Note(2, "autre", "a"), cache.note("item-1", empreinte()))
         self.assertEqual([], client.digested)
         self.assertEqual(["item-1"], [a.item_id for a in client.marked_as_read])
 

@@ -5,13 +5,12 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import json
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from rssresume.config import AppConfig
-from rssresume.models import Article, Note
+from rssresume.models import Article
 from rssresume.tools import console, http
 from rssresume.tools.text import strip_html
 
@@ -25,16 +24,9 @@ EDIT_TAG_BATCH_SIZE = 100
 TAG_ADD = "a"
 TAG_REMOVE = "r"
 
-#: Tag posé sur chaque article noté. Le zéro initial garde l'ordre alphabétique
-#: cohérent avec l'ordre numérique dans la liste des tags FreshRSS.
-SCORE_TAG_TEMPLATE = "score-{score:02d}"
-#: Tag posé sur les articles retenus pour le digest du jour.
+#: Tag posé sur les articles retenus pour le digest du jour. Le seul tag que le
+#: pipeline pose encore : le cache de scoring vit dans la base SQLite, plus ici.
 DIGEST_TAG = "digested"
-#: Tag mémorisant le prompt qui a produit le score, pour ne renoter qu'après l'avoir changé.
-SCORING_TAG_TEMPLATE = "scoring-{digest}"
-#: Tag portant la thématique attribuée par le scoring. Persistée, contrairement à l'angle :
-#: sans elle, un score relu du cache ne saurait plus dans quel groupe ranger son article.
-THEME_TAG_TEMPLATE = "theme-{thematique}"
 
 
 
@@ -44,67 +36,22 @@ def _endpoint(url: str) -> str:
 
 
 class Etiquettes:
-    """Les tags d'une personne : ceux qu'elle pose, et les seuls qu'elle relit.
+    """Les tags d'une personne : le préfixe sous lequel elle pose le sien.
 
-    Une note dépend du profil qui l'a produite : deux personnes notent le même article
-    différemment, et le cache des tags doit donc être à chacune. Le nom de la personne
-    préfixe chaque tag (`adrien-score-07`), un label FreshRSS accepte le tiret, et un
+    Le cache de scoring (`score-NN`, `theme-<x>`, `scoring-<hash>`) a quitté FreshRSS
+    pour la base SQLite : le nom de la personne ne préfixe plus que `digested`, le
+    seul tag que le pipeline pose encore. Un label FreshRSS accepte le tiret, et un
     nom de profil ne porte ni espace ni majuscule.
-
-    Les motifs sont ancrés sur le préfixe : un tag d'une autre personne, ou un ancien
-    tag sans préfixe, n'est jamais relu ni nettoyé. Les anciens `score-07` sont donc
-    ignorés, et les articles renotés une fois.
 
     Sans nom, la configuration de l'installation, celle des tests, aucun préfixe.
     """
 
     def __init__(self, username: str = ""):
         self.prefixe = f"{username}-" if username else ""
-        racine = re.escape(self.prefixe)
-        self._motif_score = re.compile(rf"^{racine}score-(\d{{2}})$")
-        self._motif_scoring = re.compile(rf"^{racine}scoring-([0-9a-f]+)$")
-        self._motif_theme = re.compile(rf"^{racine}theme-([a-z][a-z0-9-]*)$")
-
-    def score(self, score: int) -> str:
-        return self.prefixe + SCORE_TAG_TEMPLATE.format(score=score)
-
-    def scoring(self, digest: str) -> str:
-        return self.prefixe + SCORING_TAG_TEMPLATE.format(digest=digest)
-
-    def theme(self, thematique: str) -> str:
-        return self.prefixe + THEME_TAG_TEMPLATE.format(thematique=thematique)
 
     @property
     def digest(self) -> str:
         return self.prefixe + DIGEST_TAG
-
-    def score_de(self, tags: tuple[str, ...]) -> int | None:
-        """Score déjà posé sur l'article par cette personne, relu depuis ses tags."""
-        valeur = self._premier(self._motif_score, tags)
-        return int(valeur) if valeur is not None else None
-
-    def empreinte_de(self, tags: tuple[str, ...]) -> str | None:
-        """Empreinte du prompt ayant produit le score de cette personne."""
-        return self._premier(self._motif_scoring, tags)
-
-    def theme_de(self, tags: tuple[str, ...]) -> str | None:
-        """Thématique déjà posée sur l'article par cette personne."""
-        return self._premier(self._motif_theme, tags)
-
-    def de_scoring(self, tag: str) -> bool:
-        """Vrai pour un tag de notation de cette personne : score, empreinte, thématique."""
-        return any(
-            motif.match(tag)
-            for motif in (self._motif_score, self._motif_scoring, self._motif_theme)
-        )
-
-    @staticmethod
-    def _premier(motif: re.Pattern, tags: tuple[str, ...]) -> str | None:
-        for tag in tags:
-            match = motif.match(tag)
-            if match:
-                return match.group(1)
-        return None
 
 
 def user_labels(categories: list) -> tuple[str, ...]:
@@ -342,63 +289,6 @@ class FreshRSSClient:
     def add_label(self, item_ids: list[str], label: str) -> None:
         """Pose un tag utilisateur sur des articles. Reposer un tag existant est sans effet."""
         self._edit_tag(item_ids, f"{LABEL_STREAM_PREFIX}{label}")
-
-    def tag_notes(self, notes: dict[str, Note], scoring_digest: str | None = None) -> None:
-        """Pose les tags de notation : `score-NN` et `theme-<thematique>`.
-
-        Prend un dict {item_id: Note}. Un appel par valeur distincte, l'API edit-tag
-        ne posant qu'un label à la fois. `scoring_digest` ajoute l'empreinte du prompt,
-        qui sert de cache : un article la portant déjà n'a pas besoin d'être renoté.
-
-        L'angle n'est pas écrit : une phrase entière n'a rien à faire dans un tag.
-        """
-        retenues = {item_id: note for item_id, note in notes.items() if item_id}
-        if not retenues:
-            return
-
-        par_score: dict[int, list[str]] = {}
-        par_theme: dict[str, list[str]] = {}
-        for item_id, note in retenues.items():
-            par_score.setdefault(int(note.score), []).append(item_id)
-            par_theme.setdefault(note.thematique, []).append(item_id)
-
-        console.log(
-            f"FreshRSS : notation de {len(retenues)} article(s) "
-            f"sur {len(par_score)} valeur(s) de score et {len(par_theme)} thématique(s)"
-        )
-        for score in sorted(par_score):
-            self.add_label(par_score[score], self.etiquettes.score(score))
-        for thematique in sorted(par_theme):
-            self.add_label(par_theme[thematique], self.etiquettes.theme(thematique))
-        if scoring_digest:
-            self.add_label(list(retenues), self.etiquettes.scoring(scoring_digest))
-
-    def remove_label(self, item_ids: list[str], label: str) -> None:
-        """Retire un tag utilisateur des articles."""
-        self._edit_tag(item_ids, f"{LABEL_STREAM_PREFIX}{label}", TAG_REMOVE)
-
-    def clear_scoring_tags(self, articles: list[Article]) -> None:
-        """Retire score, thématique et empreinte des articles notés par un prompt obsolète.
-
-        Ne balaie que les tags réellement portés par les articles : un article renoté
-        ne garde jamais l'empreinte, le score ni la thématique de la version précédente
-        du prompt.
-        """
-        par_label: dict[str, list[str]] = {}
-        for article in articles:
-            if not article.item_id:
-                continue
-            for tag in article.tags:
-                # Ceux de la personne servie seulement : les notes des autres profils
-                # ne sont pas obsolètes parce que celle-ci l'est.
-                if self.etiquettes.de_scoring(tag):
-                    par_label.setdefault(tag, []).append(article.item_id)
-        if not par_label:
-            return
-
-        console.log(f"FreshRSS : nettoyage de {len(par_label)} tag(s) de scoring obsolète(s)")
-        for label, item_ids in sorted(par_label.items()):
-            self.remove_label(item_ids, label)
 
     def mark_digested(self, item_ids: list[str]) -> None:
         """Pose le tag du digest sur les articles retenus pour la synthèse du jour."""

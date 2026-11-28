@@ -442,10 +442,8 @@ class AxesDeVeilleAcceptanceTests(unittest.TestCase):
         notes = read_scores('{"resultats":[{"id":"a","score":8,"thematique":"cyber","angle":"impact"}]}', lot, self.axes)
         self.assertEqual("experience", notes[0]["thematique"])
 
-    def test_cache_reloads_a_declared_theme_slug(self):
-        from rssresume.external.freshrss import Etiquettes
-        etiquettes = Etiquettes("adrien")
-        self.assertEqual("qualite", etiquettes.theme_de(("adrien-theme-qualite",)))
+    def test_a_declared_theme_slug_is_a_valid_axe(self):
+        """Le slug d'un axe déclaré est retenu tel quel, sans repli sur « autre »."""
         self.assertTrue(self.axes.contient("qualite"))
 
     def test_absent_key_keeps_prompt_and_validation_unchanged(self):
