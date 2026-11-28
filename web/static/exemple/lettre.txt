@@ -1,0 +1,5 @@
+Veille du mardi 3 mars 2026 — catégorie « Tech » (extrait de démonstration).
+
+Une nouvelle version du langage Python accélère les boucles internes d'environ un quart sur les charges lourdes, sans rien changer à la syntaxe. Un grand hébergeur européen rend sa base de données managée disponible dans deux nouvelles régions. Côté sécurité, un correctif critique touche un composant d'authentification largement déployé : le correctif est publié, aucune exploitation n'est connue pour l'instant.
+
+Trois sujets aujourd'hui, une matinée calme : la mise à jour de sécurité est le seul point qui demande une action de votre part.
