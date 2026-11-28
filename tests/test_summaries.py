@@ -145,11 +145,11 @@ class PromptTests(PromptCase):
         self.assertNotIn("Feed", prompt)
 
     def test_an_organisation_acting_in_the_news_is_not_a_source(self):
-        """Taire les médias ne doit pas faire taire l'ANSSI quand c'est elle qui publie l'avis."""
+        """Taire les médias ne doit pas faire taire l'acteur du fait quand il le publie lui-même."""
         prompt = self._prompt([make_article()])
 
         self.assertIn("n'est pas une source", prompt)
-        self.assertIn("l'ANSSI qui publie un avis", prompt)
+        self.assertIn("la mairie qui publie un arrêté", prompt)
 
     def test_prompt_asks_for_a_spoken_rhythm(self):
         """Voix plate à l'écoute : c'est la phrase écrite qu'il faut rythmer, pas le TTS."""

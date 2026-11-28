@@ -284,9 +284,9 @@ NO_SOURCE_INSTRUCTION = (
     "Ne nomme jamais le média, le flux, le site ni le journaliste qui a publié l'information : "
     "ni entre parenthèses, ni en incise, ni sous la forme « selon X » ou « d'après X ». "
     "L'auditeur veut le fait, pas qui l'a rapporté. "
-    "Une organisation nommée parce qu'elle EST l'acteur du fait, l'ANSSI qui publie un avis, "
-    "la CNIL qui sanctionne, un éditeur qui corrige son produit, n'est pas une source : "
-    "elle se dit normalement, c'est le sujet de la phrase."
+    "Une organisation nommée parce qu'elle EST l'acteur du fait, la mairie qui publie un "
+    "arrêté, la banque qui revoit ses tarifs, un éditeur qui corrige son produit, n'est pas "
+    "une source : elle se dit normalement, c'est le sujet de la phrase."
 )
 
 MERGE_INSTRUCTION = (
@@ -618,8 +618,8 @@ MONTAGE_ORDER_INSTRUCTION = (
     "racontés : le plus important d'abord, et les sujets qui se répondent côte à côte. Garde "
     "cet ordre, n'en remonte aucun, n'en repousse aucun. "
     "Ils viennent de catégories différentes et cela ne s'entend pas : ne nomme aucune "
-    "catégorie, n'annonce aucune rubrique, ni « côté sécurité », ni « on passe à », ni « dans "
-    "l'actualité réglementaire ». Le passage d'un sujet au suivant se fait par une transition "
+    "catégorie, n'annonce aucune rubrique, ni « côté sport », ni « on passe à », ni « dans "
+    "la rubrique locale ». Le passage d'un sujet au suivant se fait par une transition "
     "d'une poignée de mots, qui dit pourquoi on y va : un contraste, une conséquence, un "
     "changement de terrain. Quand deux sujets voisins se répondent, dis-le en passant de l'un "
     "à l'autre plutôt qu'en les traitant comme deux nouvelles sans rapport."
@@ -640,9 +640,9 @@ CONSTAT_INSTRUCTION = (
 #: endroit du pipeline où « 7.4.5 » se dit à voix haute : une version approchée y a
 #: exactement le même coût qu'une version inventée.
 FIDELITY_INSTRUCTION = (
-    "Les identifiants de vulnérabilité, les noms d'éditeurs et de produits et les numéros de "
-    "version se recopient à l'identique, caractère pour caractère : « CVE-2026-1234 », "
-    "« FortiOS 7.4.5 ». Ne les reformule pas, ne les abrège pas, n'en déduis aucun autre, et "
+    "Les identifiants, les noms d'éditeurs et de produits et les numéros de version se "
+    "recopient à l'identique, caractère pour caractère : « GeoSoft 2.4.1 », "
+    "« REF-2026-042 ». Ne les reformule pas, ne les abrège pas, n'en déduis aucun autre, et "
     "ne fonds jamais deux vulnérabilités dans la même phrase. C'est sur ces éléments que "
     "l'auditeur décide s'il est concerné, et c'est précisément ce qu'une réécriture déforme."
 )

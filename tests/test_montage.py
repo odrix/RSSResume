@@ -510,5 +510,38 @@ class PromptTests(unittest.TestCase):
                 )
 
 
+class ConsignesNeutresTests(unittest.TestCase):
+    """Les exemples des consignes de montage ne sont plus orientés sécurité.
+
+    `cve_instruction`, qui parle de failles à bon droit, n'est pas concernée :
+    elle reste couverte par les tests de régime de `PromptTests`.
+    """
+
+    def test_fidelite_sans_exemple_propre_a_la_securite(self):
+        from rssresume.llm import prompts
+
+        self.assertNotIn("CVE", prompts.FIDELITY_INSTRUCTION)
+        self.assertNotIn("FortiOS", prompts.FIDELITY_INSTRUCTION)
+        # La règle cardinale reste : copie à l'identique, et pas de fusion de deux failles.
+        self.assertIn("caractère pour caractère", prompts.FIDELITY_INSTRUCTION)
+        self.assertIn("ne fonds jamais deux vulnérabilités", prompts.FIDELITY_INSTRUCTION)
+
+    def test_no_source_sans_exemple_securite(self):
+        from rssresume.llm import prompts
+        from rssresume.tools.text import casefold_ascii
+
+        texte = casefold_ascii(prompts.NO_SOURCE_INSTRUCTION)
+        self.assertNotIn("anssi", texte)
+        self.assertNotIn("cnil", texte)
+
+    def test_montage_order_sans_exemple_securite(self):
+        from rssresume.llm import prompts
+        from rssresume.tools.text import casefold_ascii
+
+        texte = casefold_ascii(prompts.MONTAGE_ORDER_INSTRUCTION)
+        self.assertNotIn("securite", texte)
+        self.assertNotIn("reglementaire", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
