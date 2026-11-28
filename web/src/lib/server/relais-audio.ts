@@ -7,7 +7,7 @@
  */
 
 import { ErreurApi, type ClientApiResume } from './api-resume.js';
-import type { Utilisateur } from './comptes.js';
+import { type Comptes, type Utilisateur } from './comptes.js';
 import { MOTIF_USERNAME } from './validation.js';
 
 export interface CheminAudio {
@@ -31,7 +31,12 @@ const MOTIF_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MOTIF_NOM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.mp3$/;
 
 export class RelaisAudio {
-	constructor(private readonly api: ClientApiResume) {}
+	/** `comptes` sert à compter l'écoute : une ligne par compte du profil écouté, par jour
+	 * d'écoute et par journée audio servie. */
+	constructor(
+		private readonly api: ClientApiResume,
+		private readonly comptes: Comptes
+	) {}
 
 	async servir(
 		utilisateur: Utilisateur | null,
@@ -67,7 +72,18 @@ export class RelaisAudio {
 		// Privé : le fichier est derrière une session, aucun cache partagé ne doit le garder.
 		entetes.set('cache-control', 'private, max-age=3600');
 		entetes.set('x-content-type-options', 'nosniff');
+		// Une écoute n'est comptée qu'après une livraison réussie : 200 ou 206, jamais un
+		// 404, un 403, un 416 ou une tentative interrompue avant la réponse de l'API.
+		if (amont.status === 200 || amont.status === 206) this.#noterEcoute(chemin);
 		return new Response(amont.body, { status: amont.status, headers: entetes });
+	}
+
+	/** L'écoute est portée par le profil dont l'audio est servi, pas par celle ou celui qui
+	 * écoute : un administrateur qui écoute la journée d'un autre compte pour celui-ci. Sans
+	 * compte pour ce profil, l'écoute n'est pas traçable et n'est pas écrite. */
+	#noterEcoute(chemin: CheminAudio): void {
+		const compte = this.comptes.parUsername(chemin.username);
+		if (compte) this.comptes.noterEcoute(compte.id, chemin.date);
 	}
 }
 

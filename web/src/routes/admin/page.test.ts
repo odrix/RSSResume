@@ -101,7 +101,7 @@ describe('/admin, les retours', () => {
 				return env.fausseApi.traiter(requete);
 			}
 		});
-		etat.env = { ...env, api, retours: new Retours(api) };
+		etat.env = { ...env, api, retours: new Retours(api, env.comptes) };
 
 		const data = (await load(evenement(admin))) as { erreurRetours: string; lignes: unknown[] };
 
@@ -212,6 +212,47 @@ describe('/admin, les lignes et les stats', () => {
 		// 0,9 EUR sur 2 journées : 0,45 par résumé.
 		expect(html).toContain('0.450000 EUR');
 		expect(html).not.toContain('? (');
+	});
+
+	it('montre les écoutes et les retours des 7 derniers jours, admin seulement', async () => {
+		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
+		const bea = await env.creerConfirme('bea@example.com', 'bea');
+		const cle = await env.creerConfirme('cle@example.com', 'cle');
+		await env.api.creerProfil('sanscompte', { profil: 'Veille', stack: [], email: [], prenom: '', securite: 'exploitant' });
+
+		// Deux écoutes pour bea (deux journées), une pour cle, une vieille hors fenêtre.
+		env.comptes.noterEcoute(bea.id, ilYa(1));
+		env.comptes.noterEcoute(bea.id, ilYa(2));
+		env.comptes.noterEcoute(bea.id, ilYa(2)); // même journée, même jour : une seule
+		env.comptes.noterEcoute(cle.id, AUIJOURD_HUI);
+		env.base
+			.prepare('INSERT OR IGNORE INTO ecoutes (compte_id, jour, journee) VALUES (?, ?, ?)')
+			.run(bea.id, ilYa(10), ilYa(10));
+
+		// Des retours venus du lien de la lettre, pour bea et pour un profil sans compte.
+		env.comptes.noterRetour('bea', ilYa(1), 'utile');
+		env.comptes.noterRetour('bea', ilYa(3), 'pas_utile');
+		env.comptes.noterRetour('bea', ilYa(3), 'utile'); // remplacé : toujours une journée
+		env.comptes.noterRetour('sanscompte', AUIJOURD_HUI, 'pas_utile');
+		env.base.prepare('INSERT INTO retours (username, journee, avis) VALUES (?, ?, ?)').run('bea', ilYa(10), 'utile');
+
+		const membre = await env.creerConfirme('membre@example.com', 'membre');
+		expect(isHttpError(await leve(load(evenement(membre))))).toBe(true);
+
+		const data = (await load(evenement(admin))) as {
+			lignes: { username: string; ecoutes7j: number; retours7j: number }[];
+		};
+		const parNom = (username: string) => data.lignes.find((ligne) => ligne.username === username)!;
+		expect(parNom('bea').ecoutes7j).toBe(2);
+		expect(parNom('bea').retours7j).toBe(2);
+		expect(parNom('cle').ecoutes7j).toBe(1);
+		expect(parNom('cle').retours7j).toBe(0);
+		expect(parNom('sanscompte').retours7j).toBe(1);
+		expect(parNom('sanscompte').ecoutes7j).toBe(0);
+
+		const html = rendre(data);
+		expect(html).toContain('Écoutes 7 j');
+		expect(html).toContain('Retours 7 j');
 	});
 
 	it('calcule les répartitions pour les stats', async () => {

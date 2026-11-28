@@ -132,9 +132,9 @@ describe('Comptes', () => {
 		expect(comptes.conflit('abandon@example.com', 'abandon')).toBeNull();
 	});
 
-	it('monte le schéma jusqu’à la version des journées lues', () => {
+	it('monte le schéma jusqu’à la version des écoutes et retours', () => {
 		const base = ouvrirBase(':memory:');
-		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
+		expect(base.prepare('PRAGMA user_version').get()).toEqual({ user_version: 10 });
 	});
 
 	it('compte une consultation une fois par compte et par jour', () => {
@@ -148,6 +148,48 @@ describe('Comptes', () => {
 		base.prepare('INSERT OR IGNORE INTO consultations (compte_id, jour) VALUES (?, ?)').run(id, '2026-11-23');
 		expect(base.prepare('SELECT COUNT(*) AS nombre FROM consultations WHERE compte_id = ?').get(id)).toEqual({ nombre: 1 });
 		expect(comptes.consultationsSeptJours(id)).toBe(1);
+	});
+
+	it('compte une écoute une fois par compte, par jour d’écoute et par journée', () => {
+		const h = { t: Date.parse('2026-11-23T10:00:00Z') };
+		const { base, comptes } = monter(() => h.t);
+		const insert = base.prepare('INSERT INTO comptes (email, username, hash, role, cree_le, confirme_le) VALUES (?, ?, ?, ?, ?, ?)');
+		insert.run('moi@example.test', 'moi', 'faux', 'membre', new Date(h.t).toISOString(), new Date(h.t).toISOString());
+		insert.run('autre@example.test', 'autre', 'faux', 'membre', new Date(h.t).toISOString(), new Date(h.t).toISOString());
+		const id = 1;
+
+		comptes.noterEcoute(id, '2026-11-22');
+		comptes.noterEcoute(id, '2026-11-22'); // même journée, même jour : une seule ligne
+		comptes.noterEcoute(id, '2026-11-21'); // autre journée le même jour : une de plus
+		expect(comptes.ecoutesSeptJours(id)).toBe(2);
+
+		// Une écoute d’il y a huit jours ne compte plus dans les sept jours.
+		h.t += 8 * 24 * 60 * 60 * 1000;
+		expect(comptes.ecoutesSeptJours(id)).toBe(0);
+
+		// Un autre compte a ses écoutes à lui.
+		comptes.noterEcoute(id + 1, '2026-11-22');
+		expect(comptes.ecoutesSeptJours(id)).toBe(0);
+		expect(comptes.ecoutesSeptJours(id + 1)).toBe(1);
+	});
+
+	it('garde un retour par profil et par journée, le second remplaçant le premier', () => {
+		const h = { t: Date.parse('2026-11-23T10:00:00Z') };
+		const { base, comptes } = monter(() => h.t);
+
+		comptes.noterRetour('bea', '2026-11-22', 'utile');
+		comptes.noterRetour('bea', '2026-11-22', 'pas_utile'); // même journée : remplacé, pas doublé
+		comptes.noterRetour('bea', '2026-11-21', 'utile');
+		comptes.noterRetour('cle', '2026-11-22', 'utile');
+		expect(comptes.retoursSeptJours('bea')).toBe(2);
+		expect(comptes.retoursSeptJours('cle')).toBe(1);
+		expect(
+			base.prepare("SELECT avis FROM retours WHERE username = 'bea' AND journee = '2026-11-22'").get()
+		).toEqual({ avis: 'pas_utile' });
+
+		// Hors des sept derniers jours, le retour ne compte plus.
+		h.t += 8 * 24 * 60 * 60 * 1000;
+		expect(comptes.retoursSeptJours('bea')).toBe(0);
 	});
 });
 

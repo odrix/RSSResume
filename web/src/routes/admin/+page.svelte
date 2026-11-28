@@ -78,6 +78,8 @@
 					<th scope="col">Profil modifié</th>
 					<th scope="col">Dernière connexion</th>
 					<th scope="col">Consultations 7 j</th>
+					<th scope="col">Écoutes 7 j</th>
+					<th scope="col">Retours 7 j</th>
 					<th scope="col">Journées 7 j</th>
 					<th scope="col">Journées 30 j</th>
 					<th scope="col">Coût 7 j</th>
@@ -124,6 +126,8 @@
 						<td>{quand(ligne.modifieLe)}</td>
 						<td>{quand(ligne.derniereConnexionLe)}</td>
 						<td>{ligne.consultations7j}</td>
+						<td>{ligne.ecoutes7j}</td>
+						<td>{ligne.retours7j}</td>
 						<td>{ligne.journees7j}</td>
 						<td>{ligne.journees30j}</td>
 						<td>
@@ -155,7 +159,7 @@
 			{/if}
 		</li>
 	</ul>
-	<p class="attenue">Les écoutes depuis l’email ou l’audio ne sont pas encore comptées : elles seront disponibles avec BL-075. Les consultations sont celles ouvertes sur le site.</p>
+	<p class="attenue">Écoutes et consultations sont celles servies par le site : le lien audio de la lettre quand le réglage d’envoi par lien est activé, et le lecteur des pages des résumés. Hors mesure : l’audio envoyé en pièce jointe, et toute écoute d’un profil sans compte sur le site.</p>
 
 	<h2>Répartition</h2>
 	<div class="camemberts">
