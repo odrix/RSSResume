@@ -161,8 +161,10 @@ export interface RefusSaisie {
 export const PROFIL_PAR_DEFAUT = `Professionnel de la tech. Veille quotidienne sur ce qui change la façon de concevoir, de livrer et d'exploiter un logiciel.
 
 Axes de veille pertinents :
-- cyber : failles exploitables sur des composants répandus, incidents majeurs.
 - stack : versions majeures, fins de support, ruptures de compatibilité.
+- qualite : tests, fiabilité, dette technique, pratiques de développement.
+- livraison : CI/CD, déploiement, exploitation, productivité de l'équipe.
+- securite : évolutions des outils et des pratiques de sécurité du logiciel.
 - reglementaire : ce que la loi impose au logiciel et aux données.
 
 Ne sont PAS pertinents : le hardware grand public, les levées de fonds sans conséquence technique.`;

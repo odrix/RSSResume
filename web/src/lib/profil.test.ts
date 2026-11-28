@@ -7,6 +7,7 @@ import {
 	depuisLignesAxes,
 	erreurSaisieProfil,
 	lireFormulaireProfil,
+	PROFIL_PAR_DEFAUT,
 	saisieAReafficher,
 	slugAxe,
 	versLignes,
@@ -242,5 +243,19 @@ describe('formulaire de profil', () => {
 			{ nom: 'Nginx', alias: '' }
 		]);
 		expect(depuisLignes(versLignes(stack))).toEqual(['Traefik', { nom: 'Keycloak', alias: ['RH-SSO'] }, 'Nginx']);
+	});
+});
+
+describe('PROFIL_PAR_DEFAUT', () => {
+	it('décrit un profil tech général, sans axe cyber en tête ni exemple de failles', () => {
+		const sansAccents = PROFIL_PAR_DEFAUT.normalize('NFD')
+			.replace(/[̀-ͯ]/g, '')
+			.toLowerCase();
+		expect(sansAccents).toContain('tech');
+		expect(sansAccents).not.toContain('failles');
+		expect(sansAccents).not.toContain('incidents');
+		const premierAxe = sansAccents.split('\n').find((ligne) => ligne.startsWith('- '));
+		expect(premierAxe).toBeDefined();
+		expect(premierAxe).not.toContain('cyber');
 	});
 });
