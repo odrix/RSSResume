@@ -1,6 +1,8 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { render } from 'svelte/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GABARITS_DEMO, mp3Silencieux } from '../../../mock/faux-api.js';
+
 import { ClientApiResume } from '#lib/server/api-resume.js';
 import type { Utilisateur } from '#lib/server/comptes.js';
 import { EMAIL_ADMIN, JETON, monter } from '#lib/server/outils-test.js';
@@ -16,8 +18,8 @@ const { load } = await import('./+page.server.js');
 
 type Env = ReturnType<typeof monter>;
 
-function evenement(utilisateur: Utilisateur | null) {
-	return { locals: { utilisateur }, url: new URL('https://site.test/admin') } as never;
+function evenement(utilisateur: Utilisateur | null, recherche = '') {
+	return { locals: { utilisateur }, url: new URL(`https://site.test/admin${recherche}`) } as never;
 }
 
 function rendre(data: unknown): string {
@@ -64,7 +66,7 @@ describe('/admin, les retours', () => {
 		await env.api.voter('cle', '2026-11-21', 'pas_utile', 'Deuxième.');
 		await env.api.voter('bea', '2026-11-22', 'utile', 'Troisième.');
 
-		const data = (await load(evenement(admin))) as { retours: { commentaire: string }[]; erreurRetours: null };
+		const data = (await load(evenement(admin, '?onglet=retours'))) as { retours: { commentaire: string }[]; erreurRetours: null };
 
 		expect(listesDemandees(env)).toBe(1);
 		expect(data.erreurRetours).toBeNull();
@@ -78,7 +80,7 @@ describe('/admin, les retours', () => {
 		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
 		await env.api.voter('bea', '2026-11-22', 'pas_utile', '<script>alert(1)</script>\n<b>gras</b>');
 
-		const html = rendre(await load(evenement(admin)));
+		const html = rendre(await load(evenement(admin, '?onglet=retours')));
 
 		expect(html).toMatch(/&lt;script(&gt;|>)alert\(1\)&lt;\/script(&gt;|>)/);
 		expect(html).not.toContain('<script>alert');
@@ -105,5 +107,139 @@ describe('/admin, les retours', () => {
 
 		expect(data.erreurRetours).toBe('Erreur interne.');
 		expect(data.lignes.length).toBeGreaterThan(0);
+	});
+});
+
+describe('/admin, les onglets', () => {
+	let env: Env;
+
+	beforeEach(async () => {
+		env = monter();
+		await env.api.creerProfil('bea', { profil: 'Veille', stack: [], email: [], prenom: '', securite: 'exploitant' });
+		etat.env = env;
+	});
+
+	it('affiche la liste des profils par défaut et valide le paramètre onglet', async () => {
+		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
+
+		const defaut = (await load(evenement(admin))) as { onglet: string };
+		expect(defaut.onglet).toBe('profils');
+
+		const stats = (await load(evenement(admin, '?onglet=stats'))) as { onglet: string };
+		expect(stats.onglet).toBe('stats');
+
+		const retours = (await load(evenement(admin, '?onglet=retours'))) as { onglet: string };
+		expect(retours.onglet).toBe('retours');
+
+		const inconnu = (await load(evenement(admin, '?onglet=bidon'))) as { onglet: string };
+		expect(inconnu.onglet).toBe('profils');
+
+		const html = rendre(await load(evenement(admin, '?onglet=stats')));
+		expect(html).toContain('href="/admin?onglet=retours"');
+		expect(html).toContain('Profils choisis');
+		expect(html).toContain('Types de sécurité');
+		expect(html).toContain('<svg');
+	});
+});
+
+describe('/admin, les lignes et les stats', () => {
+	let env: Env;
+
+	const AUIJOURD_HUI = new Date().toISOString().slice(0, 10);
+	const ilYa = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
+
+	beforeEach(async () => {
+		env = monter();
+		await env.api.creerProfil('bea', {
+			profil: GABARITS_DEMO[0].profil,
+			stack: [],
+			email: ['bea@example.com'],
+			prenom: 'Béa',
+			securite: 'decideur',
+			categories: ['Cybersécurité', 'Tech generaliste']
+		});
+		await env.api.creerProfil('cle', {
+			profil: 'Un texte écrit à la main.',
+			stack: [],
+			email: [],
+			prenom: '',
+			securite: 'curieux'
+		});
+		etat.env = env;
+	});
+
+	it('compte les journées sur 7 et 30 jours et nomme le profil choisi', async () => {
+		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
+		for (const date of [AUIJOURD_HUI, ilYa(3), ilYa(10), ilYa(40)]) {
+			env.fausseApi.ajouterAudio('bea', date, 'journee.mp3', mp3Silencieux(2));
+		}
+
+		const data = (await load(evenement(admin))) as {
+			lignes: { username: string; journees7j: number; journees30j: number; profilChoisi: string; securite: string; categoriesLibelles: string[] }[];
+		};
+		const bea = data.lignes.find((ligne) => ligne.username === 'bea')!;
+		expect(bea.journees7j).toBe(2);
+		expect(bea.journees30j).toBe(3);
+		expect(bea.profilChoisi).toBe('CTO, direction technique');
+		expect(bea.securite).toBe('decideur');
+		expect(bea.categoriesLibelles).toEqual(['Cybersécurité', 'Tech generaliste']);
+
+		const cle = data.lignes.find((ligne) => ligne.username === 'cle')!;
+		expect(cle.profilChoisi).toBe('Personnalisé');
+		expect(cle.journees7j).toBe(0);
+	});
+
+	it('met 0 quand le coût est inconnu et calcule le coût par résumé', async () => {
+		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
+		env.fausseApi.ajouterAudio('bea', AUIJOURD_HUI, 'journee.mp3', mp3Silencieux(2));
+		env.fausseApi.ajouterAudio('bea', ilYa(1), 'journee.mp3', mp3Silencieux(2));
+		env.fausseApi.ajouterCouts('bea', {
+			couts_7j: { devise: 'EUR', total: 0.9, tarification_complete: true, modeles_sans_tarif: [] },
+			couts_30j: { devise: 'EUR', total: null, tarification_complete: false, modeles_sans_tarif: ['modele-x'] }
+		});
+
+		const data = (await load(evenement(admin))) as {
+			lignes: { username: string; couts7j: { total: number }; couts30j: { total: null; tarification_complete: boolean } }[];
+		};
+		const bea = data.lignes.find((ligne) => ligne.username === 'bea')!;
+		expect(bea.couts7j.total).toBe(0.9);
+		expect(bea.couts30j.tarification_complete).toBe(false);
+
+		const html = rendre(data);
+		// Le coût 30 j inconnu s'affiche 0, avec le modèle sans tarif signalé à côté.
+		expect(html).toContain('0.000000 EUR');
+		expect(html).toContain('tarif partiel : modele-x');
+		// 0,9 EUR sur 2 journées : 0,45 par résumé.
+		expect(html).toContain('0.450000 EUR');
+		expect(html).not.toContain('? (');
+	});
+
+	it('calcule les répartitions pour les stats', async () => {
+		const admin = await env.creerConfirme(EMAIL_ADMIN, 'chef');
+
+		const data = (await load(evenement(admin, '?onglet=stats'))) as {
+			repartitionProfils: { libelle: string; nombre: number }[];
+			repartitionSecurite: { libelle: string; nombre: number }[];
+			parCategorie: { libelle: string; nombre: number }[];
+		};
+
+		expect(data.repartitionProfils).toEqual([
+			{ libelle: 'CTO, direction technique', nombre: 1 },
+			{ libelle: 'Personnalisé', nombre: 1 }
+		]);
+		expect(data.repartitionSecurite).toEqual([
+			{ libelle: 'curieux', nombre: 1 },
+			{ libelle: 'decideur', nombre: 1 }
+		]);
+		expect(data.parCategorie).toEqual([
+			{ libelle: 'Cybersécurité', nombre: 1 },
+			{ libelle: 'Tech generaliste', nombre: 1 },
+			{ libelle: 'Toutes les catégories', nombre: 1 }
+		]);
+
+		const html = rendre(data);
+		expect(html).toContain('Catégories suivies');
+		expect(html).toContain('Toutes les catégories');
+		expect(html).toContain('Décideur');
 	});
 });
