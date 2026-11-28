@@ -5,6 +5,7 @@ import zoneinfo
 from unittest import mock
 
 from rssresume.llm import processing
+from rssresume.models import Note
 from rssresume.tools import console
 from rssresume.config import DEFAULT_ARTICLE_CHAR_LIMIT, AppConfig
 from rssresume.profil import DEFAULT_PROFIL
@@ -23,14 +24,13 @@ def empreinte(profil=None, axes=None):
 
 
 class FakeFreshRSSClient:
+    """Le client FreshRSS des tests : plus aucun tag de scoring n'y est posé,
+    seul `digested` reste, le cache de scoring étant passé en base SQLite."""
+
     def __init__(self, articles_by_category):
         self._articles_by_category = articles_by_category
         self.marked_as_read = []
         self.digested = []
-        self.scored = {}
-        self.themed = {}
-        self.scoring_digest = None
-        self.cleared = []
 
     def list_categories(self):
         return list(self._articles_by_category)
@@ -44,14 +44,24 @@ class FakeFreshRSSClient:
     def mark_digested(self, item_ids):
         self.digested.extend(item_ids)
 
-    def tag_notes(self, notes, scoring_digest=None):
-        # Les deux tags sont relevés séparément : les tests s'intéressent surtout aux scores.
-        self.scored.update({item_id: note.score for item_id, note in notes.items()})
-        self.themed.update({item_id: note.thematique for item_id, note in notes.items()})
-        self.scoring_digest = scoring_digest
 
-    def clear_scoring_tags(self, articles):
-        self.cleared.extend(article.item_id for article in articles)
+class FakeCacheScoring:
+    """Cache de scoring en mémoire, même contrat que `CacheScoringSqlite`.
+
+    Les notes sont rangées par (item_id, empreinte) ; `enregistrements` garde
+    l'ordre des écritures pour les assertions.
+    """
+
+    def __init__(self):
+        self._notes: dict[tuple[str, str], Note] = {}
+        self.enregistrements: list[tuple[str, str, Note]] = []
+
+    def note(self, item_id, empreinte):
+        return self._notes.get((item_id, empreinte))
+
+    def enregistrer(self, item_id, empreinte, note):
+        self._notes[(item_id, empreinte)] = note
+        self.enregistrements.append((item_id, empreinte, note))
 
 
 class FakeScorer:

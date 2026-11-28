@@ -24,10 +24,21 @@ class FreshRSSClientProtocol(Protocol):
     def mark_digested(self, item_ids: list[str]) -> None:
         ...
 
-    def tag_notes(self, notes: dict[str, Note], scoring_digest: str | None = None) -> None:
+
+class ScoringCacheProtocol(Protocol):
+    """Ce que `DigestService` attend du cache de scoring : une note relue, ou enregistrée.
+
+    La clé est le couple (item_id, empreinte) : deux profils au texte identique ont la
+    même empreinte, donc partagent la même note, sans mutualisation par gabarit. L'angle
+    est persisté avec la note. `None` côté service : pas de cache persistant, chaque
+    passage renote.
+    """
+
+    def note(self, item_id: str, empreinte: str) -> Note | None:
+        """La note de l'article sous cette empreinte, ou `None` si le cache ne la porte pas."""
         ...
 
-    def clear_scoring_tags(self, articles: list[Article]) -> None:
+    def enregistrer(self, item_id: str, empreinte: str, note: Note) -> None:
         ...
 
 

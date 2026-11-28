@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as dt
+import os
+import pathlib
 
 from rssresume import certfr, ephemeride, llm, runlog
 from rssresume.alerte import AlerteEchecs
 from rssresume.audio import AudioGenerator
+from rssresume.cache_scoring import CacheScoringSqlite
 from rssresume.config import AUDIO_MODES, AppConfig, _split_categories
 from rssresume.digest import DigestService
 from rssresume.external.freshrss import FreshRSSClient
@@ -16,7 +19,7 @@ from rssresume.llm import providers
 from rssresume.external import mail
 from rssresume.montage import MontageService
 from rssresume.newsletter import Abonnement, Lettre
-from rssresume.profil import Annuaire
+from rssresume.profil import ENV_PROFILES_DB, Annuaire
 from rssresume.summaries import SummaryGenerator
 from rssresume.tournee import Tournee
 from rssresume.tools import console
@@ -36,14 +39,23 @@ def build_service(
     `freshrss_client` est celui de la tournée, partagé entre les profils : il est
     décliné au nom de la personne servie, pour qu'elle tague sous son préfixe tout en
     relisant les articles que la tournée a déjà lus.
+
+    Le cache de scoring vit dans la base des profils (`RSSRESUME_PROFILES_DB`) : sans
+    elle, mode dossier, aucun cache persistant n'est injecté, chaque passage renote
+    tout, et plus aucun tag de scoring n'est posé dans FreshRSS.
     """
     if freshrss_client is None:
         freshrss_client = FreshRSSClient(config, include_read=include_read)
     else:
         freshrss_client = freshrss_client.pour(config.username)
+
+    chemin_db = (os.getenv(ENV_PROFILES_DB) or "").strip()
+    cache_scoring = CacheScoringSqlite(pathlib.Path(chemin_db)) if chemin_db else None
+
     return DigestService(
         config=config,
         freshrss_client=freshrss_client,
+        cache_scoring=cache_scoring,
         scorer=llm.for_action(providers.SCORING),
         summary_generator=SummaryGenerator(
             llm.for_action(providers.DIGEST),
@@ -92,7 +104,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-tags",
         action="store_true",
-        help="Skip writing FreshRSS tags (score-NN, scoring-<hash>, digested).",
+        help="Skip writing the scoring cache and the FreshRSS tag (digested).",
     )
     parser.add_argument(
         "--no-mark-read",

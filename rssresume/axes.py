@@ -22,9 +22,9 @@ from rssresume.models import THEMATIQUES
 
 #: La clé qui porte les axes dans le document de profil.
 CLE_AXES = "axes"
-#: Un slug devient un label FreshRSS (`theme-<slug>`), relu par `Etiquettes` : minuscules,
+#: Un slug devient la `thematique` persistée dans le cache de scoring : minuscules,
 #: chiffres et tirets, comme un nom de profil, et court, parce qu'il s'affiche dans la
-#: colonne étroite du marqueur `.no-article` et dans la liste des labels.
+#: colonne étroite du marqueur `.no-article`.
 MOTIF_SLUG = re.compile(r"^[a-z][a-z0-9-]{1,23}$")
 #: En dessous de trois, il n'y a plus rien à regrouper ; au-delà de six, le modèle range
 #: au hasard entre des rubriques voisines, et l'écoute saute d'un groupe à l'autre.
@@ -120,7 +120,7 @@ class Axes:
     def rabattre(self, valeur: object) -> str:
         """La thématique rendue par le modèle, ramenée à un slug connu.
 
-        Hors liste, le repli : un tag `theme-` inventé ne serait relu par personne, et
+        Hors liste, le repli : une `thematique` inventée ne serait relue par personne, et
         l'article resterait seul dans un groupe que l'écoute ne sait pas annoncer.
         """
         candidat = str(valeur or "").strip().lower()
@@ -178,8 +178,8 @@ def _axe(entree: object) -> Axe:
     if not isinstance(slug, str) or not MOTIF_SLUG.match(slug):
         raise AxesError(
             f"« {CLE_AXES} » : slug invalide « {slug} ». Attendu : 2 à 24 caractères, "
-            "minuscules, chiffres ou « - », commençant par une lettre, il devient le tag "
-            "FreshRSS theme-<slug>."
+            "minuscules, chiffres ou « - », commençant par une lettre, il devient la `thematique` "
+            "persistée dans le cache de scoring."
         )
     for champ in ("libelle", "description"):
         texte = entree.get(champ)
