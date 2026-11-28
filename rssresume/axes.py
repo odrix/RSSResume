@@ -120,7 +120,7 @@ class Axes:
     def rabattre(self, valeur: object) -> str:
         """La thématique rendue par le modèle, ramenée à un slug connu.
 
-        Hors liste, le repli : un tag `theme-` inventé ne serait relu par personne, et
+        Hors liste, le repli : une `thematique` inventée ne serait relue par personne, et
         l'article resterait seul dans un groupe que l'écoute ne sait pas annoncer.
         """
         candidat = str(valeur or "").strip().lower()
@@ -178,8 +178,8 @@ def _axe(entree: object) -> Axe:
     if not isinstance(slug, str) or not MOTIF_SLUG.match(slug):
         raise AxesError(
             f"« {CLE_AXES} » : slug invalide « {slug} ». Attendu : 2 à 24 caractères, "
-            "minuscules, chiffres ou « - », commençant par une lettre, il devient le tag "
-            "FreshRSS theme-<slug>."
+            "minuscules, chiffres ou « - », commençant par une lettre, il devient la `thematique` "
+            "persistée dans le cache de scoring."
         )
     for champ in ("libelle", "description"):
         texte = entree.get(champ)
