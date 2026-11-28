@@ -60,3 +60,18 @@ class GabaritsTests(unittest.TestCase):
         ).lower()
         for entreprise in ("transfertpro", "microsoft", "google", "amazon", "apple", "meta"):
             self.assertNotIn(entreprise, texte)
+
+    def test_chaque_gabarit_porte_les_trois_rubriques_de_la_trame(self):
+        """La page profil illustre sa trame par un gabarit : le texte doit la suivre.
+
+        Les trois libellés sont ceux de l'aide de la page profil : « Mon métier »,
+        « Ce que je veux suivre », « Ce qui ne m'intéresse pas ».
+        """
+        gabarits = Gabarits.depuis_fichier(CHEMIN_BUILTIN)
+
+        rubriques = ("mon métier", "ce que je veux suivre", "ce qui ne m'intéresse pas")
+        for gabarit in gabarits:
+            texte = gabarit.document["profil"].lower()
+            for rubrique in rubriques:
+                with self.subTest(metier=gabarit.metier, rubrique=rubrique):
+                    self.assertIn(rubrique, texte)

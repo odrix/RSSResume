@@ -1,7 +1,7 @@
 {
   "cto": {
     "libelle": "CTO, direction technique",
-    "profil": "Direction technique d'une organisation qui conçoit et exploite des logiciels. Veille sur les décisions d'architecture, les changements de plate-forme, la cybersécurité, la réglementation, les équipes techniques, les coûts d'exploitation et les ruptures de modèles qui obligent à migrer.",
+    "profil": "Mon métier : je dirige la technique d'une organisation qui conçoit et exploite des logiciels, au sein de la direction.\n\nCe que je veux suivre : les décisions d'architecture structurantes, les changements de plate-forme, la cybersécurité, la réglementation, les équipes techniques, les coûts d'exploitation et les ruptures de modèles qui obligent à migrer.\n\nCe qui ne m'intéresse pas : les débats de syntaxe entre langages, les annonces d'outils sans recul d'usage, les communiqués marketing des éditeurs.",
     "stack": [],
     "securite": "decideur",
     "axes": [
@@ -14,7 +14,7 @@
   },
   "developpeur": {
     "libelle": "Développeur",
-    "profil": "Développeur qui conçoit, teste et maintient des logiciels. Veille sur les langages, frameworks, outils, pratiques d'ingénierie, qualité du code, sécurité des dépendances, plateformes de livraison et changements de compatibilité.",
+    "profil": "Mon métier : je conçois, teste et maintiens des logiciels, en équipe produit.\n\nCe que je veux suivre : les langages et frameworks que je pratique, les outils de développement, les pratiques d'ingénierie, la qualité du code, la sécurité des dépendances, les plateformes de livraison et les changements de compatibilité.\n\nCe qui ne m'intéresse pas : les polémiques de communauté, les comparatifs de gadgets, les annonces marketing sans exemple concret.",
     "stack": [],
     "securite": "curieux",
     "axes": [
@@ -27,7 +27,7 @@
   },
   "ops": {
     "libelle": "Ops, SRE, exploitation",
-    "profil": "Professionnel de l'exploitation, de la fiabilité ou de la production des systèmes. Veille sur les incidents, la disponibilité, l'observabilité, les plateformes cloud, la capacité, la sécurité opérationnelle et les ruptures de support.",
+    "profil": "Mon métier : j'exploite des systèmes en production et je garantis leur fiabilité.\n\nCe que je veux suivre : les incidents et leur résolution, la disponibilité, l'observabilité, les plateformes cloud, la capacité, la sécurité opérationnelle et les ruptures de support des logiciels que je fais tourner.\n\nCe qui ne m'intéresse pas : les nouveautés de langages sans impact sur l'exploitation, les démonstrations d'outils que nous n'utilisons pas, le marketing des fournisseurs cloud.",
     "stack": [],
     "securite": "exploitant",
     "axes": [
@@ -40,7 +40,7 @@
   },
   "dsi": {
     "libelle": "DSI, pilotage du SI",
-    "profil": "Responsable du pilotage d'un système d'information ou d'une direction informatique. Veille sur la stratégie informatique, les budgets, la gouvernance, les fournisseurs, la sécurité, la réglementation, la transformation du SI et la gestion des risques.",
+    "profil": "Mon métier : je pilote un système d'information et sa direction informatique.\n\nCe que je veux suivre : la stratégie informatique, les budgets et les licences, la gouvernance, les fournisseurs, la sécurité, la réglementation, la transformation du SI et la gestion des risques.\n\nCe qui ne m'intéresse pas : les détails d'implémentation sans enjeu de décision, les rumeurs de rachat, les communiqués de recrutement des éditeurs.",
     "stack": [],
     "securite": "decideur",
     "axes": [
@@ -53,7 +53,7 @@
   },
   "rssi": {
     "libelle": "RSSI",
-    "profil": "Responsable de la sécurité des systèmes d'information. Veille sur les vulnérabilités, les attaques, les incidents, les réglementations, les mécanismes de défense, les risques fournisseurs et les mesures correctrices applicables.",
+    "profil": "Mon métier : je suis responsable de la sécurité des systèmes d'information de mon organisation.\n\nCe que je veux suivre : les vulnérabilités et leur exploitabilité, les attaques et campagnes en cours, les incidents majeurs, les réglementations et référentiels, les mécanismes de défense, les risques fournisseurs et les mesures correctrices applicables à nos systèmes.\n\nCe qui ne m'intéresse pas : les failles sans criticité ni correctif applicable chez nous, les annonces de conférences, les nouveautés bureautiques.",
     "stack": [],
     "securite": "exploitant",
     "axes": [
@@ -66,7 +66,7 @@
   },
   "chef-de-projet": {
     "libelle": "Chef de projet",
-    "profil": "Chef de projet chargé de planifier, coordonner et livrer des initiatives. Veille sur les méthodes agiles, les risques, les dépendances, les capacités d'équipe, les outils de pilotage et les pratiques de livraison.",
+    "profil": "Mon métier : je planifie, coordonne et livre des initiatives, en lien avec les équipes métier et techniques.\n\nCe que je veux suivre : les méthodes agiles, les risques et les dépendances, les capacités d'équipe, les outils de pilotage et les pratiques de livraison.\n\nCe qui ne m'intéresse pas : les détails d'implémentation technique, les comparatifs d'environnements de développement, les annonces de nouveaux frameworks.",
     "stack": [],
     "securite": "curieux",
     "axes": [
@@ -79,7 +79,7 @@
   },
   "qa": {
     "libelle": "QA, assurance qualité",
-    "profil": "Professionnel de l'assurance qualité logiciel ou des tests. Veille sur les pratiques de test, l'automatisation, les outils, la fiabilité, l'accessibilité, la qualité des livraisons et les retours d'expérience sur l'ingénierie logicielle.",
+    "profil": "Mon métier : je garantis la qualité des logiciels par le test et l'automatisation.\n\nCe que je veux suivre : les stratégies de test, l'automatisation, les outils de qualité, la fiabilité et la détection des défauts, l'accessibilité, la qualité des livraisons et les retours d'expérience sur l'ingénierie logicielle.\n\nCe qui ne m'intéresse pas : les débats de langages, les annonces marketing, les nouveautés de systèmes d'exploitation sans impact sur les tests.",
     "stack": [],
     "securite": "exploitant",
     "axes": [
@@ -92,7 +92,7 @@
   },
   "po-pm": {
     "libelle": "Product Owner, Product Manager",
-    "profil": "Responsable produit qui découvre les besoins, priorise un portefeuille et accompagne sa livraison. Veille sur les usages, la recherche utilisateur, les pratiques produit, la conception d'interfaces, les méthodes d'organisation et les décisions de stratégie produit.",
+    "profil": "Mon métier : je découvre les besoins des utilisateurs, je priorise un portefeuille produit et j'accompagne sa livraison.\n\nCe que je veux suivre : les usages et la recherche utilisateur, les pratiques produit, la conception d'interfaces, les méthodes d'organisation et les décisions de stratégie produit.\n\nCe qui ne m'intéresse pas : les détails d'implémentation technique, les benchmarks de performance des langages, les communiqués de licences logicielles.",
     "stack": [],
     "securite": "curieux",
     "axes": [
@@ -105,7 +105,7 @@
   },
   "designer": {
     "libelle": "Designer UX, UI",
-    "profil": "Designer UX ou UI qui conçoit des interfaces, des parcours et des expériences. Veille sur la recherche utilisateur, l'accessibilité, les systèmes de design, l'ergonomie, les méthodes de conception et les outils du métier.",
+    "profil": "Mon métier : je conçois des interfaces, des parcours et des expériences utilisateur.\n\nCe que je veux suivre : la recherche utilisateur, l'accessibilité et la conception inclusive, les systèmes de design, l'ergonomie, les méthodes de conception et les outils du métier.\n\nCe qui ne m'intéresse pas : les débats de stack technique, les annonces de serveurs ou de matériel, les comparatifs de vitesses de compilation.",
     "stack": [],
     "securite": "curieux",
     "axes": [
