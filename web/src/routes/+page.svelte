@@ -5,14 +5,14 @@
 </script>
 
 <svelte:head>
-	<title>RSSResume — votre veille, résumée et lue à voix haute</title>
+	<title>RSSResume - votre veille, résumée et lue à voix haute</title>
 </svelte:head>
 
 <section class="accueil">
 	<p class="eyebrow">Votre veille professionnelle</p>
 	<h1>Votre veille, résumée et lue à voix haute</h1>
 	<!-- Avant le bloc exemple dans le DOM : la mention reste visible sans défiler, même sur mobile. -->
-	<p class="beta">Service en <strong>bêta</strong> — vos retours décident de la suite.</p>
+	<p class="beta">Service en <strong>bêta</strong>, vos retours décident de la suite.</p>
 
 	<div class="carte presentation">
 		<p class="accroche">
@@ -51,7 +51,7 @@
 		</p>
 		<p>
 			Le service est en <strong>bêta</strong> : il évolue, et ce sont
-			<strong>vos retours qui décident de la suite</strong> — dites-nous ce qui vous a été utile.
+			<strong>vos retours qui décident de la suite</strong>, dites-nous ce qui vous a été utile.
 		</p>
 		<div class="actions">
 			<a class="bouton" href="/inscription">Créer un compte</a>

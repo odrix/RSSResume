@@ -9,7 +9,7 @@ import { chargerLotResumes } from '#lib/server/lots-resumes.js';
 import type { RequestHandler } from './$types';
 
 /** Le lot suivant de la liste des résumés, en JSON : la page vient le chercher à
- * l'approche du bas de page, avec `?decalage=N` — le nombre de journées déjà affichées.
+ * l'approche du bas de page, avec `?decalage=N`, le nombre de journées déjà affichées.
  *
  * Mêmes gardes que la page : connexion exigée, consultation réservée au propriétaire et à
  * l'administrateur, et un 404 qui ne confirme pas l'existence d'un username à qui n'y a
